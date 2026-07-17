@@ -1,0 +1,29 @@
+{% extends 'quizzes/base.html' %}
+
+{% block title %}
+    INDEX
+{% endblock %}
+
+{% block body %}
+    <h1>Давай попробуем составить викторину</h1>
+    <form method="post" enctype="multipart/form-data">
+        {%  csrf_token %}
+        <h2>Заполни форму ниже и нажми "Составить AI-викторину"</h2>
+        <div>
+            <label for="subject">Тема викторины:</label>
+            <input type="text" id="subject" name="subject">
+        </div>
+        <div>
+            <label for="audience">Аудитория:</label>
+            <input type="text" id="audience" name="audience">
+        </div>
+        <div>
+            <label for="level">Уровень сложности:</label>
+            <input type="text" id="level" name="level">
+        </div>
+        <div>
+            <input type="submit" value="Составить AI-викторину">
+            <input type="reset" value="Сбросить">
+        </div>
+    </form>
+{% endblock %}
