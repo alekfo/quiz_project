@@ -1,0 +1,46 @@
+{% extends 'ai_generator/base.html' %}
+
+{% block title %}
+    INDEX
+{% endblock %}
+
+{% block body %}
+    <h1>Вот твоя викторина:</h1>
+    <div>Тема: {{ res.quiz_subject }}</div>
+    <div>Уровень сложности: {{ res.quiz_level }}</div>
+    <div>Аудитория: {{ res.quiz_audience }}</div>
+    <div>Стиль вопросов: {{ res.question_style }}</div>
+
+    <form method="post" action="{% url 'ai_generator:save' %}">
+        {% csrf_token %}
+
+        {# generation_request_id - единственное, что нужно передать в save() отдельно от #}
+        {# formset'а: по нему save() найдёт в БД ту же GenerationRequest и возьмёт из неё #}
+        {# subject/level/audience/style/title - их тут заново не редактируют, поэтому #}
+        {# не тащим их через hidden-инпуты по отдельности. #}
+        <input type="hidden" name="generation_request_id" value="{{ gen_request.id }}">
+
+        {# management_form - ОБЯЗАТЕЛЬНАЯ часть formset'а. Рендерит скрытые поля #}
+        {# form-TOTAL_FORMS / form-INITIAL_FORMS / form-MIN_NUM_FORMS / form-MAX_NUM_FORMS. #}
+        {# Без них Django на POST не поймёт, сколько форм разбирать из данных, и #}
+        {# formset.is_valid() в save() упадёт с ошибкой "ManagementForm data is missing". #}
+        {{ formset.management_form }}
+
+        {# Каждая итерация qform - это QuestionForm с префиксом form-N- уже внутри: #}
+        {# поле question отрендерится как <... name="form-0-question" ...> для первого #}
+        {# вопроса, <... name="form-1-question" ...> для второго и т.д. Индекс N мы #}
+        {# сами нигде не пишем - его подставляет formset. #}
+        {% for qform in formset %}
+            <fieldset>
+                <legend>Вопрос {{ forloop.counter }}</legend>
+                {{ qform.as_p }}
+            </fieldset>
+        {% empty %}
+            <p>Нет вопросов</p>
+        {% endfor %}
+
+        <div>
+            <button type="submit">Сохранить</button>
+        </div>
+    </form>
+{% endblock %}

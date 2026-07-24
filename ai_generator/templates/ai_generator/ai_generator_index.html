@@ -1,0 +1,17 @@
+{% extends 'ai_generator/base.html' %}
+
+{% block title %}
+    INDEX
+{% endblock %}
+
+{% block body %}
+    <h1>Давай попробуем составить викторину</h1>
+    <form method="post" enctype="multipart/form-data">
+        {%  csrf_token %}
+        {{ form.as_p }}
+        <div>
+            <button type="submit">Составить AI-викторину</button>
+            <button type="reset">Сбросить</button>
+        </div>
+    </form>
+{% endblock %}

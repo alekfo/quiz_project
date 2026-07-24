@@ -5,7 +5,6 @@ def index(request: HttpRequest):
 
     if request.method == "POST":
         print(request.POST)
-        return HttpResponse("ВОТ ТЕБЕ ВИКТОРИНА:")
 
     context = {
         "something": "",

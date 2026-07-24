@@ -21,7 +21,8 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('quizzes/', include('quizzes.urls'))
+    path('quizzes/', include('quizzes.urls')),
+    path('ai_generator/', include('ai_generator.urls')),
 ]
 
 if settings.DEBUG:
