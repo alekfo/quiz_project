@@ -7,13 +7,15 @@ from .prompts import generate_quiz_questions
 from quizzes.models import Category
 from quizzes.services import create_quiz_from_any_data
 
+
+
 def _questions_to_initial(questions: list[dict]) -> list[dict]:
     """
     Адаптер между форматом ответа Claude и форматом, который ожидает QuestionForm.
 
     Claude (см. prompts.generate_quiz_questions) возвращает вопрос так:
         {"question": "...", "options": ["a", "b", "c", "d"],
-         "correct_answer": "b", "fact": "..."}
+         "correct_answer_index": "..", "fact": "..."}
 
     А QuestionForm ждёт словарь, ключи которого СОВПАДАЮТ С ИМЕНАМИ ПОЛЕЙ формы:
         {"question": "...", "option_1": "a", "option_2": "b", "option_3": "c",
@@ -29,18 +31,7 @@ def _questions_to_initial(questions: list[dict]) -> list[dict]:
     initial = []
     for q in questions:
         options = q.get("options", [])
-        correct_answer = q.get("correct_answer")
-
-        # ищем позицию правильного ответа в списке options, чтобы заранее
-        # отметить нужный radio-button (correct_index) в форме
-        try:
-            correct_index = options.index(correct_answer)
-        except ValueError:
-            # Claude не гарантирует строгое соответствие формату (иногда
-            # correct_answer может не совпасть буквально ни с одним из
-            # options - опечатка/лишний пробел и т.п.) - подстрахуемся,
-            # чтобы не упасть с исключением, и отметим первый вариант
-            correct_index = 0
+        correct_answer_index = q.get("correct_answer_index")
 
         initial.append({
             "question": q.get("question", ""),
@@ -48,7 +39,7 @@ def _questions_to_initial(questions: list[dict]) -> list[dict]:
             "option_2": options[1] if len(options) > 1 else "",
             "option_3": options[2] if len(options) > 2 else "",
             "option_4": options[3] if len(options) > 3 else "",
-            "correct_index": correct_index,
+            "correct_index": int(correct_answer_index),
             "fact": q.get("fact", ""),
         })
     return initial
@@ -66,10 +57,7 @@ def index(request: HttpRequest) -> HttpResponse:
                 "quiz_level": request.POST.get("level", ""),
                 "quiz_audience": request.POST.get("audience", ""),
                 "question_style": request.POST.get("style", ""),
-                "quiz_category": request.POST.get("category", ""),
             }
-
-            category = Category.objects.filter(name=request.clean_data.get("quiz_category", ""))
 
             res = generate_quiz_questions(instruction_data)
 
@@ -77,7 +65,7 @@ def index(request: HttpRequest) -> HttpResponse:
                 user = request.user,
                 title = instruction_data.get("quiz_title", ""),
                 subject = instruction_data.get("quiz_subject", ""),
-                category=category,
+                category_id=form.cleaned_data['category'],
                 questions = instruction_data.get("quiz_questions", 0),
                 level = instruction_data.get("quiz_level", ""),
                 audience = instruction_data.get("quiz_audience", ""),
@@ -159,7 +147,7 @@ def save(request: HttpRequest) -> HttpResponse:
             # вопросы/варианты/правильный ответ/факт)
             quiz = create_quiz_from_any_data(gen_request, questions_data)
 
-        url = reverse("ai_generator:index")
-        return redirect(url)
+            url = reverse("quizzes:quizzes_details", kwargs={"pk": quiz.pk})
+            return redirect(url)
 
     return redirect(reverse("ai_generator:index"))

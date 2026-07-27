@@ -1,5 +1,8 @@
 from django.shortcuts import render
 from django.http import HttpResponse, HttpRequest
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
+
+from .models import Quiz, Question, AnswerOption
 
 def index(request: HttpRequest):
 
@@ -11,3 +14,7 @@ def index(request: HttpRequest):
     }
 
     return render(request, "quizzes/quizzes_index.html", context=context)
+
+class QuizzesDetailView(DetailView):
+
+    queryset = Quiz.objects.select_related("user").prefetch_related("questions__options")

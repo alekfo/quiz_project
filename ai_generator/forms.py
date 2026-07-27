@@ -9,7 +9,7 @@ def get_all_categories() -> List[tuple]:
     categories = Category.objects.all()
 
     CATEGORY_CHOICES = [
-        (i_cat.title, i_cat.name)
+        (i_cat.pk, i_cat.title)
         for i_cat in categories
     ]
 
@@ -38,28 +38,15 @@ class GenerationRequestForm(forms.Form):
         ('humorous', 'Шутливый стиль'),
     ]
 
-    #в будущем формировать из списка из БД
-    CATEGORY_CHOICES = [
-        ('funny', 'Забавные'),
-        ('serious', 'Серьезные'),
-    ]
 
 
     title = forms.CharField(max_length=50)
-    category = forms.ChoiceField(label="Уровень сложности", choices=CATEGORY_CHOICES)
     subject = forms.CharField(label="Тема викторины", max_length=50)
     category = forms.ChoiceField(label="Категория", choices=get_all_categories)
     questions = forms.IntegerField(label="Количество вопросов", min_value=1)
     level = forms.ChoiceField(label="Уровень сложности", choices=LEVEL_CHOICES)
     audience = forms.ChoiceField(label="Целевая аудитория", choices=AUDIENCE_CHOICES)
     style = forms.ChoiceField(label="Стиль вопросов", choices=STYLE_CHOICES)
-
-class AnswerOption(forms.Form):
-    pass
-
-class Question(forms.Form):
-    pass
-
 
 class QuestionForm(forms.Form):
     """

@@ -46,3 +46,6 @@ class GenerationRequest(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     result = models.JSONField(default=dict)
     status = models.CharField(choices=STATUS_CHOICES, default='pending')
+
+    def __str__(self):
+        return self.title

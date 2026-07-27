@@ -1,0 +1,31 @@
+{% extends 'quizzes/base.html' %}
+
+{% block title %}
+    INDEX
+{% endblock %}
+
+{% block body %}
+    <h1>Вот твой квиз #<strong>{{ object.pk }}</strong></h1>
+    <p><b>Название: {{ object.title }}</b></p>
+    <p><b>Описание: {{ object.description }}</b></p>
+    <p><b>Источник: {{ object.get_type_display }}</b></p>
+    <p><b>Категория: {{ object.category }}</b></p>
+    <p><b>Тема: {{ object.subject }}</b></p>
+    <p><b>Уровень сложности: {{ object.get_level_display }}</b></p>
+    <p><b>Стиль вопросов: {{ object.get_style_display }}</b></p>
+    <ul>
+        {% for question in object.questions.all%}
+            <li>Вопрос: {{ question.text }}</li>
+            <li>
+                <ul>
+                    {% for answer in question.options.all%}
+                        <li>Вариант ответа #{{ answer.order }}: {{ answer.text }}</li>
+                        <li>Верный/неверный: {{ answer.is_correct }}</li>
+                    {% endfor %}
+                </ul>
+            </li>
+            <li>Факт: {{ question.fact }}</li>
+        {% endfor %}
+    </ul>
+
+{% endblock %}

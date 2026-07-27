@@ -1,9 +1,13 @@
 from typing import List, Any
 
+from django.db import transaction
+
 from .models import Quiz, Question, AnswerOption, Category
 from ai_generator.models import GenerationRequest
 
-def create_quiz_from_any_data(gen_request: GenerationRequest, questions_data: List[dict]):
+
+@transaction.atomic
+def create_quiz_from_any_data(gen_request: GenerationRequest, questions_data: List[dict]) -> Quiz:
 
     quiz = Quiz.objects.create(
         user=gen_request.user,
@@ -21,10 +25,12 @@ def create_quiz_from_any_data(gen_request: GenerationRequest, questions_data: Li
             order = i_index,
             fact = i_question["fact"]
         )
-        for i_index, i_option in i_question["options"]:
+        for opt_index, i_option in enumerate(i_question["options"]):
             answer = AnswerOption.objects.create(
                 question=question,
-                text = i_question["options"][i_index],
-                is_correct = i_index == i_question["correct_index"],
-                order = i_index
+                text = i_option,
+                is_correct = opt_index == i_question["correct_index"],
+                order = opt_index
             )
+
+    return quiz

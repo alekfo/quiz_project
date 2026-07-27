@@ -98,9 +98,9 @@ def generate_quiz_questions(instruction_data: dict) -> dict:
                           "quiz_audience": "аудитория викторины или пустая строка",
                           "question_style": "стиль вопросов викторины или пустая строка",
                           "questions": [
-                            {{'id': 1, 'question': 'сам вопрос', 'options': [вариант1, .., вариант4], 'correct_answer': 'правильный ответ', 'fact': 'какой-нибудь факт в стиле вопроса ({question_style})'}},
+                            {{'id': 1, 'question': 'сам вопрос', 'options': [вариант0, .., вариант3], 'correct_answer_index': 'индекс правильного ответа из списка options', 'fact': 'какой-нибудь факт в стиле вопроса ({question_style})'}},
                             {{...}},
-                            {{'id': {quiz_questions}, 'question': 'сам вопрос', 'options': [вариант1, .., вариант4], 'correct_answer': 'правильный ответ', 'fact': 'какой-нибудь факт в стиле вопроса ({question_style})'}},
+                            {{'id': {quiz_questions}, 'question': 'сам вопрос', 'options': [вариант0, .., вариант3], 'correct_answer_index': 'индекс правильного ответа из списка options', 'fact': 'какой-нибудь факт в стиле вопроса ({question_style})'}},
                           ]
                         }}""")
     result = _parse_json(text)

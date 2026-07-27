@@ -4,7 +4,9 @@ from django.conf import settings
 
 class Category(models.Model):
     title = models.CharField(max_length=50)
-    name = models.CharField(max_length=50)
+
+    def __str__(self):
+        return self.title
 
 class Quiz(models.Model):
     TYPE_CHOICES = [
@@ -40,16 +42,31 @@ class Quiz(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     style = models.CharField(max_length=20, choices=STYLE_CHOICES)
 
+    def __str__(self):
+        return self.title
+
 class Question(models.Model):
+
+    class Meta:
+        ordering = ['order']
 
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions')
     text = models.TextField()
     order = models.PositiveIntegerField(default=0)
     fact = models.TextField(blank=True)
 
+    def __str__(self):
+        return self.text[:50]
 
 class AnswerOption(models.Model):
+
+    class Meta:
+        ordering = ['order']
+
     question = models.ForeignKey(Question, related_name='options', on_delete=models.CASCADE)
     text = models.CharField(max_length=255)
     is_correct = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return self.text[:50]
