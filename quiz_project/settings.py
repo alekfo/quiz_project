@@ -145,8 +145,8 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 LOGIN_URL = '/users/login/'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = '/ai_generator/'
+LOGOUT_REDIRECT_URL = '/users/login/'
 
 
 # Email (SMTP)
@@ -210,4 +210,11 @@ LOGGING = {
         'handlers': ['console'],
         'level': 'WARNING',
     },
+}
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': '/tmp/django_cache_quiz_project',
+    }
 }

@@ -23,6 +23,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('quizzes/', include('quizzes.urls')),
     path('ai_generator/', include('ai_generator.urls')),
+    path('users/', include('users.urls')),
 ]
 
 if settings.DEBUG:

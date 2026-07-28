@@ -3,14 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <title>
-      {% block title %}
-        Base title
-      {% endblock %}
+        {% block title %}
+            Base title
+        {% endblock %}
     </title>
 </head>
 <body>
-  {% block body %}
-    Base body
-  {% endblock %}
+    <form method="post" action="{% url 'users:logout' %}">
+      {% csrf_token %}
+      <button type="submit">Выйти</button>
+    </form>
+    {% block body %}
+        Base body
+    {% endblock %}
 </body>
 </html>

@@ -1,5 +1,7 @@
-from django.shortcuts import render, reverse, redirect, get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.http import HttpResponse, HttpRequest
+from django.contrib.auth.decorators import login_required
 
 from .models import GenerationRequest
 from .forms import GenerationRequestForm, QuestionFormSet
@@ -44,19 +46,19 @@ def _questions_to_initial(questions: list[dict]) -> list[dict]:
         })
     return initial
 
-
+@login_required
 def index(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         form = GenerationRequestForm(request.POST)
         if form.is_valid():
 
             instruction_data = {
-                "quiz_title": request.POST.get("title", ""),
-                "quiz_subject": request.POST.get("subject", ""),
-                "quiz_questions": request.POST.get("questions", 0),
-                "quiz_level": request.POST.get("level", ""),
-                "quiz_audience": request.POST.get("audience", ""),
-                "question_style": request.POST.get("style", ""),
+                "quiz_title": form.cleaned_data.get("title", ""),
+                "quiz_subject": form.cleaned_data.get("subject", ""),
+                "quiz_questions": form.cleaned_data.get("questions"),
+                "quiz_level": form.cleaned_data.get("level", ""),
+                "quiz_audience": form.cleaned_data.get("audience", ""),
+                "question_style": form.cleaned_data.get("style", ""),
             }
 
             res = generate_quiz_questions(instruction_data)
@@ -98,7 +100,7 @@ def index(request: HttpRequest) -> HttpResponse:
 
     return render(request, "ai_generator/ai_generator_index.html", context=context)
 
-
+@login_required
 def save(request: HttpRequest) -> HttpResponse:
 
     if request.method == "POST":
