@@ -1,0 +1,89 @@
+{% extends "users/base.html" %}
+
+{% block title %}Регистрация — Quiz_proj{% endblock %}
+
+{% block body %}
+<div class="auth-card">
+  <h1>Регистрация</h1>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
+        {{ form.website }}
+    </div>
+
+    <div>
+      <div>Аккаунт</div>
+
+      <div>
+        <label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+        {{ form.username }}
+        {% if form.username.help_text %}<span>{{ form.username.help_text }}</span>{% endif %}
+        {% if form.username.errors %}<ul>{% for e in form.username.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+
+      <div>
+        <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+        {{ form.email }}
+        <span>На этот адрес будет отправлено письмо с подтверждением.</span>
+        {% if form.email.errors %}<ul>{% for e in form.email.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+
+    </div>
+
+    <div>
+      <div>Пароль</div>
+
+      <div>
+        <label for="{{ form.password1.id_for_label }}">{{ form.password1.label }}</label>
+        {{ form.password1 }}
+        {% if form.password1.help_text %}<span>{{ form.password1.help_text }}</span>{% endif %}
+        {% if form.password1.errors %}<ul>{% for e in form.password1.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+
+      <div>
+        <label for="{{ form.password2.id_for_label }}">{{ form.password2.label }}</label>
+        {{ form.password2 }}
+        {% if form.password2.errors %}<ul>{% for e in form.password2.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+
+    </div>
+
+    <div>
+      <div>Согласие</div>
+      <div>
+        <div>
+          {{ form.privacy_policy }}
+          <label for="{{ form.privacy_policy.id_for_label }}" class="privacy-policy-label">
+            Я ознакомлен(а) с
+            <a href="{% url 'users:privacy_policy' %}" target="_blank">Политикой конфиденциальности</a>
+            и <a href="{% url 'users:public_offer' %}" target="_blank">Договором публичной оферты</a>,
+            согласен(на) с их условиями и даю согласие на обработку персональных данных
+          </label>
+        </div>
+        {% if form.privacy_policy.errors %}
+          <ul>{% for e in form.privacy_policy.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+      <div>
+        <button type="submit" id="submit-btn" disabled>Зарегистрироваться</button>
+      </div>
+    </div>
+
+  </form>
+
+  <span>Уже есть аккаунт? <a href="{% url 'users:login' %}">Войти</a></span>
+</div>
+
+<script>
+  (function () {
+    var cb = document.getElementById('{{ form.privacy_policy.id_for_label }}');
+    var btn = document.getElementById('submit-btn');
+    btn.disabled = !cb.checked;
+    cb.addEventListener('change', function () {
+      btn.disabled = !this.checked;
+    });
+  })();
+</script>
+{% endblock %}
