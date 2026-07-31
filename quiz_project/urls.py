@@ -21,7 +21,7 @@ from django.urls import path, include
 from django.views.generic import RedirectView
 
 urlpatterns = [
-    path('', RedirectView.as_view(pattern_name='ai_generator:index', permanent=False)),
+    path('', RedirectView.as_view(pattern_name='quizzes:menu', permanent=False)),
     path('admin/', admin.site.urls),
     path('quizzes/', include('quizzes.urls')),
     path('ai_generator/', include('ai_generator.urls')),

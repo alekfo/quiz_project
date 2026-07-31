@@ -6,7 +6,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 from .models import Quiz, Question, AnswerOption
 
-def index(request: HttpRequest):
+def menu(request: HttpRequest):
 
     if request.method == "POST":
         print(request.POST)
@@ -15,8 +15,16 @@ def index(request: HttpRequest):
         "something": "",
     }
 
-    return render(request, "quizzes/quizzes_index.html", context=context)
+    return render(request, "quizzes/quizzes_menu.html", context=context)
 
 class QuizzesDetailView(LoginRequiredMixin, DetailView):
-
     queryset = Quiz.objects.select_related("user").prefetch_related("questions__options")
+
+class QuizzesListView(LoginRequiredMixin, ListView):
+
+    def get_queryset(self):
+        return (
+            Quiz.objects
+            .prefetch_related("questions__options")
+            .filter(user=self.request.user)
+        )

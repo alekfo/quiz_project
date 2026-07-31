@@ -1,0 +1,16 @@
+{% extends 'quizzes/base.html' %}
+
+{% block title %}
+    INDEX
+{% endblock %}
+
+{% block body %}
+    <h1>Рады приветствовать вас в QUIZ_PROJECT</h1>
+    {% if user.is_authenticated %}
+        <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
+        <a href="{% url 'ai_generator:index' %}">Сгенерировать квиз с помощью AI</a>
+    {% else %}
+        QUIZ_PROJECT - это сервис для генерирации, хранения и публикации викторин. Тут вы можете делиться с друзьями созданными викторинами.
+        <a href="{% url 'users:register' %}">Попробовать</a>
+    {% endif %}
+{% endblock %}

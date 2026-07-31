@@ -91,6 +91,8 @@ class RateLimitedLoginView(auth_views.LoginView):
     попыток входа с одного IP в час. Успешные входы счётчик не увеличивают, чтобы
     не блокировать пользователей за общим IP (офис, NAT)."""
 
+    redirect_authenticated_user = True
+
     def post(self, request, *args, **kwargs):
         ip = _client_ip(request)
         rate_key = f'login_attempts_{ip}'

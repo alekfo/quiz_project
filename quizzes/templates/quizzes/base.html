@@ -9,10 +9,21 @@
     </title>
 </head>
 <body>
-    <form method="post" action="{% url 'users:logout' %}">
-      {% csrf_token %}
-      <button type="submit">Выйти</button>
-    </form>
+    {% if user.is_authenticated %}
+        <div>
+            <a href="{% url 'quizzes:menu' %}">QUIZ_PROJECT</a>
+        </div>
+        <form method="post" action="{% url 'users:logout' %}">
+          {% csrf_token %}
+          <button type="submit">Выйти</button>
+        </form>
+        <div>
+            {{ user.username }}
+        </div>
+    {% else %}
+        <a href="{% url 'users:login' %}">Войти</a>
+        <a href="{% url 'users:register' %}">Регистрация</a>
+    {% endif %}
     {% block body %}
         Base body
     {% endblock %}

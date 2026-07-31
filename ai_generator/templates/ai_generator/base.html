@@ -9,10 +9,16 @@
     </title>
 </head>
 <body>
+    <div>
+        <a href="{% url 'quizzes:menu' %}">QUIZ_PROJECT</a>
+    </div>
     <form method="post" action="{% url 'users:logout' %}">
       {% csrf_token %}
       <button type="submit">Выйти</button>
     </form>
+    <div>
+        {{ user.username }}
+    </div>
     {% block body %}
         Base body
     {% endblock %}

@@ -1,11 +1,11 @@
 {% extends 'quizzes/base.html' %}
 
 {% block title %}
-    INDEX
+    Quizzes #{{ object.pk }} detail
 {% endblock %}
 
 {% block body %}
-    <h1>Вот твой квиз #<strong>{{ object.pk }}</strong></h1>
+    <h1>Вот твой квиз (#<strong>{{ object.pk }})</strong></h1>
     <p><b>Название: {{ object.title }}</b></p>
     <p><b>Описание: {{ object.description }}</b></p>
     <p><b>Источник: {{ object.get_type_display }}</b></p>
@@ -27,5 +27,8 @@
             <li>Факт: {{ question.fact }}</li>
         {% endfor %}
     </ul>
+    <a href="{% url 'quizzes:quizzes_list' %}">
+        Мои квизы
+    </a>
 
 {% endblock %}
