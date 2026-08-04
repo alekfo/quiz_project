@@ -10,19 +10,100 @@
         <form method="POST">
             {% csrf_token  %}
             {{ form.as_p }}
+
             {{ question_formset.management_form }}
             <p>Создайте вопросы:</p>
-            {% for question_form in question_formset %}
-                <p>Ворос №{{ forloop.counter }}:</p>
-                {{ question_form.as_p }}
-            {% endfor %}
+
+            {# Сюда JS будет добавлять новые формы вопросов #}
+            <div id="question-list">
+                {% for question_form in question_formset %}
+                    <div class="question-form">
+                        <p>Вопрос №{{ forloop.counter }}:</p>
+                        {{ question_form.as_p }}
+                        <button type="button" class="delete-question-btn">Удалить вопрос</button>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <button type="button" id="add-question-btn">Добавить ещё вопрос</button>
             <button type="submit">Создать</button>
         </form>
     </div>
+
+    <!--
+        Заготовка пустой формы вопроса.
+        question_formset.empty_form - это форма без данных, у которой вместо номера
+        везде стоит строка "__prefix__" (например name="questions-__prefix__-text").
+        Мы не показываем её пользователю (template никогда не рендерится в видимый DOM),
+        а достаём её HTML из JS, подставляем вместо __prefix__ реальный номер новой формы
+        и вставляем результат в #question-list.
+    -->
+    <template id="empty-question-template">
+        <div class="question-form">
+            <p>Новый вопрос:</p>
+            {{ question_formset.empty_form.as_p }}
+            <button type="button" class="delete-question-btn">Удалить вопрос</button>
+        </div>
+    </template>
+
     <div>
         <a href="{% url 'quizzes:quizzes_list' %}">
             Мои квизы
         </a>
     </div>
+
+    <script>
+        (function () {
+            const questionList = document.getElementById('question-list');
+            const addBtn = document.getElementById('add-question-btn');
+            const emptyTemplate = document.getElementById('empty-question-template');
+            // Скрытое поле TOTAL_FORMS формсета - по нему Django на сервере узнаёт,
+            // сколько форм вопросов вообще пришло в POST-запросе.
+            // Без его увеличения новая форма просто не будет прочитана formset'ом.
+            const totalFormsInput = document.querySelector('input[name$="-TOTAL_FORMS"]');
+
+            // Один и тот же обработчик "Удалить" нужен и формам, отрисованным Django
+            // на сервере, и формам, которые добавит JS - поэтому вынесен в функцию.
+            function bindDeleteButton(button) {
+                button.addEventListener('click', function () {
+                    const formBlock = button.closest('.question-form');
+                    // input[name$="-DELETE"] - чекбокс формсета для пометки "на удаление".
+                    // Django поймёт его и на сервере: при сохранении такая форма
+                    // либо удалит существующий вопрос, либо (если форма новая
+                    // и пустая) будет просто проигнорирована.
+                    const deleteCheckbox = formBlock.querySelector('input[name$="-DELETE"]');
+                    deleteCheckbox.checked = true;
+                    // Форму не удаляем из DOM, а прячем - если удалить элемент,
+                    // собьётся нумерация индексов у формы (questions-0-, questions-1- и т.д.),
+                    // а Django формсет ожидает индексы без пропусков от 0 до TOTAL_FORMS - 1.
+                    formBlock.style.display = 'none';
+                });
+            }
+
+            // Навешиваем обработчик на формы, которые уже были на странице при загрузке.
+            questionList.querySelectorAll('.delete-question-btn').forEach(bindDeleteButton);
+
+            addBtn.addEventListener('click', function () {
+                // Текущее значение TOTAL_FORMS - это и есть индекс для новой формы
+                // (индексация с нуля: если форм уже 1, следующая будет иметь индекс 1).
+                const newFormIndex = parseInt(totalFormsInput.value, 10);
+
+                // Берём HTML заготовки и меняем в нём __prefix__ на реальный индекс.
+                const newFormHtml = emptyTemplate.innerHTML.replaceAll('__prefix__', newFormIndex);
+
+                // innerHTML нельзя вставить в DOM напрямую - оборачиваем в контейнер,
+                // чтобы получить готовый элемент, и уже его добавляем в question-list.
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = newFormHtml.trim();
+                const newFormBlock = wrapper.firstElementChild;
+                questionList.appendChild(newFormBlock);
+
+                // Обязательно сообщаем Django, что форм стало больше.
+                totalFormsInput.value = newFormIndex + 1;
+
+                bindDeleteButton(newFormBlock.querySelector('.delete-question-btn'));
+            });
+        })();
+    </script>
 
 {% endblock %}
