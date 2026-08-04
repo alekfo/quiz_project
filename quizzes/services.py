@@ -16,7 +16,8 @@ def create_quiz_from_any_data(gen_request: GenerationRequest, questions_data: Li
         category=gen_request.category,
         subject=gen_request.subject,
         level=gen_request.level,
-        style=gen_request.style
+        style=gen_request.style,
+        audience=gen_request.audience
     )
     for i_index, i_question in enumerate(questions_data):
         question = Question.objects.create(

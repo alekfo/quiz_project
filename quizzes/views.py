@@ -1,10 +1,13 @@
 from django.shortcuts import render
-from django.http import HttpResponse, HttpRequest
+from django.http import HttpResponse, HttpRequest, HttpResponseRedirect
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.urls import reverse
+from django.db import transaction
 
 from .models import Quiz, Question, AnswerOption
+from .forms import QuizForm, QuestionFormSet
 
 def menu(request: HttpRequest):
 
@@ -28,3 +31,80 @@ class QuizzesListView(LoginRequiredMixin, ListView):
             .prefetch_related("questions__options")
             .filter(user=self.request.user)
         )
+
+class QuizzesCreateView(LoginRequiredMixin, CreateView):
+    model = Quiz
+    form_class = QuizForm
+
+    def get_context_data(self, **kwargs):
+        """"тут переопределяем то, что пойдет в контекст шаблона по GET,
+        наша уже объявленная form_class = QuizForm уже будет в
+        context = super().get_context_data(**kwargs)
+        """
+        context = super().get_context_data(**kwargs)
+        context.setdefault("question_formset", QuestionFormSet())
+        return context
+
+    def post(self, request, *args, **kwargs):
+        """
+        переопределяем POST, проверяем валидацию сразу двух форм: QuizForm и QuestionFormSet;
+        при успехе валидации уходим в методы forms_valid, при ошибке валидации - в forms_invalid
+        """
+        self.object = None
+        form = self.get_form()
+        question_formset = QuestionFormSet(request.POST)
+        if form.is_valid() and question_formset.is_valid():
+            return self.forms_valid(form, question_formset)
+        return self.forms_invalid(form, question_formset)
+
+    @transaction.atomic
+    def forms_valid(self, form, question_formset):
+        """
+        после успешной валидации обеих форм создаем все необходимые инстансы моделей для квиза,
+        в question_formset.instance = self.object мы призваиваем каждому вопросу в pk наш уже сохраненный
+        self.object = form.save() - объект класса Quiz
+        """
+        #сохраняем Quiz
+        form.instance.type = "by_user"
+        form.instance.user = self.request.user
+        self.object = form.save()
+
+        #ссохраняем все Question из question_formset
+        question_formset.instance = self.object
+        question_formset.save()
+
+        #сохраняем все AnswerOption из question_formset.form.cleaned_data
+        for question_form in question_formset.forms:
+            if not question_form.has_changed() or question_form.cleaned_data.get("DELETE"):
+                continue
+            question = question_form.instance #уже сохранён, с реальным pk — formset.save() его проставил
+            correct_index = int(question_form.cleaned_data["correct_index"])
+            options = [
+                question_form.cleaned_data["option_1"],
+                question_form.cleaned_data["option_2"],
+                question_form.cleaned_data["option_3"],
+                question_form.cleaned_data["option_4"],
+            ]
+            for i_option, options_text in enumerate(options):
+                AnswerOption.objects.create(
+                    question=question,
+                    text=options_text,
+                    is_correct=(i_option == correct_index),
+                    order=i_option
+                )
+        return HttpResponseRedirect(self.get_success_url())
+
+    def forms_invalid(self, form, question_formset):
+        """
+        Перенаправляем на начальную html при ошибке валидации обеих форм
+        """
+        return self.render_to_response(
+            self.get_context_data(form=form, question_formset=question_formset)
+        )
+
+    def get_success_url(self):
+        """
+        при успешной валидации и создании всех необходимых инстансов модели,
+        перенаправляем в quizzes:quizzes_detail
+        """
+        return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.pk})

@@ -1,0 +1,28 @@
+{% extends 'quizzes/base.html' %}
+
+{% block title %}
+    Quizzes create
+{% endblock %}
+
+{% block body %}
+    <h1>Создай новый квиз:</h1>
+    <div>
+        <form method="POST">
+            {% csrf_token  %}
+            {{ form.as_p }}
+            {{ question_formset.management_form }}
+            <p>Создайте вопросы:</p>
+            {% for question_form in question_formset %}
+                <p>Ворос №{{ forloop.counter }}:</p>
+                {{ question_form.as_p }}
+            {% endfor %}
+            <button type="submit">Создать</button>
+        </form>
+    </div>
+    <div>
+        <a href="{% url 'quizzes:quizzes_list' %}">
+            Мои квизы
+        </a>
+    </div>
+
+{% endblock %}

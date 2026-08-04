@@ -142,11 +142,6 @@ def save(request: HttpRequest) -> HttpResponse:
                     "correct_index": int(f.cleaned_data["correct_index"]),
                 })
 
-            # TODO: тут вызов функции из quizzes/services.py для сохранения
-            # квиза после подтверждения пользователем - создаёт Quiz,
-            # Question и AnswerOption на основе gen_request (title, subject,
-            # level, audience, style) и questions_data (отредактированные
-            # вопросы/варианты/правильный ответ/факт)
             quiz = create_quiz_from_any_data(gen_request, questions_data)
 
             url = reverse("quizzes:quizzes_details", kwargs={"pk": quiz.pk})

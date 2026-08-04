@@ -13,9 +13,11 @@
     <p><b>Тема: {{ object.subject }}</b></p>
     <p><b>Уровень сложности: {{ object.get_level_display }}</b></p>
     <p><b>Стиль вопросов: {{ object.get_style_display }}</b></p>
+    <p><b>Аудитория: {{ object.get_audience_display }}</b></p>
     <ul>
+        <p>Вопросы:</p>
         {% for question in object.questions.all%}
-            <li>Вопрос: {{ question.text }}</li>
+            <li>Вопрос № {{ forloop.counter }}: {{ question.text }}</li>
             <li>
                 <ul>
                     {% for answer in question.options.all%}

@@ -30,6 +30,13 @@ class Quiz(models.Model):
         ('serious', 'Серьезный стиль'),
         ('humorous', 'Шутливый стиль'),
     ]
+    AUDIENCE_CHOICES = [
+        ('common', 'Без классификатора'),
+        ('children', 'Дети'),
+        ('teens', 'Подростки'),
+        ('middle_ages', 'Средние года'),
+        ('elderly', 'Пожилые'),
+    ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='quizzes')
     title = models.CharField(max_length=50)
@@ -41,6 +48,7 @@ class Quiz(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='private')
     created_at = models.DateTimeField(auto_now_add=True)
     style = models.CharField(max_length=20, choices=STYLE_CHOICES)
+    audience = models.CharField(max_length=20, choices=AUDIENCE_CHOICES, default='common')
 
     def __str__(self):
         return self.title
