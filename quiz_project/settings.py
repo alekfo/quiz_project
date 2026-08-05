@@ -178,7 +178,7 @@ LOGGING = {
         },
     },
     'loggers': {
-        'interviews': {
+        'quizzes': {
             'handlers': ['console'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
@@ -188,7 +188,7 @@ LOGGING = {
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
-        'resumes': {
+        'ai_generator': {
             'handlers': ['console'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,

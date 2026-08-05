@@ -1,7 +1,12 @@
+import json
+import logging
+import requests
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.http import HttpResponse, HttpRequest
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
 
 from .models import GenerationRequest
 from .forms import GenerationRequestForm, QuestionFormSet
@@ -9,7 +14,7 @@ from .prompts import generate_quiz_questions
 from quizzes.models import Category
 from quizzes.services import create_quiz_from_any_data
 
-
+logger = logging.getLogger(__name__)
 
 def _questions_to_initial(questions: list[dict]) -> list[dict]:
     """
@@ -60,8 +65,12 @@ def index(request: HttpRequest) -> HttpResponse:
                 "quiz_audience": form.cleaned_data.get("audience", ""),
                 "question_style": form.cleaned_data.get("style", ""),
             }
-
-            res = generate_quiz_questions(instruction_data)
+            try:
+                res = generate_quiz_questions(instruction_data)
+            except (requests.RequestException, RuntimeError, json.JSONDecodeError) as e:
+                logger.warning("Claude generation failed: %s", e)
+                messages.error(request, "Не удалось сгенерировать квиз, попробуйте ещё раз чуть позже.")
+                return render(request, "ai_generator/ai_generator_index.html", {"form": form})
 
             gen_request = GenerationRequest.objects.create(
                 user = request.user,
@@ -75,6 +84,8 @@ def index(request: HttpRequest) -> HttpResponse:
                 result = res,
                 status = "completed"
             )
+            logger.info("Новый запрос к Claude API от пользователя %s "
+                           "успешно прошел и добавлен в базу: GenerationRequest №%s", request.user.username, gen_request.pk)
 
             # Строим formset ТОЛЬКО с initial (никакого request.POST здесь) -
             # это даёт "unbound"-формы, они предназначены именно для первого
@@ -145,6 +156,7 @@ def save(request: HttpRequest) -> HttpResponse:
             quiz = create_quiz_from_any_data(gen_request, questions_data)
 
             url = reverse("quizzes:quizzes_details", kwargs={"pk": quiz.pk})
+            logger.info("Пользователь %s сохранил квиз №%s в базу", request.user.username, quiz.pk)
             return redirect(url)
 
     return redirect(reverse("ai_generator:index"))

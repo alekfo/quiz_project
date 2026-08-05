@@ -1,13 +1,18 @@
+import logging
+
 from django.shortcuts import render
 from django.http import HttpResponse, HttpRequest, HttpResponseRedirect
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.db import transaction
+from django.contrib import messages
 
 from .models import Quiz, Question, AnswerOption
 from .forms import QuizForm, QuestionFormSet
+
+logger = logging.getLogger(__name__)
 
 def menu(request: HttpRequest):
 
@@ -20,10 +25,10 @@ def menu(request: HttpRequest):
 
     return render(request, "quizzes/quizzes_menu.html", context=context)
 
-class QuizzesDetailView(LoginRequiredMixin, DetailView):
+class QuizDetailView(LoginRequiredMixin, DetailView):
     queryset = Quiz.objects.select_related("user").prefetch_related("questions__options")
 
-class QuizzesListView(LoginRequiredMixin, ListView):
+class QuizListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
         return (
@@ -32,7 +37,7 @@ class QuizzesListView(LoginRequiredMixin, ListView):
             .filter(user=self.request.user)
         )
 
-class QuizzesCreateView(LoginRequiredMixin, CreateView):
+class QuizCreateView(LoginRequiredMixin, CreateView):
     model = Quiz
     form_class = QuizForm
 
@@ -71,6 +76,10 @@ class QuizzesCreateView(LoginRequiredMixin, CreateView):
 
         #ссохраняем все Question из question_formset
         question_formset.instance = self.object
+        #на этом этапе сохранятся все объекты из формсета, у которых не было пометки в чекбоксе delete,
+        # это происходит за счет метода save_new_objects в BaseModelFormSet, в случае с update будет срабатывать
+        #save_existing_objects, который при DELETE вызывает self.delete_existing(obj, commit=commit) — то есть уже сохранённый в БД Question будет
+        #физически удалён
         question_formset.save()
 
         #сохраняем все AnswerOption из question_formset.form.cleaned_data
@@ -92,12 +101,14 @@ class QuizzesCreateView(LoginRequiredMixin, CreateView):
                     is_correct=(i_option == correct_index),
                     order=i_option
                 )
+        logger.info("Новый квиз №%s создан вручную пользователем user=%s", self.object.pk, self.request.user.username)
         return HttpResponseRedirect(self.get_success_url())
 
     def forms_invalid(self, form, question_formset):
         """
         Перенаправляем на начальную html при ошибке валидации обеих форм
         """
+        messages.error(self.request, "Не удалось создать квиз - проверьте ошибки в форме")
         return self.render_to_response(
             self.get_context_data(form=form, question_formset=question_formset)
         )
@@ -108,3 +119,11 @@ class QuizzesCreateView(LoginRequiredMixin, CreateView):
         перенаправляем в quizzes:quizzes_detail
         """
         return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.pk})
+
+class QuizDeleteView(LoginRequiredMixin, DeleteView):
+    model = Quiz
+
+    def get_success_url(self):
+        logger.info("Пользователь %s успешно удалил квиз №%s", self.request.user.username, self.object.pk)
+        messages.success(self.request, "Квиз успешно удален")
+        return reverse("quizzes:quizzes_list")

@@ -1,7 +1,9 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
     <title>
         {% block title %}
             Base title
@@ -9,6 +11,13 @@
     </title>
 </head>
 <body>
+    {% if messages %}
+        <ul class="messages">
+          {% for message in messages %}
+            <li class="{{ message.tags }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+    {% endif %}
     {% if user.is_authenticated %}
         <div>
             <a href="{% url 'quizzes:menu' %}">QUIZ_PROJECT</a>
@@ -27,5 +36,13 @@
     {% block body %}
         Base body
     {% endblock %}
+    <script>
+        setTimeout(function () {
+          const messages = document.querySelector('.messages');
+          if (messages) {
+              messages.remove();
+          }
+        }, 15000);
+    </script>
 </body>
 </html>

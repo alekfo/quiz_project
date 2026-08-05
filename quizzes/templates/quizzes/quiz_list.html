@@ -19,7 +19,10 @@
             <a href="{% url 'ai_generator:index' %}">попробуй c помощью AI</a>
         </li>
         {% endfor %}
-        <a href="{% url 'ai_generator:index' %}">Создать новый квиз с помощью AI</a>
+        <div>
+            <a href="{% url 'quizzes:quizzes_create' %}">Создать новый квиз вручную</a>
+            <a href="{% url 'ai_generator:index' %}">Создать новый квиз с помощью AI</a>
+        </div>
     </ul>
 
 {% endblock %}

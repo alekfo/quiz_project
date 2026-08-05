@@ -35,7 +35,7 @@ class QuestionAdmin(admin.ModelAdmin):
     ]
 
     list_display = "pk", "quiz", "text", "order", "fact"
-    ordering = ("pk",)
+    ordering = ("-pk",)
 
     def get_queryset(self, request):
         return  Question.objects.select_related("quiz").prefetch_related("options")

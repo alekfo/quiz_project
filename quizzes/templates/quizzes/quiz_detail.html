@@ -29,6 +29,9 @@
             <li>Факт: {{ question.fact }}</li>
         {% endfor %}
     </ul>
+    <a class="delete_link" href="{% url 'quizzes:quizzes_delete' pk=object.pk%}">
+        Удалить квиз
+    </a>
     <a href="{% url 'quizzes:quizzes_list' %}">
         Мои квизы
     </a>

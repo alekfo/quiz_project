@@ -1,0 +1,19 @@
+.messages {
+    margin: 30px;
+}
+
+.messages li.error {
+    background-color: red;
+}
+
+.messages li.success {
+    background-color: green;
+}
+
+.formset_errors {
+    background-color: red;
+}
+
+.delete_link {
+    color: red;
+}

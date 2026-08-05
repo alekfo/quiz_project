@@ -12,6 +12,9 @@
             {{ form.as_p }}
 
             {{ question_formset.management_form }}
+            <div class="formset_errors">
+                {{ question_formset.non_form_errors }}
+            </div>
             <p>Создайте вопросы:</p>
 
             {# Сюда JS будет добавлять новые формы вопросов #}

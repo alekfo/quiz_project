@@ -1,0 +1,22 @@
+{% extends 'quizzes/base.html' %}
+
+{% block title %}
+    Quizzes confirm delete
+{% endblock %}
+
+{% block body %}
+    <h1>Ты уверен, что хочешь удалить квиз № {{ object.pk }}?</h1>
+    <div>
+        <a href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
+            Вернуться обратно к квизу
+        </a>
+    </div>
+    <div>
+        <form method="post">
+            {% csrf_token  %}
+            {{ form.as_p }}
+            <button type="submit">Удалить</button>
+        </form>
+    </div>
+
+{% endblock %}

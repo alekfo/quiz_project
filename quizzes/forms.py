@@ -1,3 +1,5 @@
+from os import MFD_ALLOW_SEALING
+
 from django import forms
 from django.core import validators
 
@@ -23,10 +25,34 @@ class QuestionForm(forms.ModelForm):
     class Meta:
             model = Question
             fields = ["text", "order", "fact"]
+            labels = {
+                "text": "Введите текст вопроса",
+                "order": "Номер по порядку",
+                "fact": "Любопытный факт",
+
+            }
+
+class BaseQuestionFormSet(forms.BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+
+        active_forms = [
+            f for f in self.forms
+            if f.has_changed() and not f.cleaned_data.get("DELETE", False)
+        ]
+        if len(active_forms) < 2:
+            raise forms.ValidationError("Нужно минимум 2 вопроса")
+
+        all_orders = [f.cleaned_data.get("order") for f in active_forms]
+        if len(all_orders) != len(set(all_orders)):
+            raise forms.ValidationError("У вопросов не должно быть одинакового порядкового номера order")
 
 QuestionFormSet = forms.inlineformset_factory(
         Quiz, Question,
         form=QuestionForm,
+        formset=BaseQuestionFormSet,
         extra=1,
         can_delete=True,
     )
