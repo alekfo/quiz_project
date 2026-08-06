@@ -17,3 +17,11 @@
 .delete_link {
     color: red;
 }
+
+.update_link {
+    color: yellow;
+}
+
+.question-form p:has(input[name$="-DELETE"]) {
+    display: none;
+}

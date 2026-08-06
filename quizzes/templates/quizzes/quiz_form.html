@@ -1,11 +1,11 @@
 {% extends 'quizzes/base.html' %}
 
 {% block title %}
-    Quizzes create
+   {{ page_title }}
 {% endblock %}
 
 {% block body %}
-    <h1>Создай новый квиз:</h1>
+    <h1>{{ page_header }}:</h1>
     <div>
         <form method="POST">
             {% csrf_token  %}
@@ -15,7 +15,7 @@
             <div class="formset_errors">
                 {{ question_formset.non_form_errors }}
             </div>
-            <p>Создайте вопросы:</p>
+            <p>{{ page_for_questions }}:</p>
 
             {# Сюда JS будет добавлять новые формы вопросов #}
             <div id="question-list">
@@ -29,7 +29,7 @@
             </div>
 
             <button type="button" id="add-question-btn">Добавить ещё вопрос</button>
-            <button type="submit">Создать</button>
+            <button type="submit">{{ submit_label }}</button>
         </form>
     </div>
 
