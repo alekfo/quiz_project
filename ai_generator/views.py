@@ -155,7 +155,7 @@ def save(request: HttpRequest) -> HttpResponse:
 
             quiz = create_quiz_from_any_data(gen_request, questions_data)
 
-            url = reverse("quizzes:quizzes_details", kwargs={"pk": quiz.pk})
+            url = reverse("quizzes:quizzes_preview", kwargs={"pk": quiz.pk})
             logger.info("Пользователь %s сохранил квиз №%s в базу", request.user.username, quiz.pk)
             return redirect(url)
 

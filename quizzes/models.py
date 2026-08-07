@@ -49,6 +49,7 @@ class Quiz(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     style = models.CharField(max_length=20, choices=STYLE_CHOICES)
     audience = models.CharField(max_length=20, choices=AUDIENCE_CHOICES, default='common')
+    time_limit_seconds = models.IntegerField(default=30)
 
     def __str__(self):
         return self.title

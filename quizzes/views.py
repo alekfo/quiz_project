@@ -28,6 +28,10 @@ def menu(request: HttpRequest):
 class QuizDetailView(LoginRequiredMixin, DetailView):
     queryset = Quiz.objects.select_related("user").prefetch_related("questions__options")
 
+class QuizPreviewView(LoginRequiredMixin, DetailView):
+    model = Quiz
+    template_name = "quizzes/quiz_preview.html"
+
 class QuizListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
@@ -121,7 +125,7 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
         при успешной валидации и создании всех необходимых инстансов модели,
         перенаправляем в quizzes:quizzes_detail
         """
-        return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.pk})
+        return reverse("quizzes:quizzes_preview", kwargs={"pk": self.object.pk})
 
 class QuizDeleteView(LoginRequiredMixin, DeleteView):
     model = Quiz

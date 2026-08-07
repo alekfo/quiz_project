@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'quizzes.apps.QuizzesConfig',
     'ai_generator.apps.AiGeneratorConfig',
     'users.apps.UsersConfig',
+    'gameplay.apps.GameplayConfig',
 
 ]
 

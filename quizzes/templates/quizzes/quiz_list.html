@@ -9,7 +9,7 @@
     <ul>
         {% for quiz in object_list %}
             <div>
-                <a href="{% url 'quizzes:quizzes_details' pk=quiz.pk%}">
+                <a href="{% url 'quizzes:quizzes_preview' pk=quiz.pk%}">
                     #{{ quiz.pk }} {{ quiz.title }}
                 </a>
             </div>

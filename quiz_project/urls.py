@@ -26,6 +26,7 @@ urlpatterns = [
     path('quizzes/', include('quizzes.urls')),
     path('ai_generator/', include('ai_generator.urls')),
     path('users/', include('users.urls')),
+    path('gameplay/', include('gameplay.urls')),
 ]
 
 if settings.DEBUG:
