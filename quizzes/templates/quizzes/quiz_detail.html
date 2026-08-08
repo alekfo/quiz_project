@@ -14,6 +14,7 @@
     <p><b>Уровень сложности: {{ object.get_level_display }}</b></p>
     <p><b>Стиль вопросов: {{ object.get_style_display }}</b></p>
     <p><b>Аудитория: {{ object.get_audience_display }}</b></p>
+    <p><b>Время на вопрос: {{ object.time_limit_seconds }}</b></p>
     <ul>
         <p>Вопросы:</p>
         {% for question in object.questions.all%}

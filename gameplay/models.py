@@ -21,6 +21,7 @@ class GameSession(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_game_sessions")
 
 class GameParticipant(models.Model):
 

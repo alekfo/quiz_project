@@ -5,5 +5,25 @@
 {% endblock %}
 
 {% block body %}
-    <p>Тут будет начинать игра</p>
+    <p>Вопрос № {{ current_question.order }}:</p>
+    <div>
+        {{ current_question.text }}
+    </div>
+    <form method="post">
+        {%  csrf_token %}
+        {% for option in current_question.options.all %}
+            <div>
+<!--                за счет того, что у всех options будет один name, html сам организует чтобы был из них выюран только один-->
+                <input type="radio" name="chosen_option" value="{{ option.pk }}" id="option_{{ option.pk }}">
+                <label for="option_{{ option.pk }}">
+                    {{ option.text }}
+                </label>
+            </div>
+        {% endfor %}
+        <div>
+            <input type="hidden" name="question_id" value="{{ current_question.pk }}">
+            <button type="submit">ОТВЕТИТЬ</button>
+        </div>
+    </form>
+
 {% endblock %}

@@ -1,0 +1,18 @@
+{% extends 'gameplay/base.html' %}
+
+{% block title %}
+    INDEX START
+{% endblock %}
+
+{% block body %}
+    <h1>{{ quiz.title }}</h1>
+    <p>{{ questions_count }} вопросов</p>
+    <p>У вас будет {{ quiz.time_limit_seconds }} на каждый вопрос</p>
+    <form method="post">
+        {%  csrf_token %}
+        <div>
+            <input type="hidden" name="quiz_id" value="{{ quiz.pk }}">
+            <button type="submit">НАЧАТЬ</button>
+        </div>
+    </form>
+{% endblock %}

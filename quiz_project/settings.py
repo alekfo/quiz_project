@@ -179,6 +179,11 @@ LOGGING = {
         },
     },
     'loggers': {
+        'gameplay': {
+                    'handlers': ['console'],
+                    'level': 'DEBUG' if DEBUG else 'INFO',
+                    'propagate': False,
+        },
         'quizzes': {
             'handlers': ['console'],
             'level': 'DEBUG' if DEBUG else 'INFO',
