@@ -14,14 +14,17 @@
         {% for option in current_question.options.all %}
             <div>
 <!--                за счет того, что у всех options будет один name, html сам организует чтобы был из них выюран только один-->
-                <input type="radio" name="chosen_option" value="{{ option.pk }}" id="option_{{ option.pk }}">
+                <input type="radio" name="chosen_option_id" value="{{ option.pk }}" id="option_{{ option.pk }}">
                 <label for="option_{{ option.pk }}">
                     {{ option.text }}
                 </label>
             </div>
         {% endfor %}
         <div>
-            <input type="hidden" name="question_id" value="{{ current_question.pk }}">
+            <input type="hidden" name="current_session_id" value="{{ current_session.pk }}">
+            <input type="hidden" name="current_question_id" value="{{ current_question.pk }}">
+            <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
+            <p>current_answer-pk {{ current_answer.pk }}</p>
             <button type="submit">ОТВЕТИТЬ</button>
         </div>
     </form>

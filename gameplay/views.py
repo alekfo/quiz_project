@@ -1,13 +1,15 @@
 import logging
+from datetime import datetime
 
 from django.db.models import Count
 from django.shortcuts import render, redirect, reverse
 from django.http import HttpResponse, HttpRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from django.utils import timezone
 
 from .models import GameSession, GameParticipant, GameAnswer
-from quizzes.models import Quiz, Question
+from quizzes.models import Quiz, Question, AnswerOption
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +52,32 @@ def start(request: HttpRequest, pk: int):
     return render(request, "gameplay/start.html", context=context)
 
 def play(request: HttpRequest, pk: int):
-
     if request.method == "POST":
-        print(f"был ответ - {request.POST["chosen_option"]}")
+        #достаем все необходимое из POST
+        option = None
+        current_session_pk = request.POST.get("current_session_id", "")
+        chosen_option_pk = request.POST.get("chosen_option_id", "")
+        current_answer_pk = request.POST.get("current_answer_id", "")
+
+        #получаем сессиб для редиректа на gameplay:play
+        session = get_object_or_404(GameSession, pk=current_session_pk)
+        #получаем AnswerOption по chosen_option_pk
+        if chosen_option_pk:
+            option = get_object_or_404(AnswerOption, pk=chosen_option_pk)
+        # получаем ранее созданный GameAnswer
+        answer = get_object_or_404(
+            GameAnswer,
+            pk=current_answer_pk
+        )
+        #обновляем и сохраняем answer
+        answer.chosen_option = option
+        answer.is_correct = option.is_correct if option else False
+        answer.is_skipped = option is None
+        answer.answered_at = timezone.now()
+        answer.save()
+
+        url = reverse("gameplay:play", kwargs={"pk": session.pk})
+        return redirect(url)
 
     session = get_object_or_404(
         GameSession.objects.select_related(
@@ -86,11 +111,16 @@ def play(request: HttpRequest, pk: int):
     if not questions_without_answers:
         url = reverse("gameplay:result", kwargs={"pk": session.pk})
         return redirect(url)
-
     current_question = questions_without_answers[0]
 
+    current_answer, _ = GameAnswer.objects.get_or_create(
+        participant=participant,
+        question=current_question
+    )
     context = {
-        "current_question": current_question
+        "current_question": current_question,
+        "current_answer": current_answer,
+        "current_session": session,
     }
 
     return render(request, "gameplay/play.html", context=context)
