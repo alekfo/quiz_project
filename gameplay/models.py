@@ -29,6 +29,7 @@ class GameParticipant(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="participants")
     score = models.IntegerField(default=0)
     joined_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True)
 
     class Meta:
         constraints = [

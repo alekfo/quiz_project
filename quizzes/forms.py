@@ -1,5 +1,3 @@
-from os import MFD_ALLOW_SEALING
-
 from django import forms
 from django.core import validators
 

@@ -1,0 +1,31 @@
+{% extends 'gameplay/base.html' %}
+
+{% block title %}
+    INDEX Result
+{% endblock %}
+
+{% block body %}
+    <h1>Вы завершили игру №{{ session.pk }}</h1>
+    <h1>Режим: {{ session.mode }}</h1>
+    <p>Количество набранных очков: {{ curr_participant.score }}</p>
+    {% if session.mode == "multiplayer" %}
+        <h1>Результаты других участников:</h1>
+        <ul>
+            {% for participant in session.participants.all %}
+                {% if participant.user.username != curr_participant.user.username  %}
+                    <li>
+                        <p>Никнейм: {{participant.user.username}}</p>
+                        {% if participant.finished_at %}
+                            <p>Очков набрано: {{participant.score}}</p>
+                        {% else %}
+                            <p>Еще не завершено</p>
+                        {% endif %}
+                    </li>
+                {% endif %}
+            {% endfor %}
+        </ul>
+    {% endif %}
+    <div>
+        <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
+    </div>
+{% endblock %}

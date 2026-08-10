@@ -21,10 +21,7 @@
             </div>
         {% endfor %}
         <div>
-            <input type="hidden" name="current_session_id" value="{{ current_session.pk }}">
-            <input type="hidden" name="current_question_id" value="{{ current_question.pk }}">
             <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
-            <p>current_answer-pk {{ current_answer.pk }}</p>
             <button type="submit">ОТВЕТИТЬ</button>
         </div>
     </form>
