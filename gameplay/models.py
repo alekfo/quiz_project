@@ -23,6 +23,16 @@ class GameSession(models.Model):
     finished_at = models.DateTimeField(null=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_game_sessions")
 
+    #невозможно создать инстанс с сочитанием одинаковых "quiz", "created_by" при status="in_progress"
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["quiz", "created_by"],
+                condition=models.Q(status="in_progress"),
+                name="unique_in_progress_session_per_user_quiz",
+            )
+        ]
+
 class GameParticipant(models.Model):
 
     session = models.ForeignKey(GameSession, on_delete=models.CASCADE, related_name="participants")

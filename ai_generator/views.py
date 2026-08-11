@@ -121,7 +121,7 @@ def save(request: HttpRequest) -> HttpResponse:
         # которые пользователь на этой странице не редактирует, поэтому их не
         # нужно было тащить отдельными hidden-полями через форму.
         gen_request = get_object_or_404(
-            GenerationRequest, id=request.POST.get("generation_request_id")
+            GenerationRequest, id=request.POST.get("generation_request_id"), user=request.user
         )
 
         # Тут formset строится уже ИЗ request.POST - это "bound"-формы,

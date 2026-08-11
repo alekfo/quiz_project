@@ -1,15 +1,15 @@
 import logging
-from datetime import datetime
-from typing import List, Any
+from typing import List
 
 from django.db.models import Count
 from django.shortcuts import render, redirect, reverse
 from django.http import HttpResponse, HttpRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.db.models import F
 
 from .models import GameSession, GameParticipant, GameAnswer
 from quizzes.models import Quiz, Question, AnswerOption
@@ -50,12 +50,26 @@ def _update_total_score(sess: GameSession, req: HttpRequest) -> GameParticipant:
     """
 
     participant = get_object_or_404(GameParticipant, session=sess, user=req.user)
-    old_score = participant.score
-    participant.score = old_score + 1
-    participant.save()
+    #меняем значение score прямо в БД (на вермя выполнения update другие транзакции не доступны)
+    GameParticipant.objects.filter(pk=participant.pk).update(score=F('score') + 1)
+    #нужно синхронизировать participant с БД, т.к мы меняли score в обход него
+    participant.refresh_from_db(fields=["score"])
     return participant
 
 def _get_questions_without_answer(part: GameParticipant, sess: GameSession) -> List[Question]:
+    """
+    Идем циклом по всем GameAnswer данного GameParticipant,
+    проверяем у данного GameAnswer if a.answered_at is not None or a.is_skipped (или уже отвечено или пропущено),
+    формируем список из Question у вопросов, у которых (if a.answered_at is not None or a.is_skipped) = True.
+    Таким образом мы имеем список вопросов, у которых уже есть ответ и которые принадлежат данному GameParticipant.
+    Далее идем циклом по всем
+    Далее проверяется каждый вопрос Question из данной сессии и квиза и если айди данного вопроса не найден в предыдущем списке вопросв,
+    на который дан ответ, то этот вопрос и есть тот, который мы ищем - без ответа, и он попадает в конечный q_without_answers
+    :param part: текущий участник сессии
+    :param sess: сессия
+    :return: список Question данного квиза на котореы еще не ответили в рамках текущей сессии
+    """
+
     answered_question_ids = [
         a.question_id
         for a in part.participants_answers.all()
@@ -88,25 +102,30 @@ def start(request: HttpRequest, pk: int):
         Quiz.objects.annotate(questions_count=Count("questions")),
         pk=pk
     )
-    sessions_in_progress = GameSession.objects.filter(quiz=quiz, created_by=request.user, status="in_progress").first()
-    if sessions_in_progress:
-        url = reverse("gameplay:play", kwargs={"pk": sessions_in_progress.pk})
-        return redirect(url)
 
     if request.method == "POST":
         user = request.user
-        with transaction.atomic():
-            session = GameSession.objects.create(
-                quiz=quiz,
-                mode="solo",
-                created_by=user
-            )
-            participant = GameParticipant.objects.create(
-                session=session,
-                user=user
-            )
-        logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, quiz.pk, session.created_by.username)
+        #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
+        try:
+            with transaction.atomic():
+                session = GameSession.objects.create(
+                    quiz=quiz,
+                    mode="solo",
+                    created_by=user
+                )
+                participant = GameParticipant.objects.create(
+                    session=session,
+                    user=user
+                )
+                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, quiz.pk, session.created_by.username)
+        except IntegrityError:
+            session = GameSession.objects.get(quiz=quiz, created_by=user, status="in_progress")
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
+        return redirect(url)
+
+    sessions_in_progress = GameSession.objects.filter(quiz=quiz, created_by=request.user, status="in_progress").first()
+    if sessions_in_progress:
+        url = reverse("gameplay:play", kwargs={"pk": sessions_in_progress.pk})
         return redirect(url)
 
     context = {
@@ -222,6 +241,9 @@ def result(request: HttpRequest, pk: int):
 
     # Находим нужного. Останавливаемся на первом найденном за счет next
     curr_participant = next((p for p in participants if p.user_id == request.user.id), None)
+
+    if curr_participant is None:
+        raise PermissionDenied
 
     context = {
         "curr_participant": curr_participant,

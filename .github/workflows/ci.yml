@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, release]
+  push:
+    branches: [main, release]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      SECRET_KEY: "ci-secret-key-not-used-in-prod"
+      DEBUG: "True"
+      ALLOWED_HOSTS: "localhost"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run migrations
+        run: python manage.py migrate --no-input
+
+      - name: Run tests
+        run: python manage.py test ai_generator gameplay quizzes users --verbosity=2
+
+#  deploy:
+#    needs: test  # deploy запустится только если test прошёл
+#    runs-on: ubuntu-latest
+#    if: github.ref == 'refs/heads/main' && github.event_name == 'push'  # только на реальный пуш в main (после мерджа PR), не на сам PR
+#
+#    steps:
+#      - name: Deploy via SSH
+#        uses: appleboy/ssh-action@v1
+#        with:
+#          host: ${{ secrets.SSH_HOST }}
+#          username: ${{ secrets.SSH_USER }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+#          port: ${{ secrets.SSH_PORT }}
+#          script: |
+#            DUMP_FILE="/home/alek_fo/dumps/prepstats_db_dump_$(date +%Y%m%d_%H%M%S).sql"
+#            docker exec prepmate-db-1 sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$DUMP_FILE"
+#            echo "DB dump saved: $DUMP_FILE"
+#            LOG_FILE="/home/alek_fo/logs/prepstats_logs_$(date +%Y%m%d_%H%M%S).txt"
+#            docker compose -f /home/alek_fo/PrepMate/docker-compose.yml logs web > "$LOG_FILE" 2>&1 || true
+#            echo "App logs saved: $LOG_FILE"
+#            cd /home/alek_fo/PrepMate  # корень git-репозитория
+#            git pull origin main
+#            docker compose build --no-cache web
+#            docker compose up -d
