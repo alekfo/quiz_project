@@ -213,10 +213,16 @@ def play(request: HttpRequest, pk: int):
         participant=participant,
         question=current_question
     )
+    elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
+    # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
+    # уйдёт в минус; на экране должно быть "0", а не отрицательное число
+    remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
+
     context = {
         "current_question": current_question,
         "current_answer": current_answer,
         "current_session": session,
+        "remaining_seconds": remaining_seconds
     }
 
     return render(request, "gameplay/play.html", context=context)
