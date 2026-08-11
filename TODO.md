@@ -86,4 +86,3 @@
 - [x] **`result()` не проверяет, что текущий пользователь — участник сессии** — исправлено пользователем: добавлен `if curr_participant is None: raise PermissionDenied` сразу после поиска `curr_participant`, по аналогии с уже защищённым `play()`.
 - [ ] Неиспользуемые импорты в `gameplay/views.py` — исправлено частично: `datetime` и `typing.Any` убраны пользователем (заменены на `django.utils.timezone.now()` / остался только используемый `typing.List`). **Всё ещё не убраны**: `HttpResponse`, `HttpResponseRedirect` (нет ни одного вызова в файле, везде `redirect(url)`), `from django.conf import settings` (нет ни одного обращения `settings.` в файле).
 - [ ] Серверная проверка таймера вопроса (`quiz.time_limit_seconds` + `GameAnswer.shown_at`) по-прежнему не реализована — таймер существует только как текст на `start.html`, ничего не ограничивает игрока по времени ответа.
-ccc
