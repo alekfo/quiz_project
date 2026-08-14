@@ -11,31 +11,61 @@
     </title>
 </head>
 <body>
-    {% if messages %}
-        <ul class="messages">
-          {% for message in messages %}
-            <li class="{{ message.tags }}">{{ message }}</li>
-          {% endfor %}
-        </ul>
-    {% endif %}
-    {% if user.is_authenticated %}
-        <div>
-            <a href="{% url 'quizzes:menu' %}">QUIZ_PROJECT</a>
-        </div>
-        <form method="post" action="{% url 'users:logout' %}">
-          {% csrf_token %}
-          <button type="submit">Выйти</button>
-        </form>
-        <div>
-            {{ user.username }}
-        </div>
-    {% else %}
-        <a href="{% url 'users:login' %}">Войти</a>
-        <a href="{% url 'users:register' %}">Регистрация</a>
-    {% endif %}
-    {% block body %}
-        Base body
-    {% endblock %}
+    <div class="container">
+        <header>
+            {% if messages %}
+            <ul class="messages">
+              {% for message in messages %}
+                <li class="{{ message.tags }}">{{ message }}</li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            <div>
+                <a href="{% url 'quizzes:menu' %}">QUIZ_PROJECT</a>
+            </div>
+            {% if user.is_authenticated %}
+                <div class="header_auth_right_section">
+                    <div>
+                        {{ user.username }}
+                    </div>
+                    <div>
+                        <form method="post" action="{% url 'users:logout' %}">
+                          {% csrf_token %}
+                          <button type="submit">Выйти</button>
+                        </form>
+                    </div>
+                </div>
+            {% else %}
+                <div class="header_not_auth_right_section">
+                    <div>
+                        <form method="post" action="{% url 'users:login' %}">
+                          {% csrf_token %}
+                          <button type="submit">Войти</button>
+                        </form>
+                    </div>
+                    <div>
+                        <form method="post" action="{% url 'users:register' %}">
+                          {% csrf_token %}
+                          <button type="submit">Регистрация</button>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
+        </header>
+        <main>
+            {% block body %}
+                Base body
+            {% endblock %}
+        </main>
+        <footer>
+            <div>
+                <form method="post" action="{% url 'users:feedback' %}">
+                  {% csrf_token %}
+                  <button type="submit">Связаться с поддержкой</button>
+                </form>
+            </div>
+        </footer>
+    </div>
     <script>
         setTimeout(function () {
           const messages = document.querySelector('.messages');

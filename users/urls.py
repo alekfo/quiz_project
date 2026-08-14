@@ -12,4 +12,5 @@ urlpatterns = [
     path('confirm-email/', views.confirm_email, name='confirm_email'),
     path('privacy-policy/', views.privacy_policy, name='privacy_policy'),
     path('public-offer/', views.public_offer, name='public_offer'),
+    path('feedback/', views.feedback, name='feedback'),
 ]
