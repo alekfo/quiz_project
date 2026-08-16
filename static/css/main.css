@@ -13,6 +13,17 @@ body {
     flex-direction: column;
 }
 
+.container-header-messages {
+    display: flex;
+    flex-direction: column;
+}
+
+.header-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
 .messages {
     margin: 30px;
 }
@@ -39,12 +50,6 @@ body {
 
 .question-form p:has(input[name$="-DELETE"]) {
     display: none;
-}
-
-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
 }
 
 main {
