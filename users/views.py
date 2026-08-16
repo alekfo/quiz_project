@@ -142,10 +142,14 @@ def register(request: HttpRequest):
         form = RegisterForm()
     return render(request, 'users/register.html', {'form': form})
 
-def privacy_policy(request):
+def privacy_policy(request: HttpRequest):
     """Страница политики конфиденциальности."""
     return render(request, 'users/privacy_policy.html')
 
-def public_offer(request):
+def public_offer(request: HttpRequest):
     """Страница договора публичной оферты."""
     return render(request, 'users/public_offer.html')
+
+def feedback(request: HttpRequest):
+    """Страница для обратной связи"""
+    return render(request, 'users/feedback.html')

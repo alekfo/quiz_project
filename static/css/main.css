@@ -1,3 +1,18 @@
+body {
+    margin: 0;
+
+}
+
+.container {
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+    background: lightblue;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
 .messages {
     margin: 30px;
 }
@@ -24,4 +39,31 @@
 
 .question-form p:has(input[name$="-DELETE"]) {
     display: none;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+main {
+    flex: 1;
+}
+
+footer {
+    margin-top: 50px;
+}
+
+.header_auth_right_section {
+    display: flex;
+}
+
+.header_not_auth_right_section {
+    display: flex;
+}
+
+.main_menu_list {
+    display: flex;
+    flex-direction: column;
 }
