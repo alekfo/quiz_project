@@ -26,9 +26,10 @@
         </div>
     </form>
     <div id="timer">
-        Оставшееся время {{remaining_seconds}}
+        Оставшееся время {{remaining_seconds}} сек
     </div>
     <script>
+        const form = document.querySelector('form');
         // стартовое значение посчитано на сервере (views.py::play) через
         // time_limit_seconds - elapsed, отдано сюда уже готовым целым числом -
         // клиенту не нужно сверяться с часами сервера, только отсчитывать вниз
@@ -42,12 +43,13 @@
             // каждое отдельное срабатывание - это один вызов колбэка:
             // -1 к remaining и обновление текста на странице
             remaining -= 1;
-            timerEl.textContent = remaining;
             if (remaining <= 0) {
               // останавливаем именно этот таймер по его id (interval),
               // иначе браузер продолжит дёргать колбэк и после 0
               clearInterval(interval);
+              form.requestSubmit();
             }
+            timerEl.textContent = `Оставшееся время ${remaining} сек`;
         }, 1000);
     </script>
 

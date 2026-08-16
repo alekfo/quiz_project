@@ -30,13 +30,19 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
         participant__user=request.user,
         participant__session=session
     )
+    #вычисляем время, затраченное на вопрос для дальнейшего определения is_skipped
+    elapsed = (timezone.now() - answ.shown_at).total_seconds()
+
+    #определяем наличие таймаута
+    timed_out = elapsed > session.quiz.time_limit_seconds
+
     if answ.answered_at:
         raise PermissionDenied("На этот вопрос уже отвечали")
     if opt and opt.question_id != answ.question_id:
         raise PermissionDenied
     answ.chosen_option = opt
-    answ.is_correct = opt.is_correct if opt else False
-    answ.is_skipped = opt is None
+    answ.is_skipped = opt is None or timed_out
+    answ.is_correct = opt is not None and opt.is_correct and not timed_out
     answ.answered_at = timezone.now()
     answ.save()
     return answ
@@ -143,7 +149,7 @@ def play(request: HttpRequest, pk: int):
         current_answer_pk = request.POST.get("current_answer_id", "")
 
         #получаем сессию для редиректа на gameplay:play
-        session = get_object_or_404(GameSession, pk=pk)
+        session = get_object_or_404(GameSession.objects.select_related('quiz'), pk=pk)
 
         #получаем AnswerOption по chosen_option_pk
         if chosen_option_pk:
