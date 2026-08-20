@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'ai_generator.apps.AiGeneratorConfig',
     'users.apps.UsersConfig',
     'gameplay.apps.GameplayConfig',
+    'multiplayer.apps.MultiplayerConfig',
 
 ]
 

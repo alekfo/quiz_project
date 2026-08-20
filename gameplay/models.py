@@ -22,6 +22,7 @@ class GameSession(models.Model):
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_game_sessions")
+    current_question = models.ForeignKey(Question, on_delete=models.SET_NULL, null=True, default=None)
 
     #невозможно создать инстанс с сочитанием одинаковых "quiz", "created_by" при status="in_progress"
     class Meta:
