@@ -1,4 +1,4 @@
-{% extends 'gameplay/base.html' %}
+{% extends 'base.html' %}
 
 {% block title %}
     INDEX PLAY
@@ -9,7 +9,7 @@
     <div>
         {{ current_question.text }}
     </div>
-    <form method="post">
+    <form method="post" id="answer-form">
         {%  csrf_token %}
         {% for option in current_question.options.all %}
             <div>
@@ -29,7 +29,7 @@
         Оставшееся время {{remaining_seconds}} сек
     </div>
     <script>
-        const form = document.querySelector('form');
+        const form = document.getElementById('answer-form');
         // стартовое значение посчитано на сервере (views.py::play) через
         // time_limit_seconds - elapsed, отдано сюда уже готовым целым числом -
         // клиенту не нужно сверяться с часами сервера, только отсчитывать вниз
