@@ -4,7 +4,7 @@ from .models import Room, RoomPlayer
 
 @admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = "pk", "quiz", "game_session", "host", "status", "created_at"
+    list_display = "pk", "current_quiz", "current_game_session", "host", "status", "created_at"
     ordering = ("-pk",)
 
 @admin.register(RoomPlayer)

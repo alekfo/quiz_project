@@ -12,12 +12,13 @@ class Room(models.Model):
         ('finished', 'Завершена'),
     ]
 
-    #предположительно quiz будет меняться
-    quiz = models.ForeignKey(Quiz, on_delete=models.SET_NULL, null=True, default=None)
+    #предположительно current_quiz будет меняться
+    current_quiz = models.ForeignKey(Quiz, on_delete=models.SET_NULL, null=True, default=None, related_name="rooms")
 
-    # предположительно game_session будет меняться
-    game_session = models.ForeignKey(GameSession, null=True, on_delete=models.SET_NULL, default=None)
+    # предположительно current_game_session будет меняться и указывать на активную сессию (или последнюю)
+    current_game_session = models.ForeignKey(GameSession, null=True, on_delete=models.SET_NULL, default=None, related_name="current_for_rooms")
 
+    title = models.CharField(max_length=100)
     token = models.CharField(max_length=32, unique=True)
     host = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="own_rooms")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='waiting')
@@ -25,7 +26,7 @@ class Room(models.Model):
 
 class RoomPlayer(models.Model):
 
-    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="room_players")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="room_players")
     is_ready = models.BooleanField(default=False)
     joined_at = models.DateTimeField(auto_now_add=True)

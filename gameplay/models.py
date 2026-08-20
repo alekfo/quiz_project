@@ -17,6 +17,7 @@ class GameSession(models.Model):
     ]
 
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name="game_sessions")
+    room = models.ForeignKey("multiplayer.Room", on_delete=models.SET_NULL, null=True, blank=True, default=None, related_name="game_sessions")
     mode = models.CharField(max_length=50, choices=MODE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
     started_at = models.DateTimeField(auto_now_add=True)

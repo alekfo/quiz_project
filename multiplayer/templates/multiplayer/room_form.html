@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block title %}
+   {{ page_title }}
+{% endblock %}
+
+{% block body %}
+    <h1>{{ page_header }}:</h1>
+    <div>
+        <form method="POST">
+            {% csrf_token  %}
+            {{ form.as_p }}
+            <button class="btn" type="submit">{{ submit_label }}</button>
+        </form>
+    </div>
+{% endblock %}
