@@ -101,6 +101,22 @@ footer {
     display: none;
 }
 
+.quiz-list {
+    display: flex;
+    flex-direction: column;
+}
+
 /* ===== 5. GAMEPLAY ===== */
 
 /* ===== 6. AI_GENERATOR ===== */
+
+/* ===== 7. MULTIPLAYER ===== */
+.room-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.player-list {
+    display: flex;
+    flex-direction: column;
+}

@@ -7,27 +7,43 @@
 {% block body %}
     <h1>Комната (#<strong>{{ object.pk }})</strong></h1>
     <p><b>Название: {{ object.title }}</b></p>
-    <p>Ссылка на комнату: <span id="room-link">{{ request.scheme }}://{{ request.get_host }}{% url 'multiplayer:room_detail' code=object.token %}</span></p>
-    <button class="btn" type="button" id="copy-link-btn">Скопировать ссылку</button>
-    <ul>
-        <p>Участники:</p>
-        {% for part in object.room_players.all%}
-            <li>{{ part.user.username }}</li>
-        {% endfor %}
-    </ul>
-    {% if object.game_sessions.all %}
-    <ul>
-        <p>История игр:</p>
-        {% for game in object.game_sessions.all %}
-            <li>
-                <a class="btn" href="{% url 'gameplay:result' pk=game.pk %}">{{ game.quiz.title }}</a>
-            </li>
-        {% endfor %}
-    </ul>
+    {% if is_host %}
+        <p>Ссылка на комнату: <span id="room-link">{{ request.scheme }}://{{ request.get_host }}{% url 'multiplayer:room_detail' code=object.token %}</span></p>
+        <button class="btn" type="button" id="copy-link-btn">Скопировать ссылку</button>
+        <div>
+            <p>Участники:</p>
+            <div class="player-list">
+                {% for part in object.room_players.all%}
+                    <span>{{ part.user.username }}</span>
+                {% endfor %}
+            </div>
+            {% if is_player%}
+                <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
+            {% else %}
+                <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
+            {% endif %}
+        </div>
+        {% if object.game_sessions.all %}
+        <ul>
+            <p>История игр:</p>
+            {% for game in object.game_sessions.all %}
+                <li>
+                    <a class="btn" href="{% url 'gameplay:result' pk=game.pk %}">{{ game.quiz.title }}</a>
+                </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+            <p>Игр еще не было</p>
+        {% endif %}
+        <p>Тут будут кнопки на начало игры, выбрать квиз и тд</p>
     {% else %}
-        <p>Игр еще не было</p>
+        {% if is_player %}
+            Вы участник
+            <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
+        {% else %}
+            <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
+        {% endif %}
     {% endif %}
-    <p>Тут будут кнопки на начало игры, выбрать квиз и тд</p>
     <script>
         document.getElementById('copy-link-btn').addEventListener('click', function () {
             const link = document.getElementById('room-link').textContent;

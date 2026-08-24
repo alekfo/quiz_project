@@ -11,7 +11,17 @@
             <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
             <a href="{% url 'quizzes:quizzes_create' %}">Создать квиз</a>
             <a href="{% url 'ai_generator:index' %}">Сгенерировать квиз с помощью AI</a>
-            <a href="{% url 'multiplayer:room_create' %}">Сыграть с друзьями</a>
+            <a href="{% url 'multiplayer:room_list' %}">Мультиплеер</a>
+        </div>
+        <div>
+            {% if rooms %}
+                <p>Вы участник комнаты:</p>
+                <div class="main-menu-list">
+                    {% for room in rooms %}
+                        <a href="{% url 'multiplayer:room_detail' code=room.token %}">{{ room.title }}</a>
+                    {% endfor %}
+                </div>
+            {% endif %}
         </div>
     {% else %}
         QUIZ_PROJECT - это сервис для генерирации, хранения и публикации викторин. Тут вы можете делиться с друзьями созданными викторинами.

@@ -37,10 +37,10 @@
 
 Полный сценарий и архитектура — см. раздел «Мультиплеер» ниже. Кратко по шагам реализации:
 
-- [ ] Модели `multiplayer/`: `Room`, `RoomPlayer`
-- [ ] Лобби: создание комнаты хостом, ссылка-приглашение, `join`, переключение готовности (`is_ready`)
+- [x] Модели `multiplayer/`: `Room`, `RoomPlayer`
+- [ ] Лобби: создание комнаты хостом (`RoomCreateView`) — готово; ссылка-приглашение и `RoomDetailView` — готово; `join` (`room_join`) и выход (`RoomPlayerDeleteView`) — готово; переключение готовности (`is_ready`) — не начато
 - [ ] **Этап 3.0 (сначала так)**: HTMX-поллинг экрана лобби и экрана игры — без WebSocket, без Channels
-- [ ] `GameSession` получает поле `current_question` (используется только при `mode="multiplayer"`)
+- [x] `GameSession` получает поле `current_question` (используется только при `mode="multiplayer"`)
 - [ ] Запуск игры хостом → `GameSession` + `GameParticipant` на каждого `RoomPlayer`
 - [ ] `gameplay/views.py::play()` — ветка на `mode="multiplayer"`: общий `current_question` вместо индивидуально вычисляемого, продвижение вопроса после проверки «все ли ответили»
 - [ ] Экран ожидания «кто уже ответил / кто ещё нет»
@@ -169,9 +169,9 @@ quizapp/
 - **GameParticipant** — сессия (FK `GameSession`, `related_name="participants"`), пользователь (FK `User`), `score` (default 0, инкрементируется атомарно через `F('score') + 1)`, не read-modify-write), `joined_at` (`auto_now_add`), `finished_at` (nullable — проставляется этому конкретному участнику, когда у него не осталось неотвеченных вопросов; для мультиплеера сессия в целом завершается только когда `finished_at` проставлен у всех участников). `UniqueConstraint(session, user)`
 - **GameAnswer** — участник (FK `GameParticipant`, `related_name="participants_answers"`), вопрос (FK `Question`, `related_name="participants_answers"`), выбранный вариант (FK `AnswerOption`, `null=True`, `on_delete=SET_NULL` — намеренно не `CASCADE`: при редактировании квиза автор пересоздаёт все `AnswerOption` вопроса заново, `CASCADE` физически стирал бы историю уже сыгранных партий), `is_correct` (bool, `default=False`), `is_skipped` (bool, `default=False`), `shown_at` (`auto_now_add`, момент показа вопроса — точка отсчёта для серверной проверки таймера), `answered_at` (nullable, момент фактического ответа). `UniqueConstraint(participant, question)`. Строка создаётся уже в момент **показа** вопроса (`get_or_create`, не только при ответе) и служит единственным источником истины о прогрессе — отдельного поля-указателя «текущий вопрос участника» нет (в отличие от планируемого `GameSession.current_question`, который будет общим на всю партию, а не персональным)
 
-### multiplayer/ *(ещё не создано — модели ниже описывают план на Этап 3)*
-- **Room** — код-приглашение (уникальный токен для ссылки), хост (FK `User`), викторина (FK `Quiz`), статус (`waiting` / `in_progress` / `finished`), `created_at`
-- **RoomPlayer** — комната (FK `Room`), пользователь (FK `User`), `is_ready` (bool, `default=False`), `joined_at`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
+### multiplayer/ *(модели реализованы; лобби — частично: `create`/`detail`/`list`/`join`/`quit` готовы, `is_ready`/`start` — ещё нет, см. CLAUDE.md/TODO.md)*
+- **Room** — `title`, уникальный токен-приглашение (`token`), хост (FK `User`, `on_delete=SET_NULL`), `current_quiz`/`current_game_session` (FK, оба `null=True, blank=True`, меняются от раунда к раунду — `Room` персистентна, не одноразова, см. сессию от 2026-08-20), статус (`waiting` / `in_progress` / `finished`), `created_at`. **Отклонение от исходного плана**: хост при создании комнаты пока не становится `RoomPlayer` автоматически (создание закомментировано в `RoomCreateView`) — см. открытый пункт в TODO.md
+- **RoomPlayer** — комната (FK `Room`, `related_name="room_players"`), пользователь (FK `User`), `is_ready` (bool, `default=False`, пока нигде не переключается), `joined_at`. `UniqueConstraint(room, user)`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
 
 ### social/
 - **Follow** — подписки между пользователями
