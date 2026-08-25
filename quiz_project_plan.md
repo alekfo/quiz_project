@@ -38,10 +38,10 @@
 Полный сценарий и архитектура — см. раздел «Мультиплеер» ниже. Кратко по шагам реализации:
 
 - [x] Модели `multiplayer/`: `Room`, `RoomPlayer`
-- [ ] Лобби: создание комнаты хостом (`RoomCreateView`) — готово; ссылка-приглашение и `RoomDetailView` — готово; `join` (`room_join`) и выход (`RoomPlayerDeleteView`) — готово; переключение готовности (`is_ready`) — не начато
+- [x] Лобби: создание комнаты хостом (`RoomCreateView`), ссылка-приглашение и `RoomDetailView`, `join`/выход (`room_join`/`RoomPlayerDeleteView`), выбор квиза хостом (`room_set_quiz`/`RoomQuizForm`, ограничен своими квизами, сбрасывает готовность всех игроков), подтверждение готовности игроком (`room_confirm_ready` — одностороннее, `is_ready=False → True`, обратно сбрасывается только сменой квиза) — всё готово, см. CLAUDE.md (сессии от 2026-08-20/24/25)
 - [ ] **Этап 3.0 (сначала так)**: HTMX-поллинг экрана лобби и экрана игры — без WebSocket, без Channels
 - [x] `GameSession` получает поле `current_question` (используется только при `mode="multiplayer"`)
-- [ ] Запуск игры хостом → `GameSession` + `GameParticipant` на каждого `RoomPlayer`
+- [ ] Запуск игры хостом (`room_start`) → проверка «все `RoomPlayer.is_ready`» → `GameSession` + `GameParticipant` на каждого `RoomPlayer` — последний нереализованный шаг лобби
 - [ ] `gameplay/views.py::play()` — ветка на `mode="multiplayer"`: общий `current_question` вместо индивидуально вычисляемого, продвижение вопроса после проверки «все ли ответили»
 - [ ] Экран ожидания «кто уже ответил / кто ещё нет»
 - [ ] Итоговая таблица счёта комнаты (переиспользует уже частично готовый `result()`)
@@ -169,9 +169,9 @@ quizapp/
 - **GameParticipant** — сессия (FK `GameSession`, `related_name="participants"`), пользователь (FK `User`), `score` (default 0, инкрементируется атомарно через `F('score') + 1)`, не read-modify-write), `joined_at` (`auto_now_add`), `finished_at` (nullable — проставляется этому конкретному участнику, когда у него не осталось неотвеченных вопросов; для мультиплеера сессия в целом завершается только когда `finished_at` проставлен у всех участников). `UniqueConstraint(session, user)`
 - **GameAnswer** — участник (FK `GameParticipant`, `related_name="participants_answers"`), вопрос (FK `Question`, `related_name="participants_answers"`), выбранный вариант (FK `AnswerOption`, `null=True`, `on_delete=SET_NULL` — намеренно не `CASCADE`: при редактировании квиза автор пересоздаёт все `AnswerOption` вопроса заново, `CASCADE` физически стирал бы историю уже сыгранных партий), `is_correct` (bool, `default=False`), `is_skipped` (bool, `default=False`), `shown_at` (`auto_now_add`, момент показа вопроса — точка отсчёта для серверной проверки таймера), `answered_at` (nullable, момент фактического ответа). `UniqueConstraint(participant, question)`. Строка создаётся уже в момент **показа** вопроса (`get_or_create`, не только при ответе) и служит единственным источником истины о прогрессе — отдельного поля-указателя «текущий вопрос участника» нет (в отличие от планируемого `GameSession.current_question`, который будет общим на всю партию, а не персональным)
 
-### multiplayer/ *(модели реализованы; лобби — частично: `create`/`detail`/`list`/`join`/`quit` готовы, `is_ready`/`start` — ещё нет, см. CLAUDE.md/TODO.md)*
-- **Room** — `title`, уникальный токен-приглашение (`token`), хост (FK `User`, `on_delete=SET_NULL`), `current_quiz`/`current_game_session` (FK, оба `null=True, blank=True`, меняются от раунда к раунду — `Room` персистентна, не одноразова, см. сессию от 2026-08-20), статус (`waiting` / `in_progress` / `finished`), `created_at`. **Отклонение от исходного плана**: хост при создании комнаты пока не становится `RoomPlayer` автоматически (создание закомментировано в `RoomCreateView`) — см. открытый пункт в TODO.md
-- **RoomPlayer** — комната (FK `Room`, `related_name="room_players"`), пользователь (FK `User`), `is_ready` (bool, `default=False`, пока нигде не переключается), `joined_at`. `UniqueConstraint(room, user)`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
+### multiplayer/ *(модели реализованы; лобби почти готово — `create`/`detail`/`list`/`join`/`quit`/`set-quiz`/`confirm-ready` работают, `start` ещё нет, см. CLAUDE.md, сессии от 2026-08-20/24/25)*
+- **Room** — `title`, уникальный токен-приглашение (`token`), хост (FK `User`, `on_delete=SET_NULL`), `current_quiz`/`current_game_session` (FK, оба `null=True, blank=True`, меняются от раунда к раунду — `Room` персистентна, не одноразова, см. сессию от 2026-08-20). `current_quiz` выбирается хостом через `RoomQuizForm`, ограниченную его собственными квизами (`queryset=Quiz.objects.filter(user=host)`, выставляется в `__init__` формы); смена квиза сбрасывает `is_ready` всех `RoomPlayer`. Статус (`waiting` / `in_progress` / `finished`), `created_at`. **Отклонение от исходного плана**: хост при создании комнаты не становится `RoomPlayer` автоматически (создание закомментировано в `RoomCreateView`) — осознанно, хост может быть как играющим, так и чистым модератором; на `RoomDetailView` это учтено — общий блок лобби (список участников/готовности) виден при `is_host or is_player`, не только `is_player`
+- **RoomPlayer** — комната (FK `Room`, `related_name="room_players"`), пользователь (FK `User`), `is_ready` (bool, `default=False`, переключается через `room_confirm_ready` — **одностороннее** подтверждение, `False → True`, без обратного действия игроком; сбрасывается в `False` только сменой `current_quiz` хостом), `joined_at`. `UniqueConstraint(room, user)`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
 
 ### social/
 - **Follow** — подписки между пользователями
@@ -275,23 +275,30 @@ quizapp/
 - **Room (лобби)** — состояние *подготовки* к игре: кто в комнате, кто отметился готовым. Существует до того, как игра началась, и не имеет отношения к `GameSession`.
 - **GameSession** — та же модель, что уже реализована и обкатана в соло-режиме. Для мультиплеера отличие только в том, что у одной `GameSession` несколько `GameParticipant` (по одному на каждого `RoomPlayer`), и появляется общее поле `current_question`.
 
-Полный флоу:
+Полный флоу *(создание/приглашение/готовность — реализовано и проверено вручную, см. CLAUDE.md сессии 2026-08-20/24/25; запуск раунда — ещё нет)*:
 ```
-Хост создаёт Room (FK quiz, host, статус waiting, invite-код)
-    → получает ссылку-приглашение (/multiplayer/room/<code>/)
-    → друзья переходят по ссылке → создаётся RoomPlayer (room, user, is_ready=False)
-    → каждый участник переключает готовность (POST) → RoomPlayer.is_ready=True
+Хост создаёт Room (title, host, статус waiting, invite-токен) — RoomCreateView
+    → получает ссылку-приглашение (/multiplayer/rooms/<code>/)
+    → друзья переходят по ссылке → "Стать участником" → создаётся RoomPlayer (room, user, is_ready=False) — room_join
+    → хост выбирает викторину из своих квизов — room_set_quiz/RoomQuizForm → Room.current_quiz,
+      сбрасывает RoomPlayer.is_ready=False у всех (смена квиза аннулирует старую готовность)
+    → каждый участник подтверждает готовность (POST, одностороннее действие,
+      обратного действия из UI нет) → room_confirm_ready → RoomPlayer.is_ready=True
     → экран лобби у всех участников обновляется:
-        Этап 3.0 (сейчас): HTMX-поллинг (hx-trigger="every 2s") перечитывает список RoomPlayer/is_ready
+        Этап 3.0 (ещё не реализовано): HTMX-поллинг (hx-trigger="every 2s") перечитывает список RoomPlayer/is_ready
         Этап 3.1 (перспектива): см. отдельный раздел "WS — план на перспективу" ниже
-    → кнопка "Начать" видна только хосту и активна только когда все RoomPlayer.is_ready=True
+        (сейчас — только обычная перезагрузка страницы по PRG после каждого действия)
+    → кнопка "Начать" (не реализовано) видна только хосту и активна только когда все RoomPlayer.is_ready=True
       (проверка готовности — на бэкенде обязательна; фронтовая блокировка кнопки — только UX)
-    → хост жмёт "Начать" → POST → создаётся:
-        GameSession(mode="multiplayer", quiz=room.quiz, created_by=host, current_question=<первый Question квиза, по order>)
+    → хост жмёт "Начать" → POST room_start → создаётся:
+        GameSession(mode="multiplayer", quiz=room.current_quiz, room=room, created_by=host,
+                     current_question=<первый Question квиза, по order>)
         + GameParticipant на каждого RoomPlayer комнаты
-      → Room.status = in_progress
+      → Room.current_game_session = session, Room.status = in_progress
     → redirect всех участников на общий экран игры /gameplay/session/<id>/play/
 ```
+
+Хост при создании комнаты не становится `RoomPlayer` автоматически (осознанное решение — хост может быть модератором, не игроком, см. `multiplayer/` в разделе «Модели данных» выше); значит проверка готовности в `room_start` должна идти по фактическому списку `RoomPlayer` комнаты, не привязываясь к тому, есть ли там хост.
 
 **Ключевое отличие от соло внутри `play()`**: для `mode="multiplayer"` текущий вопрос **не** вычисляется индивидуально через `_get_questions_without_answer` (как в соло) — вместо этого `play()` напрямую читает `GameSession.current_question`. Все участники партии в любой момент времени видят один и тот же вопрос. Сохранение самого ответа (`_update_gameAnswer`, обновление `GameParticipant.score`) переиспользуется как есть — эта часть не завязана на режим.
 
@@ -319,15 +326,18 @@ quizapp/
 
 #### Эндпоинты (план)
 
-| Метод | URL | Что делает |
-|---|---|---|
-| `POST` | `/multiplayer/room/create/<quiz_id>/` | Хост создаёт `Room`, redirect на экран лобби |
-| `GET` | `/multiplayer/room/<code>/` | Экран лобби (список `RoomPlayer` и готовности); при поллинге отдаёт тот же фрагмент повторно |
-| `POST` | `/multiplayer/room/<code>/join/` | Присоединение по ссылке-приглашению → создаёт `RoomPlayer` |
-| `POST` | `/multiplayer/room/<code>/ready/` | Переключает `RoomPlayer.is_ready` |
-| `POST` | `/multiplayer/room/<code>/start/` | Только хост; проверяет, что все готовы; создаёт `GameSession` + `GameParticipant` на всех, redirect на `gameplay:play` |
-| `GET`/`POST` | `/gameplay/session/<id>/play/` | Тот же эндпоинт, что и в соло, с веткой на `mode="multiplayer"` (см. выше) |
-| `GET` | `/gameplay/session/<id>/result/` | Тот же эндпоинт, что и в соло, с веткой на мультиплеер (таблица всех участников) |
+| Метод | URL | Что делает | Статус |
+|---|---|---|---|
+| `POST` | `/multiplayer/rooms/create` | Хост создаёт `Room` (только `title`), redirect на экран лобби | готово (`RoomCreateView`) |
+| `GET` | `/multiplayer/rooms/<code>/` | Экран лобби (список `RoomPlayer` и готовности, выбор квиза для хоста); при поллинге отдаёт тот же фрагмент повторно | готово (`RoomDetailView`), поллинг — нет |
+| `GET` | `/multiplayer/rooms/` | Список **своих** комнат (где пользователь хост), раздельно активные/завершённые | готово (`RoomListView`) |
+| `POST` | `/multiplayer/rooms/<code>/join` | Присоединение по ссылке-приглашению → создаёт `RoomPlayer` (запрещено, если пользователь уже в другой активной комнате или комната `finished`) | готово (`room_join`) |
+| `POST` | `/multiplayer/rooms/<code>/quit` | Выход из комнаты → удаляет свою запись `RoomPlayer` | готово (`RoomPlayerDeleteView`) |
+| `POST` | `/multiplayer/rooms/<code>/set-quiz` | Только хост; выбирает `Room.current_quiz` из своих квизов, сбрасывает `is_ready` у всех `RoomPlayer` | готово (`room_set_quiz`/`RoomQuizForm`) |
+| `POST` | `/multiplayer/rooms/<code>/ready` | Подтверждает готовность текущего игрока (`is_ready=False→True`, одностороннее действие) | готово (`room_confirm_ready`) |
+| `POST` | `/multiplayer/rooms/<code>/start` | Только хост; проверяет, что все `RoomPlayer` готовы; создаёт `GameSession` + `GameParticipant` на всех, redirect на `gameplay:play` | **не реализовано** |
+| `GET`/`POST` | `/gameplay/session/<id>/play/` | Тот же эндпоинт, что и в соло, с веткой на `mode="multiplayer"` (см. выше) | ветка `mode="multiplayer"` не реализована |
+| `GET` | `/gameplay/session/<id>/result/` | Тот же эндпоинт, что и в соло, с веткой на мультиплеер (таблица всех участников) | ветка `mode="multiplayer"` не реализована |
 
 #### WS — план на перспективу (Этап 3.1, после того как поллинг-версия отработает и будет проверена руками)
 

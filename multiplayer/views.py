@@ -1,4 +1,4 @@
-
+from django.core.exceptions import PermissionDenied
 from django.utils.crypto import get_random_string
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -8,8 +8,10 @@ from django.urls import reverse, reverse_lazy
 from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 
 from .models import Room, RoomPlayer
+from .forms import RoomQuizForm, RoomPlayerReadyForm
 
 
 def _generate_room_token():
@@ -50,10 +52,6 @@ class RoomCreateView(LoginRequiredMixin, CreateView):
                     token=_generate_room_token(),
                     host=user
                 )
-                # room_player = RoomPlayer.objects.create(
-                #     room=room,
-                #     user=user
-                # )
         except IntegrityError:
             with transaction.atomic():
                 room = Room.objects.create(
@@ -61,10 +59,6 @@ class RoomCreateView(LoginRequiredMixin, CreateView):
                     token=_generate_room_token(),
                     host=user
                 )
-                # room_player = RoomPlayer.objects.create(
-                #     room=room,
-                #     user=user
-                # )
         self.object = room
         return HttpResponseRedirect(self.get_success_url())
 
@@ -84,7 +78,14 @@ class RoomDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["is_host"] = self.object.host == self.request.user
-        context["is_player"] = self.request.user in [player.user for player in self.object.room_players.all()]
+        my_room_player = next(
+            (p for p in self.object.room_players.all() if p.user_id == self.request.user.id),
+            None,
+        )
+        context["my_room_player"] = my_room_player
+        context["is_player"] = my_room_player is not None
+        if context["is_host"]:
+            context["quiz_form"] = RoomQuizForm(instance=self.object, user=self.request.user)
         return context
 
     def get_queryset(self):
@@ -131,3 +132,28 @@ class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
 
     def get_success_url(self):
         return reverse("multiplayer:room_detail", kwargs={"code": self.kwargs.get("code")})
+
+@login_required
+@require_POST
+def room_set_quiz(request: HttpRequest, code: str):
+    room = get_object_or_404(Room.objects.prefetch_related("room_players"), token=code)
+    if room.host != request.user:
+        raise PermissionDenied
+    form = RoomQuizForm(request.POST, instance=room, user=request.user)
+
+    if form.is_valid():
+        form.save()
+        room.room_players.update(is_ready=False)
+        messages.success(request, "Квиз выбран, требуется подтверждение готовноти игроков")
+    else:
+        messages.error(request, "Не удалось выбрать квиз")
+    return redirect("multiplayer:room_detail", code=code)
+
+@login_required
+@require_POST
+def room_confirm_ready(request, code):
+    room_player = get_object_or_404(RoomPlayer, room__token=code, user=request.user)
+    room_player.is_ready = True
+    room_player.save(update_fields=["is_ready"])
+    messages.success(request, "Готовность подтверждена")
+    return redirect("multiplayer:room_detail", code=code)

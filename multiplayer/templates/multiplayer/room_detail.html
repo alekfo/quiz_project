@@ -10,19 +10,6 @@
     {% if is_host %}
         <p>Ссылка на комнату: <span id="room-link">{{ request.scheme }}://{{ request.get_host }}{% url 'multiplayer:room_detail' code=object.token %}</span></p>
         <button class="btn" type="button" id="copy-link-btn">Скопировать ссылку</button>
-        <div>
-            <p>Участники:</p>
-            <div class="player-list">
-                {% for part in object.room_players.all%}
-                    <span>{{ part.user.username }}</span>
-                {% endfor %}
-            </div>
-            {% if is_player%}
-                <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
-            {% else %}
-                <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
-            {% endif %}
-        </div>
         {% if object.game_sessions.all %}
         <ul>
             <p>История игр:</p>
@@ -35,19 +22,54 @@
         {% else %}
             <p>Игр еще не было</p>
         {% endif %}
-        <p>Тут будут кнопки на начало игры, выбрать квиз и тд</p>
-    {% else %}
+        <form method="post" action="{% url 'multiplayer:room_set_quiz' code=object.token %}">
+            {% csrf_token %}
+            {{quiz_form.current_quiz}}
+            <button class="btn" type="submit">Выбрать квиз</button>
+        </form>
+    {% endif %}
+
+
+    {% if is_host or is_player %}
+        <p>Квиз: {{ object.current_quiz.title|default:"ещё не выбран" }}</p>
+        <p>Участники:</p>
+        <div class="player-list">
+          {% for part in object.room_players.all %}
+              <span>{{ part.user.username }} — {% if part.is_ready %}✅ готов{% else %}❌ не готов{% endif %}</span>
+          {% endfor %}
+        </div>
         {% if is_player %}
-            Вы участник
-            <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
+          {% if object.current_quiz and not my_room_player.is_ready %}
+              <form method="post" action="{% url 'multiplayer:room_confirm_ready' code=object.token %}">
+                  {% csrf_token %}
+                  <button class="btn" type="submit">Подтвердить готовность</button>
+              </form>
+          {% elif my_room_player.is_ready %}
+              <p>✅ Готовность подтверждена</p>
+          {% endif %}
+          <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
         {% else %}
-            <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
+          <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
         {% endif %}
     {% endif %}
     <script>
         document.getElementById('copy-link-btn').addEventListener('click', function () {
             const link = document.getElementById('room-link').textContent;
-            navigator.clipboard.writeText(link);
+            navigator.clipboard.writeText(link).then(function () {
+                let messagesList = document.querySelector('.messages');
+                if (!messagesList) {
+                    messagesList = document.createElement('ul');
+                    messagesList.className = 'messages';
+                    document.querySelector('.container-header-messages').prepend(messagesList);
+                }
+                const li = document.createElement('li');
+                li.className = 'success';
+                li.textContent = 'Ссылка скопирована';
+                messagesList.appendChild(li);
+                setTimeout(function () {
+                    li.remove();
+                }, 15000);
+            });
         });
     </script>
 {% endblock %}
