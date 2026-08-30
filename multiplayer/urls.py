@@ -11,4 +11,5 @@ urlpatterns = [
     path('rooms/<str:code>/quit', views.RoomPlayerDeleteView.as_view(), name='room_quit'),
     path('rooms/<str:code>/set-quiz', views.room_set_quiz, name='room_set_quiz'),
     path('rooms/<str:code>/ready', views.room_confirm_ready, name='room_confirm_ready'),
+    path('rooms/<str:code>/status', views.room_status, name='room_status'),
 ]

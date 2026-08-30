@@ -1,0 +1,20 @@
+<div id="room-status"
+    hx-get="{% url 'multiplayer:room_status' code=object.token %}"
+    hx-trigger="every 2s"
+    hx-swap="outerHTML">
+    <p>Квиз: {{ object.current_quiz.title|default:"ещё не выбран" }}</p>
+    <p>Участники:</p>
+    <div class="player-list">
+      {% for part in object.room_players.all %}
+          <span>{{ part.user.username }} — {% if part.is_ready %}✅ готов{% else %}❌ не готов{% endif %}</span>
+      {% endfor %}
+    </div>
+    {% if object.current_quiz and not my_room_player.is_ready and is_player %}
+      <form method="post" action="{% url 'multiplayer:room_confirm_ready' code=object.token %}">
+          {% csrf_token %}
+          <button class="btn" type="submit">Подтвердить готовность</button>
+      </form>
+    {% elif my_room_player.is_ready %}
+      <p>✅ Готовность подтверждена</p>
+    {% endif %}
+</div>

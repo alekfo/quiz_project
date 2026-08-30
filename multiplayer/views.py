@@ -5,10 +5,11 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction, IntegrityError
 from django.http import HttpResponse, HttpRequest, HttpResponseRedirect
 from django.urls import reverse, reverse_lazy
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
+from django.conf import settings
 
 from .models import Room, RoomPlayer
 from .forms import RoomQuizForm, RoomPlayerReadyForm
@@ -16,6 +17,18 @@ from .forms import RoomQuizForm, RoomPlayerReadyForm
 
 def _generate_room_token():
     return get_random_string(12)
+
+def _get_room_context(context: dict, room: Room, user: settings.AUTH_USER_MODEL) -> dict:
+    context["is_host"] = room.host == user
+    my_room_player = next(
+        (p for p in room.room_players.all() if p.user_id == user.id),
+        None,
+    )
+    context["my_room_player"] = my_room_player
+    context["is_player"] = my_room_player is not None
+    if context["is_host"]:
+        context["quiz_form"] = RoomQuizForm(instance=room, user=user)
+    return context
 
 class RoomListView(LoginRequiredMixin, ListView):
 
@@ -77,16 +90,7 @@ class RoomDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["is_host"] = self.object.host == self.request.user
-        my_room_player = next(
-            (p for p in self.object.room_players.all() if p.user_id == self.request.user.id),
-            None,
-        )
-        context["my_room_player"] = my_room_player
-        context["is_player"] = my_room_player is not None
-        if context["is_host"]:
-            context["quiz_form"] = RoomQuizForm(instance=self.object, user=self.request.user)
-        return context
+        return _get_room_context(context, self.object, self.request.user)
 
     def get_queryset(self):
         return Room.objects.prefetch_related("room_players__user", "game_sessions__quiz")
@@ -157,3 +161,19 @@ def room_confirm_ready(request, code):
     room_player.save(update_fields=["is_ready"])
     messages.success(request, "Готовность подтверждена")
     return redirect("multiplayer:room_detail", code=code)
+
+@login_required
+def room_status(request: HttpRequest, code: str):
+    room = get_object_or_404(Room.objects.prefetch_related("room_players"), token=code)
+
+    #Если хостом была нажата кнопка "Начать", то при очередном пуллинге будет редирект на игру у каждого участника
+    if room.status == "in_progress" and room.current_game_session_id:
+        response = HttpResponse(status=204)  # тело не важно, HX-Redirect всё равно всё решает
+        response["HX-Redirect"] = reverse("gameplay:play", kwargs={"pk": room.current_game_session_id})
+        return response
+
+    context = {
+        "object": room,
+    }
+    context = _get_room_context(context, room, request.user)
+    return render(request, "multiplayer/_room_status.html", context=context)

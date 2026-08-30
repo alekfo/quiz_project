@@ -28,29 +28,13 @@
             <button class="btn" type="submit">Выбрать квиз</button>
         </form>
     {% endif %}
-
-
     {% if is_host or is_player %}
-        <p>Квиз: {{ object.current_quiz.title|default:"ещё не выбран" }}</p>
-        <p>Участники:</p>
-        <div class="player-list">
-          {% for part in object.room_players.all %}
-              <span>{{ part.user.username }} — {% if part.is_ready %}✅ готов{% else %}❌ не готов{% endif %}</span>
-          {% endfor %}
-        </div>
-        {% if is_player %}
-          {% if object.current_quiz and not my_room_player.is_ready %}
-              <form method="post" action="{% url 'multiplayer:room_confirm_ready' code=object.token %}">
-                  {% csrf_token %}
-                  <button class="btn" type="submit">Подтвердить готовность</button>
-              </form>
-          {% elif my_room_player.is_ready %}
-              <p>✅ Готовность подтверждена</p>
-          {% endif %}
-          <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
-        {% else %}
-          <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
-        {% endif %}
+        {% include "multiplayer/_room_status.html" %}
+    {% endif %}
+    {% if is_player %}
+      <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
+    {% else %}
+      <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
     {% endif %}
     <script>
         document.getElementById('copy-link-btn').addEventListener('click', function () {
