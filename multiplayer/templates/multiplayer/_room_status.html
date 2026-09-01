@@ -1,7 +1,4 @@
-<div id="room-status"
-    hx-get="{% url 'multiplayer:room_status' code=object.token %}"
-    hx-trigger="every 2s"
-    hx-swap="outerHTML">
+<div id="room-status">
     <p>Квиз: {{ object.current_quiz.title|default:"ещё не выбран" }}</p>
     <p>Участники:</p>
     <div class="player-list">

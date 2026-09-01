@@ -8,11 +8,11 @@
 | База данных | PostgreSQL                                                                                                                                                              |
 | Кэш / брокер | Redis                                                                                                                                                                   |
 | Фоновые задачи | Celery                                                                                                                                                                  |
-| Реальное время (мультиплеер) | Этап 3.0 (MVP) — HTMX polling, без новой инфраструктуры. Этап 3.1 (перспектива) — Django Channels (WebSocket) поверх Redis Channel Layer, см. раздел «Мультиплеер» ниже |
+| Реальное время (мультиплеер) | Лобби (`multiplayer`) — Django Channels (WebSocket) поверх Redis Channel Layer, **реализовано** 2026-09-01 (заменило HTMX-поллинг, работавший с 2026-08-30). Экран самой игры (`gameplay`, мультиплеерный `play()`) ещё не реализован вообще, см. раздел «Мультиплеер» ниже |
 | AI-генерация | Anthropic Claude API (claude-sonnet-4-5)                                                                                                                                |
 | Фронтенд | Django Templates + HTMX                                                                                                                                                 |
 | Деплой | Hetzner / DigitalOcean (Frankfurt)                                                                                                                                      |
-| Веб-сервер | Gunicorn + Nginx                                                                                                                                                        |
+| Веб-сервер | Daphne (ASGI) + Nginx — решение зафиксировано (не Gunicorn, WSGI не умеет WebSocket), сам деплой ещё не выполнен, см. Этап 5                                            |
 
 ---
 
@@ -39,14 +39,14 @@
 
 - [x] Модели `multiplayer/`: `Room`, `RoomPlayer`
 - [x] Лобби: создание комнаты хостом (`RoomCreateView`), ссылка-приглашение и `RoomDetailView`, `join`/выход (`room_join`/`RoomPlayerDeleteView`), выбор квиза хостом (`room_set_quiz`/`RoomQuizForm`, ограничен своими квизами, сбрасывает готовность всех игроков), подтверждение готовности игроком (`room_confirm_ready` — одностороннее, `is_ready=False → True`, обратно сбрасывается только сменой квиза) — всё готово, см. CLAUDE.md (сессии от 2026-08-20/24/25)
-- [ ] **Этап 3.0 (сначала так)**: HTMX-поллинг экрана лобби и экрана игры — без WebSocket, без Channels
+- [x] **Этап 3.0**: HTMX-поллинг экрана лобби (реализован 2026-08-30, для лобби заменён на WebSocket уже 2026-09-01 — см. следующий пункт; экран игры HTMX-поллинга не получил вообще, см. ниже)
 - [x] `GameSession` получает поле `current_question` (используется только при `mode="multiplayer"`)
+- [x] **Этап 3.1**: лобби переведено на Django Channels + Redis Channel Layer (`multiplayer/consumers.py`/`routing.py`, `quiz_project/asgi.py`) — реализовано 2026-09-01, см. CLAUDE.md и раздел «Мультиплеер» ниже. Бизнес-логика (кто готов, кто хост, выбор квиза) не переписывалась — вьюхи в конце дополнительно шлют сигнал в WS-группу комнаты
 - [ ] Запуск игры хостом (`room_start`) → проверка «все `RoomPlayer.is_ready`» → `GameSession` + `GameParticipant` на каждого `RoomPlayer` — последний нереализованный шаг лобби
-- [ ] `gameplay/views.py::play()` — ветка на `mode="multiplayer"`: общий `current_question` вместо индивидуально вычисляемого, продвижение вопроса после проверки «все ли ответили»
+- [ ] `gameplay/views.py::play()` — ветка на `mode="multiplayer"`: общий `current_question` вместо индивидуально вычисляемого, продвижение вопроса после проверки «все ли ответили». Поллинг/WS для самого экрана игры пока не заводили вообще — когда дойдёт очередь, вероятно сразу WS по образцу лобби, отдельную HTMX-версию скорее всего заводить не будем
 - [ ] Экран ожидания «кто уже ответил / кто ещё нет»
 - [ ] Итоговая таблица счёта комнаты (переиспользует уже частично готовый `result()`)
 - [ ] Celery beat — сторож зависших игроков (форсит пропуск вопроса по истечении `time_limit_seconds`, если клиент не досабмитил сам)
-- [ ] **Этап 3.1 (перспектива, после того как поллинг-версия отработает и будет проверена руками)**: переход на Django Channels + Redis Channel Layer — `consumers.py`/`routing.py`, замена поллинга на серверный push. Бизнес-логика (кто готов, чей ход, продвижение вопроса, подсчёт очков) не переписывается — меняется только способ уведомления клиентов
 
 ### Этап 4 — Социальные функции (3-4 недели)
 - [ ] Подписки между пользователями
@@ -61,11 +61,12 @@
 
 - [ ] `settings/base.py` / `development.py` / `production.py` — разбивка текущего единого `settings.py` (пока не сделана, см. CLAUDE.md)
 - [ ] Сервер: Hetzner/DigitalOcean, Frankfurt (доступ к Anthropic API без блокировок) — см. «Требования к серверу» ниже
-- [ ] PostgreSQL + Redis в проде
-- [ ] Gunicorn + Nginx, статика через `collectstatic`
+- [ ] PostgreSQL в проде
+- [ ] **Redis в проде** — обязателен уже к этому этапу, не опционально: нужен и как Channel Layer для Django Channels (Этап 3.1, WebSocket-лобби `multiplayer`), и как брокер/кэш для Celery. Разворачивается на самом сервере (или managed-инстанс у того же провайдера), решение по деплою Redis принимается вместе с решением по ASGI-серверу ниже, т.к. это одна и та же зависимость
+- [ ] **ASGI-сервер — Daphne**, решение принято (не Gunicorn/WSGI, не Uvicorn) — т.к. к моменту деплоя `multiplayer`-лобби уже переведён на Django Channels (Этап 3.1), а Gunicorn (WSGI) в принципе не умеет отдавать WebSocket (ограничение протокола, не вопрос настройки, см. [`WS.md`](WS.md) §11). Дафне отдаёт и обычный HTTP, и WebSocket одним процессом — меньше двигающихся частей, чем держать Gunicorn отдельно под HTTP плюс Daphne только под `/ws/`
+- [ ] Nginx — reverse proxy перед Daphne (не перед Gunicorn), статика через `collectstatic`; при живом WebSocket-пути Nginx должен пробрасывать заголовки `Upgrade`/`Connection` — стандартная конфигурация для WS за reverse proxy, без неё хендшейк до Daphne не дойдёт
 - [ ] Celery worker (+ beat, если к этому моменту уже реализован сторож из Этапа 3) как отдельный процесс/systemd-сервис
 - [ ] Домен, SSL
-- [ ] Если к этому моменту сделан переход на Django Channels (Этап 3.1) — ASGI-сервер (Daphne/Uvicorn) отдельно от/вместе с Gunicorn
 
 ### Этап 6 — Монетизация
 - [ ] Бесплатный лимит: 5 AI-генераций в месяц
@@ -117,8 +118,8 @@ quizapp/
 │
 ├── multiplayer/                    # реальное время
 │   ├── models.py
-│   ├── consumers.py                # WebSocket (Этап 3.1, перспектива)
-│   ├── routing.py                  # WebSocket роуты (Этап 3.1, перспектива)
+│   ├── consumers.py                # WebSocket — готово (лобби), см. CLAUDE.md 2026-09-01
+│   ├── routing.py                  # WebSocket роуты — готово (лобби)
 │   ├── views.py
 │   ├── urls.py
 │   └── templates/multiplayer/
@@ -169,7 +170,7 @@ quizapp/
 - **GameParticipant** — сессия (FK `GameSession`, `related_name="participants"`), пользователь (FK `User`), `score` (default 0, инкрементируется атомарно через `F('score') + 1)`, не read-modify-write), `joined_at` (`auto_now_add`), `finished_at` (nullable — проставляется этому конкретному участнику, когда у него не осталось неотвеченных вопросов; для мультиплеера сессия в целом завершается только когда `finished_at` проставлен у всех участников). `UniqueConstraint(session, user)`
 - **GameAnswer** — участник (FK `GameParticipant`, `related_name="participants_answers"`), вопрос (FK `Question`, `related_name="participants_answers"`), выбранный вариант (FK `AnswerOption`, `null=True`, `on_delete=SET_NULL` — намеренно не `CASCADE`: при редактировании квиза автор пересоздаёт все `AnswerOption` вопроса заново, `CASCADE` физически стирал бы историю уже сыгранных партий), `is_correct` (bool, `default=False`), `is_skipped` (bool, `default=False`), `shown_at` (`auto_now_add`, момент показа вопроса — точка отсчёта для серверной проверки таймера), `answered_at` (nullable, момент фактического ответа). `UniqueConstraint(participant, question)`. Строка создаётся уже в момент **показа** вопроса (`get_or_create`, не только при ответе) и служит единственным источником истины о прогрессе — отдельного поля-указателя «текущий вопрос участника» нет (в отличие от планируемого `GameSession.current_question`, который будет общим на всю партию, а не персональным)
 
-### multiplayer/ *(модели реализованы; лобби почти готово — `create`/`detail`/`list`/`join`/`quit`/`set-quiz`/`confirm-ready` работают, `start` ещё нет, см. CLAUDE.md, сессии от 2026-08-20/24/25)*
+### multiplayer/ *(модели реализованы; лобби почти готово — `create`/`detail`/`list`/`join`/`quit`/`set-quiz`/`confirm-ready` работают и с 2026-09-01 обновляются у всех участников живьём через WebSocket (`RoomConsumer`), `start` ещё нет, см. CLAUDE.md, сессии от 2026-08-20/24/25/2026-09-01)*
 - **Room** — `title`, уникальный токен-приглашение (`token`), хост (FK `User`, `on_delete=SET_NULL`), `current_quiz`/`current_game_session` (FK, оба `null=True, blank=True`, меняются от раунда к раунду — `Room` персистентна, не одноразова, см. сессию от 2026-08-20). `current_quiz` выбирается хостом через `RoomQuizForm`, ограниченную его собственными квизами (`queryset=Quiz.objects.filter(user=host)`, выставляется в `__init__` формы); смена квиза сбрасывает `is_ready` всех `RoomPlayer`. Статус (`waiting` / `in_progress` / `finished`), `created_at`. **Отклонение от исходного плана**: хост при создании комнаты не становится `RoomPlayer` автоматически (создание закомментировано в `RoomCreateView`) — осознанно, хост может быть как играющим, так и чистым модератором; на `RoomDetailView` это учтено — общий блок лобби (список участников/готовности) виден при `is_host or is_player`, не только `is_player`
 - **RoomPlayer** — комната (FK `Room`, `related_name="room_players"`), пользователь (FK `User`), `is_ready` (bool, `default=False`, переключается через `room_confirm_ready` — **одностороннее** подтверждение, `False → True`, без обратного действия игроком; сбрасывается в `False` только сменой `current_quiz` хостом), `joined_at`. `UniqueConstraint(room, user)`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
 
@@ -284,10 +285,9 @@ quizapp/
       сбрасывает RoomPlayer.is_ready=False у всех (смена квиза аннулирует старую готовность)
     → каждый участник подтверждает готовность (POST, одностороннее действие,
       обратного действия из UI нет) → room_confirm_ready → RoomPlayer.is_ready=True
-    → экран лобби у всех участников обновляется:
-        Этап 3.0 (ещё не реализовано): HTMX-поллинг (hx-trigger="every 2s") перечитывает список RoomPlayer/is_ready
-        Этап 3.1 (перспектива): см. отдельный раздел "WS — план на перспективу" ниже
-        (сейчас — только обычная перезагрузка страницы по PRG после каждого действия)
+    → экран лобби у всех участников обновляется без перезагрузки — WebSocket-пуш,
+      см. отдельный раздел "WS — реализовано (лобби)" ниже (до 2026-09-01 был HTMX-поллинг,
+      hx-trigger="every 2s", полностью заменён)
     → кнопка "Начать" (не реализовано) видна только хосту и активна только когда все RoomPlayer.is_ready=True
       (проверка готовности — на бэкенде обязательна; фронтовая блокировка кнопки — только UX)
     → хост жмёт "Начать" → POST room_start → создаётся:
@@ -313,10 +313,10 @@ quizapp/
           (или, если вопросов не осталось — переводит GameSession.status=completed для всех разом,
           в отличие от соло, где участники завершают партию независимо друг от друга)
     → пока current_question не сменился, игроки, которые уже ответили и ждут остальных, должны
-      как-то узнать о смене вопроса:
-        Этап 3.0 (MVP): тот же HTMX-поллинг на play/ — если current_question сменился,
-          partial-ответ отдаёт разметку нового вопроса вместо экрана ожидания
-        Этап 3.1 (перспектива): WS-пуш вместо опроса, см. ниже
+      как-то узнать о смене вопроса — ещё не реализовано вообще (ни поллинг, ни WS).
+      Инфраструктура Channels/Redis Channel Layer для этого уже есть и обкатана на лобби
+      (см. "WS — реализовано (лобби)" ниже) — вероятный путь: своя WS-группа на сессию
+      (`session_<id>`, по аналогии с `room_<token>`), а не HTMX-поллинг с нуля
     → после последнего вопроса — итоговый экран комнаты: таблица GameParticipant.score всех участников,
       отсортированная по убыванию (result() уже частично готов к этому — при mode=multiplayer собирает
       остальных участников сессии, см. CLAUDE.md)
@@ -329,25 +329,28 @@ quizapp/
 | Метод | URL | Что делает | Статус |
 |---|---|---|---|
 | `POST` | `/multiplayer/rooms/create` | Хост создаёт `Room` (только `title`), redirect на экран лобби | готово (`RoomCreateView`) |
-| `GET` | `/multiplayer/rooms/<code>/` | Экран лобби (список `RoomPlayer` и готовности, выбор квиза для хоста); при поллинге отдаёт тот же фрагмент повторно | готово (`RoomDetailView`), поллинг — нет |
+| `GET` | `/multiplayer/rooms/<code>/` | Экран лобби (список `RoomPlayer` и готовности, выбор квиза для хоста); живое обновление — через WS, см. ниже | готово (`RoomDetailView`) |
 | `GET` | `/multiplayer/rooms/` | Список **своих** комнат (где пользователь хост), раздельно активные/завершённые | готово (`RoomListView`) |
 | `POST` | `/multiplayer/rooms/<code>/join` | Присоединение по ссылке-приглашению → создаёт `RoomPlayer` (запрещено, если пользователь уже в другой активной комнате или комната `finished`) | готово (`room_join`) |
 | `POST` | `/multiplayer/rooms/<code>/quit` | Выход из комнаты → удаляет свою запись `RoomPlayer` | готово (`RoomPlayerDeleteView`) |
 | `POST` | `/multiplayer/rooms/<code>/set-quiz` | Только хост; выбирает `Room.current_quiz` из своих квизов, сбрасывает `is_ready` у всех `RoomPlayer` | готово (`room_set_quiz`/`RoomQuizForm`) |
 | `POST` | `/multiplayer/rooms/<code>/ready` | Подтверждает готовность текущего игрока (`is_ready=False→True`, одностороннее действие) | готово (`room_confirm_ready`) |
+| `GET` | `/multiplayer/rooms/<code>/status` | HTML-фрагмент лобби для HTMX-поллинга | **мёртвый код** — с 2026-09-01 никто не опрашивает (заменено на WS), эндпоинт не удалён, см. CLAUDE.md |
+| `WS` | `/ws/multiplayer/rooms/<code>/` | Живое обновление лобби (join/quit/set-quiz/ready) — push вместо поллинга | готово (`RoomConsumer`), см. раздел ниже |
 | `POST` | `/multiplayer/rooms/<code>/start` | Только хост; проверяет, что все `RoomPlayer` готовы; создаёт `GameSession` + `GameParticipant` на всех, redirect на `gameplay:play` | **не реализовано** |
 | `GET`/`POST` | `/gameplay/session/<id>/play/` | Тот же эндпоинт, что и в соло, с веткой на `mode="multiplayer"` (см. выше) | ветка `mode="multiplayer"` не реализована |
 | `GET` | `/gameplay/session/<id>/result/` | Тот же эндпоинт, что и в соло, с веткой на мультиплеер (таблица всех участников) | ветка `mode="multiplayer"` не реализована |
 
-#### WS — план на перспективу (Этап 3.1, после того как поллинг-версия отработает и будет проверена руками)
+#### WS — реализовано (лобби, 2026-09-01)
 
-Контекст этого раздела — обсуждали отдельно, коротко резюме для справки:
+Полный разбор механики и найденных по пути багов — в CLAUDE.md (сессия от 2026-09-01) и в исходном учебном конспекте [`WS.md`](WS.md). Коротко, как это выглядит по факту:
 
-- **ASGI** — `quiz_project/asgi.py` уже существует, но сейчас голый (`get_asgi_application()` без `ProtocolTypeRouter`). Django Channels добавляет поверх него диспетчер по протоколу: `http` → обычные sync-view как сейчас, `websocket` → `URLRouter` из app-level `routing.py`. Существующие sync-view **не переписываются** на `async def`.
-- **`multiplayer/routing.py`** — аналог `urls.py`, но для WS-путей (например, `ws/multiplayer/room/<code>/`, `ws/gameplay/session/<id>/`), мапит их на классы-`Consumer`.
-- **`multiplayer/consumers.py`** — `LobbyConsumer` (группа `room_<code>`) и `GameConsumer` (группа `session_<id>`). Задача каждого — только: (1) на `connect()` проверить право слушать эту группу, (2) вступить в группу, (3) переслать в сокет то, что прилетело из группы. Никакой бизнес-логики внутри — она остаётся в обычных `views.py`.
-- **Redis Channel Layer** (`channels_redis`) — тот же Redis, что уже в стеке под Celery/кэш, просто новая роль: pub/sub между обычным sync-view (который поменял состояние) и Consumer'ами других игроков (чьи браузеры ничего не запрашивали, но должны узнать об изменении). Обычный `view` в конце вызывает `async_to_sync(channel_layer.group_send)(...)`, все `Consumer`, состоящие в этой группе, получают сообщение и пишут его в свой открытый WS каждому браузеру.
-- Переход с поллинга на WS **не требует переделывать модели или логику продвижения `current_question`/подсчёта очков** — меняется только то, как клиент узнаёт о случившемся изменении (`setInterval`-поллинг → `socket.onmessage`), и добавляется один вызов `group_send` в конце соответствующих view.
+- **ASGI** (`quiz_project/asgi.py`) — `ProtocolTypeRouter({"http": django_asgi_app, "websocket": AuthMiddlewareStack(URLRouter(multiplayer.routing.websocket_urlpatterns))})`. Обычные sync-view **не переписаны** на `async def` — HTTP-ветка это тот же Django, что и раньше.
+- **`multiplayer/routing.py`** — `websocket_urlpatterns`, один маршрут `ws/multiplayer/rooms/<code>/` → `RoomConsumer`.
+- **`multiplayer/consumers.py`** — `RoomConsumer(WebsocketConsumer)`, группа `room_<token>`. `connect()` проверяет право (хост или `RoomPlayer`, как в `_get_room_context`) и делает `group_add`. Внутри группы гуляет только сигнал `{"type": "room.update"}` **без HTML** — каждый подписанный `Consumer` сам перечитывает `Room` из БД и рендерит `_room_status.html` персонально под своего пользователя (`_room_status.html` зависит от того, чей это просмотр — общий на всех HTML был бы некорректен). Это осознанное отличие от «наивной» схемы, где view рендерит HTML один раз и рассылает всем.
+- **Redis Channel Layer** (`channels_redis`) — тот же Redis, что и планировался под Celery/кэш, роль — pub/sub между обычным sync-view (изменил состояние) и `Consumer`'ами других игроков. Вьюхи (`room_join`, `room_set_quiz`, `room_confirm_ready`, `RoomPlayerDeleteView.form_valid`) в конце вызывают `_notify_room(room)` → `async_to_sync(channel_layer.group_send)(...)`.
+- **Важный практический нюанс, не был очевиден заранее**: `channels_redis==4.3.0` требует пиновать клиентскую библиотеку `redis` на `==4.6.0` — с более новыми версиями (проверено на `8.1.0`) долгоживущие WS-соединения падают по внутреннему таймауту `channels_redis`'а каждые ~5 секунд. См. CLAUDE.md, не поднимать `redis` в `requirements.txt` бездумно.
+- Переход с поллинга на WS **не потребовал переделывать модели или бизнес-логику** — только добавление `_notify_room(room)` в конце нужных вьюх и замену клиентского `hx-trigger="every 2s"` на `new WebSocket(...)` в шаблоне.
 
 ### Социальный сценарий
 ```
@@ -365,7 +368,7 @@ quizapp/
 |---|---|
 | Обычные страницы (список, профиль, лента) | Django sync views |
 | AI-генерация викторины | Сейчас: синхронно в view. Целевая архитектура: Celery + Redis (см. отклонение в «Сценарии использования») |
-| Мультиплеер реального времени | Этап 3.0: HTMX polling. Этап 3.1 (перспектива): Django Channels (WebSocket) |
+| Мультиплеер реального времени | Лобби: Django Channels (WebSocket), реализовано. Экран игры (`gameplay`, мультиплеерный `play()`): не реализован, поллинг/WS ещё не заводили |
 | Кэш повторных AI-запросов | Redis cache |
 
 ---

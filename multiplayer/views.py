@@ -1,3 +1,5 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.core.exceptions import PermissionDenied
 from django.utils.crypto import get_random_string
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
@@ -17,6 +19,18 @@ from .forms import RoomQuizForm, RoomPlayerReadyForm
 
 def _generate_room_token():
     return get_random_string(12)
+
+def _notify_room(room: Room) -> None:
+    """
+    Сигнал "что-то в комнате изменилось" всем открытым WebSocket-соединениям
+    этой комнаты (см. multiplayer.consumers.RoomConsumer.room_update) — сам
+    HTML не передаём, каждый подключённый рендерит фрагмент под себя.
+    """
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"room_{room.token}",
+        {"type": "room.update"},
+    )
 
 def _get_room_context(context: dict, room: Room, user: settings.AUTH_USER_MODEL) -> dict:
     context["is_host"] = room.host == user
@@ -119,6 +133,7 @@ def room_join(request: HttpRequest, code: str):
     # если все окей - регистрируем пользователя в комнате как участника
     try:
         RoomPlayer.objects.create(room=room, user=request.user)
+        _notify_room(room)
     except IntegrityError:
         messages.error(request, "Вы уже участвуете в этой комнате")
     url = reverse("multiplayer:room_detail", kwargs={"code": code})
@@ -134,6 +149,13 @@ class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
             user=self.request.user
         )
 
+    def form_valid(self, form):
+        room = self.object.room
+        success_url = self.get_success_url()
+        self.object.delete()
+        _notify_room(room)
+        return HttpResponseRedirect(success_url)
+
     def get_success_url(self):
         return reverse("multiplayer:room_detail", kwargs={"code": self.kwargs.get("code")})
 
@@ -148,6 +170,7 @@ def room_set_quiz(request: HttpRequest, code: str):
     if form.is_valid():
         form.save()
         room.room_players.update(is_ready=False)
+        _notify_room(room)
         messages.success(request, "Квиз выбран, требуется подтверждение готовноти игроков")
     else:
         messages.error(request, "Не удалось выбрать квиз")
@@ -159,6 +182,7 @@ def room_confirm_ready(request, code):
     room_player = get_object_or_404(RoomPlayer, room__token=code, user=request.user)
     room_player.is_ready = True
     room_player.save(update_fields=["is_ready"])
+    _notify_room(room_player.room)
     messages.success(request, "Готовность подтверждена")
     return redirect("multiplayer:room_detail", code=code)
 

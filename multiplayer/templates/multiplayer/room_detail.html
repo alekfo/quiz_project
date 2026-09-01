@@ -27,33 +27,42 @@
             {{quiz_form.current_quiz}}
             <button class="btn" type="submit">Выбрать квиз</button>
         </form>
+        <script>
+            document.getElementById('copy-link-btn').addEventListener('click', function () {
+                const link = document.getElementById('room-link').textContent;
+                navigator.clipboard.writeText(link).then(function () {
+                    let messagesList = document.querySelector('.messages');
+                    if (!messagesList) {
+                        messagesList = document.createElement('ul');
+                        messagesList.className = 'messages';
+                        document.querySelector('.container-header-messages').prepend(messagesList);
+                    }
+                    const li = document.createElement('li');
+                    li.className = 'success';
+                    li.textContent = 'Ссылка скопирована';
+                    messagesList.appendChild(li);
+                    setTimeout(function () {
+                        li.remove();
+                    }, 15000);
+                });
+            });
+        </script>
     {% endif %}
     {% if is_host or is_player %}
         {% include "multiplayer/_room_status.html" %}
+        <script>
+            (function () {
+                const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+                const socket = new WebSocket(protocol + "://" + window.location.host + "/ws/multiplayer/rooms/{{ object.token }}/");
+                socket.onmessage = function (event) {
+                    document.getElementById("room-status").outerHTML = event.data;
+                };
+            })();
+        </script>
     {% endif %}
     {% if is_player %}
       <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
     {% else %}
       <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
     {% endif %}
-    <script>
-        document.getElementById('copy-link-btn').addEventListener('click', function () {
-            const link = document.getElementById('room-link').textContent;
-            navigator.clipboard.writeText(link).then(function () {
-                let messagesList = document.querySelector('.messages');
-                if (!messagesList) {
-                    messagesList = document.createElement('ul');
-                    messagesList.className = 'messages';
-                    document.querySelector('.container-header-messages').prepend(messagesList);
-                }
-                const li = document.createElement('li');
-                li.className = 'success';
-                li.textContent = 'Ссылка скопирована';
-                messagesList.appendChild(li);
-                setTimeout(function () {
-                    li.remove();
-                }, 15000);
-            });
-        });
-    </script>
 {% endblock %}

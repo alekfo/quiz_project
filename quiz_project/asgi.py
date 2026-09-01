@@ -13,4 +13,19 @@ from django.core.asgi import get_asgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'quiz_project.settings')
 
-application = get_asgi_application()
+# Должен быть вызван до импорта чего-либо, что импортирует модели
+# (в т.ч. multiplayer.routing -> multiplayer.consumers -> multiplayer.models) —
+# иначе Django ещё не готов (AppRegistryNotReady).
+django_asgi_app = get_asgi_application()
+
+from channels.auth import AuthMiddlewareStack
+from channels.routing import ProtocolTypeRouter, URLRouter
+
+import multiplayer.routing
+
+application = ProtocolTypeRouter({
+    'http': django_asgi_app,
+    'websocket': AuthMiddlewareStack(
+        URLRouter(multiplayer.routing.websocket_urlpatterns)
+    ),
+})

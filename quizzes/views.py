@@ -17,14 +17,12 @@ logger = logging.getLogger(__name__)
 
 def menu(request: HttpRequest):
 
-    rooms = Room.objects.filter(
-        room_players__user=request.user,
-        status__in=["waiting", "in_progress"]
-    ).prefetch_related("room_players__user")
-
-    context = {
-        "rooms": rooms,
-    }
+    context = {}
+    if request.user.is_authenticated:
+        context["rooms"] = Room.objects.filter(
+            room_players__user=request.user,
+            status__in=["waiting", "in_progress"]
+        ).prefetch_related("room_players__user")
 
     return render(request, "quizzes/quizzes_menu.html", context=context)
 
