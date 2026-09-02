@@ -1,3 +1,5 @@
+import json
+
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
 from django.template.loader import render_to_string
@@ -41,6 +43,13 @@ class RoomConsumer(WebsocketConsumer):
         готового HTML — рендерим фрагмент здесь, на каждое открытое
         соединение отдельно, т.к. _room_status.html зависит от того, ЧЕЙ
         это просмотр (my_room_player/is_player у каждого игрока свои).
+
+        Форма подтверждения готовности сюда не входит (см. room_detail.html —
+        рендерится один раз через обычный GET, с валидным CSRF-токеном,
+        т.к. render_to_string() здесь не имеет доступа к request и не может
+        сгенерировать рабочий {% csrf_token %}). Вместо HTML для неё шлём
+        только флаги видимости, JS переключает hidden на уже существующих
+        DOM-элементах.
         """
         user = self.scope["user"]
         room = Room.objects.prefetch_related("room_players__user", "game_sessions__quiz").filter(
@@ -50,4 +59,11 @@ class RoomConsumer(WebsocketConsumer):
             return
         context = _get_room_context({"object": room}, room, user)
         html = render_to_string("multiplayer/_room_status.html", context)
-        self.send(text_data=html)
+        my_room_player = context["my_room_player"]
+        is_ready = bool(my_room_player and my_room_player.is_ready)
+        payload = {
+            "html": html,
+            "can_confirm": bool(room.current_quiz_id) and my_room_player is not None and not is_ready,
+            "is_ready": is_ready,
+        }
+        self.send(text_data=json.dumps(payload))

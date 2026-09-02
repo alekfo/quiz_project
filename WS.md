@@ -4,6 +4,8 @@
 
 Это **теория и план**, код в проекте пока не менялся (сессия от 2026-08-31, дополнено вопросами от 2026-09-01). Когда решите реализовывать — стоит перечитать этот файл ещё раз перед тем, как писать `consumers.py`/`routing.py`, и актуализировать, если что-то в реализации пойдёт не так, как описано здесь (по аналогии с [`FORMS_LEARNING.md`](FORMS_LEARNING.md) — это конспект под конкретный код проекта, не абстрактный туториал).
 
+**Обновление (сессия от 2026-09-01/02): реализовано.** `RoomConsumer`/`routing.py`/`asgi.py` написаны и проверены вживую в двух браузерах — подробности в CLAUDE.md. Реализация разошлась с наброском из §9 в одном принципиальном месте: `group_send` **не несёт готовый HTML** (как предполагалось в §9/§10), а только сигнал `{"type": "room.update"}` — каждый `RoomConsumer` сам перечитывает `Room` из БД и рендерит `_room_status.html` персонально под своего `self.scope["user"]` (у хоста и игрока фрагмент отличается: `is_host`/`is_player`/`my_room_player` разные). Причина — единый заранее отрендеренный HTML был бы одинаков для всех подписчиков группы, что дало бы неверную персонализацию. Пошаговый разбор на реальном коде — §14.
+
 **Решение по деплою уже принято** (зафиксировано в `quiz_project_plan.md`, Этап 5) — ASGI-сервер в проде будет **Daphne** (не Gunicorn, не Uvicorn), Redis на проде обязателен уже к этому этапу. Здесь остаётся как справочная теория (§11), почему выбор пал именно на Daphne.
 
 ---
@@ -246,13 +248,137 @@ CHANNEL_LAYERS = {
 Практические заметки:
 - Без `-v` (volume) контейнер не сохраняет данные между перезапусками — для Channel Layer это не проблема, группы/подписки эфемерны по своей природе (в отличие от гипотетического использования того же Redis как кэша с данными, которые жалко терять).
 - После первого `docker run` — `docker start redis` / `docker stop redis`, не нужно пересоздавать контейнер каждый раз.
-- Отладка: `docker exec -it redis redis-cli`, дальше `SMEMBERS room_ABC123` покажет, какие имена-ящики реально состоят в группе — полезно, когда `group_send` вроде отработал, а клиент ничего не получил (проверить, действительно ли нужный `channel_name` попал в группу через `group_add`).
+- Отладка: `docker exec -it redis redis-cli`, дальше посмотреть состав группы — полезно, когда `group_send` вроде отработал, а клиент ничего не получил. **Уточнение по факту реализации**: команда здесь на момент написания этого пункта была угадана неточно (`SMEMBERS` — команда для `SET`, а `channels_redis` хранит группу как `ZSET` с TTL на каждого участника, под другим именем ключа) — рабочий рецепт, включая `MONITOR` для наблюдения в реальном времени, см. §14.
 
 ---
 
 ## 13. Рекомендация по объёму первой итерации
 
 Заводить Channels стоит **только под лобби** (`multiplayer`), не трогая `gameplay` — там сейчас нет проблемы поллинга вообще (таймер вопроса — клиентский `setInterval`, без HTTP-запросов). Синхронизация текущего вопроса в мультиплеерном `gameplay` (когда дойдёт очередь до общего `GameSession.current_question`) может либо позже тоже переехать на тот же Channel Layer, либо первое время остаться на редком поллинге — это не то же узкое место, что 2-секундный поллинг лобби.
+
+---
+
+## 14. Пошаговый пример на реальном коде (сессия 2026-09-02)
+
+Ниже — не гипотетический сценарий из §9, а разбор **фактически написанного** кода (`multiplayer/consumers.py`, `views.py`, `routing.py`, `quiz_project/asgi.py`) на конкретном примере: комната с токеном `Xk3mQ9pLaZ7c`, хост `alek_fo` (не `RoomPlayer`, только модератор — см. TODO про этот разрыв) и игрок `cat`, оба держат открытым `room_detail.html` в двух разных браузерах.
+
+### Фаза A — обе вкладки открывают страницу, происходит handshake
+
+**1. JS на странице (`room_detail.html`, внутри `{% if is_host or is_player %}`):**
+```js
+const socket = new WebSocket("ws://127.0.0.1:8000/ws/multiplayer/rooms/Xk3mQ9pLaZ7c/");
+```
+Браузер сам собирает `GET /ws/multiplayer/rooms/Xk3mQ9pLaZ7c/` с заголовками `Upgrade: websocket`, `Sec-WebSocket-Key`, и — поскольку это same-origin запрос — автоматически прикладывает cookie `sessionid`.
+
+**2. Daphne** видит `Upgrade: websocket`, строит ASGI-`scope` с `type: "websocket"` (не `"http"`).
+
+**3. `ProtocolTypeRouter`** (`quiz_project/asgi.py`) по `scope['type']` уходит не в `django_asgi_app`, а в `AuthMiddlewareStack(URLRouter(...))`.
+
+**4. `AuthMiddlewareStack`** читает `sessionid` из `scope['headers']`, поднимает `User` из БД тем же механизмом, что обычный `AuthenticationMiddleware`, кладёт в `scope['user']`.
+
+**5. `URLRouter`** сопоставляет путь с `re_path(r'^ws/multiplayer/rooms/(?P<code>\w+)/$', ...)` (`multiplayer/routing.py:6`), достаёт `code='Xk3mQ9pLaZ7c'` в `scope['url_route']['kwargs']`, создаёт новый экземпляр `RoomConsumer` — свой на каждое соединение, со своим `self.scope`.
+
+**6. `connect()` (`multiplayer/consumers.py:11-32`)** — `WebsocketConsumer` синхронный, Channels сам исполняет тело в потоке (тот же механизм, что `sync_to_async` для обычных Django-вьюх под ASGI), поэтому внутри — обычный синхронный ORM:
+```python
+self.room_code = self.scope["url_route"]["kwargs"]["code"]     # "Xk3mQ9pLaZ7c"
+user = self.scope["user"]                                       # alek_fo
+room = Room.objects.prefetch_related("room_players").filter(token=self.room_code).first()
+is_host = room.host_id == user.id      # True
+is_player = any(p.user_id == user.id for p in room.room_players.all())   # False
+# is_host or is_player -> True, продолжаем
+self.group_name = f"room_{self.room_code}"                      # "room_Xk3mQ9pLaZ7c"
+async_to_sync(self.channel_layer.group_add)(self.group_name, self.channel_name)
+self.accept()
+```
+
+**7. Здесь впервые в дело вступает Redis.** `group_add` — корутина (клиент к Redis асинхронный), а мы в синхронном потоке-воркере → нужен мост `async_to_sync`, который передаёт вызов в главный event loop Daphne и блокирует поток до ответа. Физически это регистрирует в Redis пару "группа `room_Xk3mQ9pLaZ7c`" → "уникальное имя канала этого соединения" (`specific.<random>!<random>`), с TTL.
+
+**8. `self.accept()`** отправляет ASGI-событие `websocket.accept` — только теперь Daphne реально завершает handshake (`HTTP/1.1 101 Switching Protocols`). До этого момента `socket.onopen` в браузере ещё не сработал.
+
+**9. То же самое параллельно для `cat`** во второй вкладке — свой `RoomConsumer`, свой `scope['user'] = cat`, `is_player = True`. В группе `room_Xk3mQ9pLaZ7c` в Redis теперь два зарегистрированных канала.
+
+### Фаза B — хост выбирает квиз
+
+**10. `alek_fo` жмёт «Выбрать квиз»** — обычная `<form method="post">` (`room_detail.html:25-29`), **не WebSocket**. POST на `room_set_quiz`, идёт через `django_asgi_app` как любой обычный Django-запрос.
+
+**11. `room_set_quiz` (`multiplayer/views.py:164-177`)** сохраняет `room.current_quiz`, сбрасывает `is_ready=False` у всех `RoomPlayer`, в конце:
+```python
+_notify_room(room)   # views.py:23-33
+```
+```python
+def _notify_room(room):
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(f"room_{room.token}", {"type": "room.update"})
+```
+Обычная синхронная HTTP-вьюха публикует событие в тот же Redis, что слушают процессы с открытыми WS-соединениями — это единственный канал связи между ними, общей памяти нет.
+
+**12. `group_send`** читает из Redis список каналов группы `room_Xk3mQ9pLaZ7c` и кладёт сообщение `{"type": "room.update"}` в персональную очередь каждого — и `alek_fo`-сокета, и `cat`-сокета.
+
+**13. У каждого открытого `RoomConsumer` фоновый цикл блокирующе читает свою очередь в Redis.** Как только там появляется сообщение, Channels вызывает `dispatch()`, который берёт `event["type"] = "room.update"`, заменяет точку на подчёркивание → `getattr(self, "room_update")(event)`. Отсюда и обязательное имя метода `room_update` в `RoomConsumer` — это контракт Channels, не произвольный выбор.
+
+**14. `room_update()` (`multiplayer/consumers.py:38-53`) выполняется независимо в контексте каждого сокета:**
+```python
+def room_update(self, event):
+    user = self.scope["user"]     # у сокета alek_fo — alek_fo; у сокета cat — cat
+    room = Room.objects.prefetch_related("room_players__user", "game_sessions__quiz").filter(
+        token=self.room_code
+    ).first()
+    context = _get_room_context({"object": room}, room, user)
+    html = render_to_string("multiplayer/_room_status.html", context)
+    self.send(text_data=html)
+```
+Одно и то же событие без пейлоада — но каждый инстанс сам идёт в БД за свежим состоянием и рендерит фрагмент **под своего** `self.scope['user']`. Для `cat` (`is_ready` сброшен, `current_quiz` уже выбран) `_room_status.html:9-13` отрендерит форму «Подтвердить готовность». У `alek_fo`, раз он не `RoomPlayer`, этой формы не будет вообще.
+
+**15. `self.send(text_data=html)`** — ASGI-событие `websocket.send`, Daphne пишет WS text-фрейм в TCP каждого клиента отдельно.
+
+**16. На клиенте:**
+```js
+socket.onmessage = function (event) {
+    document.getElementById("room-status").outerHTML = event.data;
+};
+```
+`#room-status` целиком заменяется (включая сам `id`, иначе следующее сообщение будет некуда вставить). У `cat` без перезагрузки появляется кнопка «Подтвердить готовность».
+
+### Фаза C — `cat` подтверждает готовность
+
+**17. `cat` жмёт «Подтвердить готовность»** — снова обычный `<form method="post">` (`_room_status.html:10-13`), не `fetch`/`hx-post`, а полная навигация браузера. Побочный эффект: перед уходом со страницы сработает `disconnect()` её старого соединения (`group_discard`, `consumers.py:34-36`), а после того как редирект дорендерит страницу — откроется совершенно новое WS-соединение с новым `connect()`/`group_add`. То есть сама кнопка не использует realtime-канал для **себя** — своё новое состояние `cat` узнаёт из обычной перезагруженной страницы, WS ей нужен только для последующих чужих изменений.
+
+**18. `room_confirm_ready` (`views.py:181-187`)** ставит `is_ready=True`, вызывает `_notify_room` — повторяется цикл шагов 12-16. `alek_fo`, если бы он был `is_player`, увидел бы у `cat` ✅ без перезагрузки своей вкладки.
+
+### Как посмотреть этот процесс в Redis-контейнере
+
+Проще всего не гадать по ключам заранее, а смотреть команды в реальном времени — сообщения в персональной очереди канала живут доли секунды (их тут же забирает заблокированный на чтение consumer), статичный снимок легко их не застанет.
+
+```bash
+docker exec -it redis redis-cli
+```
+
+```
+127.0.0.1:6379> MONITOR
+```
+
+Дальше открыть обе вкладки и понажимать «Выбрать квиз»/«Подтвердить готовность» — в выводе будет видно:
+
+- **на `connect()`/`group_add`** — запись в ZSET группы, что-то вроде `ZADD asgi:group:room_Xk3mQ9pLaZ7c <expiry_timestamp> <channel_name>` (`channels_redis` хранит членов группы как `ZSET`, где score — время истечения, а не просто множество — так реализуется `group_expiry` без отдельного cron'а);
+- **на `_notify_room()`/`group_send()`** — сначала чтение членов группы, затем запись сообщения в персональную очередь каждого найденного канала (тоже `ZSET` с TTL в `channels_redis` 4.x, не простой `LIST`+`BRPOP` — отсюда `bzpopmin`, о котором шла речь в связи с багом пина версии `redis`-клиента);
+- **пробуждение читающего consumer'а** — без отдельного pub/sub: `BZPOPMIN` уже блокирующе ждёт на ключе конкретного канала, и как только туда падает `ZADD`, Redis сам будит клиента.
+
+Статичный снимок (если группа уже существует — держится, пока открыт хотя бы один сокет комнаты):
+
+```
+127.0.0.1:6379> KEYS asgi:group:room_Xk3mQ9pLaZ7c
+1) "asgi:group:room_Xk3mQ9pLaZ7c"
+
+127.0.0.1:6379> ZRANGE asgi:group:room_Xk3mQ9pLaZ7c 0 -1 WITHSCORES
+1) "specific.abc123!def456..."
+2) "1756789012"
+3) "specific.xyz789!ghi012..."
+4) "1756789012"
+```
+
+Это и есть два зарегистрированных канала — по одному на вкладку `alek_fo` и `cat`; score — unix-timestamp истечения (`group_expiry`), не порядковый номер. Общий список ключей проекта: `KEYS asgi:*` (на dev это нормально; на проде вместо блокирующего `KEYS` — `SCAN 0 MATCH "asgi:*" COUNT 100`).
+
+**Оговорка**: точный формат ключей/структур — деталь реализации `channels_redis`, которая между версиями менялась (переход с `LIST`+`BRPOP` на `ZSET`+`BZPOPMIN` ради TTL на уровне сообщения, см. §12 и связанный баг с пином `redis==4.6.0`). `MONITOR` — самый надёжный способ увидеть, что реально шлёт именно установленная версия, не полагаясь на память об устройстве библиотеки.
 
 ---
 

@@ -50,12 +50,26 @@
     {% endif %}
     {% if is_host or is_player %}
         {% include "multiplayer/_room_status.html" %}
+    {% endif %}
+    {% if is_player %}
+        <form id="confirm-ready-form" method="post" action="{% url 'multiplayer:room_confirm_ready' code=object.token %}"{% if not object.current_quiz or my_room_player.is_ready %} hidden{% endif %}>
+            {% csrf_token %}
+            <button class="btn" type="submit">Подтвердить готовность</button>
+        </form>
+        <p id="ready-confirmed-msg"{% if not my_room_player.is_ready %} hidden{% endif %}>✅ Готовность подтверждена</p>
+    {% endif %}
+    {% if is_host or is_player %}
         <script>
             (function () {
                 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
                 const socket = new WebSocket(protocol + "://" + window.location.host + "/ws/multiplayer/rooms/{{ object.token }}/");
                 socket.onmessage = function (event) {
-                    document.getElementById("room-status").outerHTML = event.data;
+                    const data = JSON.parse(event.data);
+                    document.getElementById("room-status").outerHTML = data.html;
+                    const confirmForm = document.getElementById("confirm-ready-form");
+                    if (confirmForm) confirmForm.hidden = !data.can_confirm;
+                    const readyMsg = document.getElementById("ready-confirmed-msg");
+                    if (readyMsg) readyMsg.hidden = !data.is_ready;
                 };
             })();
         </script>
