@@ -3,6 +3,7 @@ import json
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
 from django.template.loader import render_to_string
+from django.urls import reverse
 
 from .models import Room
 from .views import _get_room_context
@@ -51,12 +52,23 @@ class RoomConsumer(WebsocketConsumer):
         только флаги видимости, JS переключает hidden на уже существующих
         DOM-элементах.
         """
-        user = self.scope["user"]
         room = Room.objects.prefetch_related("room_players__user", "game_sessions__quiz").filter(
             token=self.room_code
         ).first()
         if room is None:
             return
+
+        # Хост нажал "Начать игру" (room_start) — вместо статуса лобби
+        # шлём сигнал редиректа, ждать следующего тика поллинга не нужно,
+        # т.к. группа и так уже оповещается через _notify_room(room).
+        if room.status == "in_progress" and room.current_game_session_id:
+            self.send(text_data=json.dumps({
+                "type": "redirect",
+                "url": reverse("gameplay:play", kwargs={"pk": room.current_game_session_id}),
+            }))
+            return
+
+        user = self.scope["user"]
         context = _get_room_context({"object": room}, room, user)
         html = render_to_string("multiplayer/_room_status.html", context)
         my_room_player = context["my_room_player"]

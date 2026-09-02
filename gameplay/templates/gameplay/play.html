@@ -6,6 +6,9 @@
 
 {% block body %}
     <p>Вопрос № {{ current_question.order }}:</p>
+    <div id="waiting-info" hidden>
+        ВЫ УЖЕ ОТВЕТИЛИ, ЖДЕМ ОСТАЛЬНЫХ ИГРОКОВ!
+    </div>
     <div>
         {{ current_question.text }}
     </div>
@@ -22,7 +25,7 @@
         {% endfor %}
         <div>
             <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
-            <button type="submit">ОТВЕТИТЬ</button>
+            <button id="submit_button" type="submit">ОТВЕТИТЬ</button>
         </div>
     </form>
     <div id="timer">
@@ -34,8 +37,25 @@
         // time_limit_seconds - elapsed, отдано сюда уже готовым целым числом -
         // клиенту не нужно сверяться с часами сервера, только отсчитывать вниз
         let remaining = {{ remaining_seconds }};
+        const already_answered = {{ already_answered|yesno:"true,false" }};  // безопасное приведение к JS-булеву
+        const mode = "{{ mode }}"
         const timerEl = document.getElementById('timer');
+        const button = document.getElementById('submit_button');
+        const waitingInfo = document.getElementById('waiting-info');
 
+        // --- УПРАВЛЕНИЕ ВИДИМОСТЬЮ БЛОКА WAITING-INFO ---
+        function updateWaitingInfoVisibility() {
+            // Условие: уже ответил И режим multiplayer
+            const showWaiting = already_answered && mode === "multiplayer";
+            // hidden - это свойство элемента, true = скрыт, false = показан
+            waitingInfo.hidden = !showWaiting;  // если showWaiting=true, то hidden=false (показан)
+        }
+
+        // Вызываем сразу при загрузке
+        updateWaitingInfoVisibility();
+
+
+        // --- ТАЙМЕР
         // setInterval не крутит цикл сам - он просит браузер вызывать эту функцию
         // заново каждые 1000 мс (1000 миллисекунд = 1 секунда, задержка у
         // setInterval/setTimeout всегда в мс), пока не вызовется clearInterval
@@ -47,7 +67,12 @@
               // останавливаем именно этот таймер по его id (interval),
               // иначе браузер продолжит дёргать колбэк и после 0
               clearInterval(interval);
-              form.requestSubmit();
+              if (already_answered && mode === "multiplayer") {
+                button.disabled = true;
+              }
+              else {
+                form.requestSubmit();
+              }
             }
             timerEl.textContent = `Оставшееся время ${remaining} сек`;
         }, 1000);

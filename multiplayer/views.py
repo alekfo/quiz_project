@@ -1,3 +1,5 @@
+import logging
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.core.exceptions import PermissionDenied
@@ -15,7 +17,9 @@ from django.conf import settings
 
 from .models import Room, RoomPlayer
 from .forms import RoomQuizForm, RoomPlayerReadyForm
+from gameplay.models import GameSession, GameParticipant
 
+logger = logging.getLogger(__name__)
 
 def _generate_room_token():
     return get_random_string(12)
@@ -178,6 +182,19 @@ def room_set_quiz(request: HttpRequest, code: str):
 
 @login_required
 @require_POST
+def room_reset_quiz(request: HttpRequest, code: str):
+    room = get_object_or_404(Room.objects.prefetch_related("room_players"), token=code)
+    if room.host != request.user:
+        raise PermissionDenied
+    room.current_quiz = None
+    room.save(update_fields=["current_quiz"])
+    room.room_players.update(is_ready=False)
+    _notify_room(room)
+    messages.success(request, "Квиз сброшен. Можете выбрать другой")
+    return redirect("multiplayer:room_detail", code=code)
+
+@login_required
+@require_POST
 def room_confirm_ready(request, code):
     room_player = get_object_or_404(RoomPlayer, room__token=code, user=request.user)
     room_player.is_ready = True
@@ -201,3 +218,41 @@ def room_status(request: HttpRequest, code: str):
     }
     context = _get_room_context(context, room, request.user)
     return render(request, "multiplayer/_room_status.html", context=context)
+
+@login_required
+@require_POST
+def room_start(request: HttpRequest, code: str):
+    room = get_object_or_404(Room.objects.prefetch_related("room_players", "current_quiz__questions"), token=code)
+    user = request.user
+
+    if room.host != user:
+        raise PermissionDenied
+
+    if any([not player.is_ready for player in room.room_players.all()]):
+        messages.error(request, "Не все участники комнаты подтвердили готовность")
+        url = reverse("multiplayer:room_detail", kwargs={"code": code})
+        return redirect(url)
+
+    #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
+    try:
+        with transaction.atomic():
+            session = GameSession.objects.create(
+                quiz=room.current_quiz,
+                mode="multiplayer",
+                created_by=user,
+                current_question=room.current_quiz.questions.first()
+            )
+            for participant in room.room_players.all():
+                GameParticipant.objects.create(
+                    session=session,
+                    user=participant.user
+                )
+            room.current_game_session = session
+            room.status = "in_progress"
+            room.save(update_fields=["current_game_session", "status"])
+            _notify_room(room)
+            logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, room.current_quiz.pk, session.created_by.username)
+    except IntegrityError:
+        session = GameSession.objects.get(quiz=room.current_quiz, created_by=user, status="in_progress")
+    url = reverse("gameplay:play", kwargs={"pk": session.pk})
+    return redirect(url)

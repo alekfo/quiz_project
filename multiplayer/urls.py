@@ -10,6 +10,8 @@ urlpatterns = [
     path('rooms/<str:code>/join', views.room_join, name='room_join'),
     path('rooms/<str:code>/quit', views.RoomPlayerDeleteView.as_view(), name='room_quit'),
     path('rooms/<str:code>/set-quiz', views.room_set_quiz, name='room_set_quiz'),
+    path('rooms/<str:code>/reset-quiz', views.room_reset_quiz, name='room_reset_quiz'),
     path('rooms/<str:code>/ready', views.room_confirm_ready, name='room_confirm_ready'),
     path('rooms/<str:code>/status', views.room_status, name='room_status'),
+    path('/rooms/<str:code>/start', views.room_start, name='room_start'),
 ]

@@ -120,3 +120,7 @@ footer {
     display: flex;
     flex-direction: column;
 }
+
+.host-buttons {
+    display: flex;
+}

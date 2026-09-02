@@ -9,7 +9,8 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
-from django.db.models import F
+from django.db.models import F, Q
+from django.contrib.auth.decorators import login_required
 
 from .models import GameSession, GameParticipant, GameAnswer
 from quizzes.models import Quiz, Question, AnswerOption
@@ -103,6 +104,111 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
         sess.save()
     return sess
 
+
+def _check_and_advance_round(session_pk):
+    with transaction.atomic():
+        session = GameSession.objects.select_for_update().get(pk=session_pk)
+        current_question = session.current_question
+        if current_question is None:
+            return session
+
+        total = session.participants.count()
+        answered = GameAnswer.objects.filter(
+            participant__session=session,
+            question=current_question,
+        ).filter(
+            Q(answered_at__isnull=False) | Q(is_skipped=True)
+        ).count()
+
+        if answered < total:
+            return session
+
+        next_question = session.quiz.questions.filter(
+            order__gt=current_question.order
+        ).order_by("order").first()
+        session.current_question = next_question
+        session.save(update_fields=["current_question"])
+        return session
+
+def _play_solo(request: HttpRequest, session: GameSession, participant: GameParticipant):
+    """
+    Логика view-функции play для solo-режима
+    :param request:
+    :param session:
+    :param participant:
+    :return:
+    """
+
+    # получаем список вопросов данного квиза без ответов для данного GameParticipant
+    questions_without_answers = _get_questions_without_answer(participant, session)
+
+    if not questions_without_answers:
+        # считаем, что у данного GameParticipant все вопросы пройдены и сессия для него завершена, ставим время finished_at для данного participant
+        if not participant.finished_at:
+            participant.finished_at = timezone.now()
+            participant.save()
+
+        session.status = "completed"
+        session.save()
+
+        url = reverse("gameplay:result", kwargs={"pk": session.pk})
+        return redirect(url)
+
+    current_question = questions_without_answers[0]
+
+    current_answer, _ = GameAnswer.objects.get_or_create(
+        participant=participant,
+        question=current_question
+    )
+    elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
+    # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
+    # уйдёт в минус; на экране должно быть "0", а не отрицательное число
+    remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
+
+    context = {
+        "mode": "solo",
+        "current_question": current_question,
+        "current_answer": current_answer,
+        "current_session": session,
+        "remaining_seconds": remaining_seconds,
+    }
+
+    return render(request, "gameplay/play.html", context=context)
+
+def _play_multiplayer(request: HttpRequest, session: GameSession, participant: GameParticipant):
+
+    # проверяем для mode=multiplayer, завершена ли для всех сессия
+    if session.current_question == None:
+        # проверяем, завершена ли GameSession в целом для всех GameParticipant, т.к как нет текущего вопроса
+        session = _check_and_make_complete(session)
+        if session.status == "completed":
+            #считаем что сессия завершена у всех GameParticipant
+            pass
+
+    current_answer, _ = GameAnswer.objects.get_or_create(
+        participant=participant,
+        question=session.current_question
+    )
+
+    already_answered = True if current_answer and (current_answer.answered_at or current_answer.is_skipped) else False
+
+    elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
+    # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
+    # уйдёт в минус; на экране должно быть "0", а не отрицательное число
+    remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
+
+    context = {
+        "mode": "multiplayer",
+        "current_question": session.current_question,
+        "current_answer": current_answer,
+        "current_session": session,
+        "remaining_seconds": remaining_seconds,
+        "already_answered": already_answered,
+    }
+
+    return render(request, "gameplay/play.html", context=context)
+
+@login_required
 def start(request: HttpRequest, pk: int):
     quiz = get_object_or_404(
         Quiz.objects.annotate(questions_count=Count("questions")),
@@ -141,6 +247,7 @@ def start(request: HttpRequest, pk: int):
 
     return render(request, "gameplay/start.html", context=context)
 
+@login_required
 def play(request: HttpRequest, pk: int):
     if request.method == "POST":
         #достаем все необходимое из POST
@@ -162,6 +269,9 @@ def play(request: HttpRequest, pk: int):
             #если answer is correct - обновляем score
             if answer.is_correct:
                 participant = _update_total_score(session, request)
+
+            if session.mode == "multiplayer":
+                _check_and_advance_round(session.pk)
 
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
@@ -193,46 +303,11 @@ def play(request: HttpRequest, pk: int):
     if participant is None:
         raise PermissionDenied
 
-    #получаем список вопросов данного квиза без ответов для данного GameParticipant
-    questions_without_answers = _get_questions_without_answer(participant, session)
+    if session.mode == "multiplayer":
+        return _play_multiplayer(request, session, participant)
+    return _play_solo(request, session, participant)
 
-    if not questions_without_answers:
-        #считаем, что у данного GameParticipant все вопросы пройдены и сессия для него завершена, ставим время finished_at для данного participant
-        if not participant.finished_at:
-            participant.finished_at = timezone.now()
-            participant.save()
-
-        #проверяем для mode=multiplayer, завершена ли для всех сессия, а для mode=solo завершаем сессию
-        if session.mode == "multiplayer":
-            #проверяем, завершена ли GameSession в целом для всех GameParticipant если mode=multiplayer
-            session = _check_and_make_complete(session)
-        else:
-            session.status = "completed"
-            session.save()
-
-        url = reverse("gameplay:result", kwargs={"pk": session.pk})
-        return redirect(url)
-
-    current_question = questions_without_answers[0]
-
-    current_answer, _ = GameAnswer.objects.get_or_create(
-        participant=participant,
-        question=current_question
-    )
-    elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
-    # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
-    # уйдёт в минус; на экране должно быть "0", а не отрицательное число
-    remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
-
-    context = {
-        "current_question": current_question,
-        "current_answer": current_answer,
-        "current_session": session,
-        "remaining_seconds": remaining_seconds
-    }
-
-    return render(request, "gameplay/play.html", context=context)
-
+@login_required
 def result(request: HttpRequest, pk: int):
     session = get_object_or_404(
         GameSession.objects.select_related(
