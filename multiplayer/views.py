@@ -136,8 +136,9 @@ def room_join(request: HttpRequest, code: str):
 
     # если все окей - регистрируем пользователя в комнате как участника
     try:
-        RoomPlayer.objects.create(room=room, user=request.user)
-        _notify_room(room)
+        with transaction.atomic():
+            RoomPlayer.objects.create(room=room, user=request.user)
+            _notify_room(room)
     except IntegrityError:
         messages.error(request, "Вы уже участвуете в этой комнате")
     url = reverse("multiplayer:room_detail", kwargs={"code": code})
@@ -156,8 +157,9 @@ class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
     def form_valid(self, form):
         room = self.object.room
         success_url = self.get_success_url()
-        self.object.delete()
-        _notify_room(room)
+        with transaction.atomic():
+            self.object.delete()
+            _notify_room(room)
         return HttpResponseRedirect(success_url)
 
     def get_success_url(self):
@@ -172,9 +174,10 @@ def room_set_quiz(request: HttpRequest, code: str):
     form = RoomQuizForm(request.POST, instance=room, user=request.user)
 
     if form.is_valid():
-        form.save()
-        room.room_players.update(is_ready=False)
-        _notify_room(room)
+        with transaction.atomic():
+            form.save()
+            room.room_players.update(is_ready=False)
+            _notify_room(room)
         messages.success(request, "Квиз выбран, требуется подтверждение готовноти игроков")
     else:
         messages.error(request, "Не удалось выбрать квиз")
@@ -186,38 +189,24 @@ def room_reset_quiz(request: HttpRequest, code: str):
     room = get_object_or_404(Room.objects.prefetch_related("room_players"), token=code)
     if room.host != request.user:
         raise PermissionDenied
-    room.current_quiz = None
-    room.save(update_fields=["current_quiz"])
-    room.room_players.update(is_ready=False)
-    _notify_room(room)
+    with transaction.atomic():
+        room.current_quiz = None
+        room.save(update_fields=["current_quiz"])
+        room.room_players.update(is_ready=False)
+        _notify_room(room)
     messages.success(request, "Квиз сброшен. Можете выбрать другой")
     return redirect("multiplayer:room_detail", code=code)
 
 @login_required
 @require_POST
 def room_confirm_ready(request, code):
-    room_player = get_object_or_404(RoomPlayer, room__token=code, user=request.user)
-    room_player.is_ready = True
-    room_player.save(update_fields=["is_ready"])
-    _notify_room(room_player.room)
+    with transaction.atomic():
+        room_player = get_object_or_404(RoomPlayer, room__token=code, user=request.user)
+        room_player.is_ready = True
+        room_player.save(update_fields=["is_ready"])
+        _notify_room(room_player.room)
     messages.success(request, "Готовность подтверждена")
     return redirect("multiplayer:room_detail", code=code)
-
-@login_required
-def room_status(request: HttpRequest, code: str):
-    room = get_object_or_404(Room.objects.prefetch_related("room_players"), token=code)
-
-    #Если хостом была нажата кнопка "Начать", то при очередном пуллинге будет редирект на игру у каждого участника
-    if room.status == "in_progress" and room.current_game_session_id:
-        response = HttpResponse(status=204)  # тело не важно, HX-Redirect всё равно всё решает
-        response["HX-Redirect"] = reverse("gameplay:play", kwargs={"pk": room.current_game_session_id})
-        return response
-
-    context = {
-        "object": room,
-    }
-    context = _get_room_context(context, room, request.user)
-    return render(request, "multiplayer/_room_status.html", context=context)
 
 @login_required
 @require_POST
@@ -227,6 +216,16 @@ def room_start(request: HttpRequest, code: str):
 
     if room.host != user:
         raise PermissionDenied
+
+    if room.current_quiz is None:
+        messages.error(request, "Не выбран квиз")
+        url = reverse("multiplayer:room_detail", kwargs={"code": code})
+        return redirect(url)
+
+    if not room.room_players.exists():
+        messages.error(request, "Для начала игры необходим хотя бы один участник")
+        url = reverse("multiplayer:room_detail", kwargs={"code": code})
+        return redirect(url)
 
     if any([not player.is_ready for player in room.room_players.all()]):
         messages.error(request, "Не все участники комнаты подтвердили готовность")
@@ -240,7 +239,8 @@ def room_start(request: HttpRequest, code: str):
                 quiz=room.current_quiz,
                 mode="multiplayer",
                 created_by=user,
-                current_question=room.current_quiz.questions.first()
+                current_question=room.current_quiz.questions.first(),
+                room=room
             )
             for participant in room.room_players.all():
                 GameParticipant.objects.create(

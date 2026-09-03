@@ -43,12 +43,17 @@
         const button = document.getElementById('submit_button');
         const waitingInfo = document.getElementById('waiting-info');
 
-        // --- УПРАВЛЕНИЕ ВИДИМОСТЬЮ БЛОКА WAITING-INFO ---
+        // --- УПРАВЛЕНИЕ ВИДИМОСТЬЮ БЛОКА WAITING-INFO и кнопкой для ответа и радио---
         function updateWaitingInfoVisibility() {
             // Условие: уже ответил И режим multiplayer
             const showWaiting = already_answered && mode === "multiplayer";
             // hidden - это свойство элемента, true = скрыт, false = показан
             waitingInfo.hidden = !showWaiting;  // если showWaiting=true, то hidden=false (показан)
+            button.disabled = showWaiting;
+            const options = form.querySelectorAll('input[name="chosen_option_id"]');
+            options.forEach(input => {
+              input.disabled = showWaiting;
+            });
         }
 
         // Вызываем сразу при загрузке
@@ -67,10 +72,7 @@
               // останавливаем именно этот таймер по его id (interval),
               // иначе браузер продолжит дёргать колбэк и после 0
               clearInterval(interval);
-              if (already_answered && mode === "multiplayer") {
-                button.disabled = true;
-              }
-              else {
+              if (!(already_answered && mode === "multiplayer")) {
                 form.requestSubmit();
               }
             }

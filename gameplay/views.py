@@ -96,12 +96,16 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
     :param sess: сессия для проверки завершенности
     :return: возвращает сессию (либо с измененным status на completed ли бо такую же
     """
-    for participant in sess.participants.all():
-        if not participant.finished_at:
-            break
-    else:
+    if sess.current_question is None:
+        for participant in sess.participants.all():
+            if not participant.finished_at:
+                participant.finished_at = timezone.now()
+                participant.save()
         sess.status = "completed"
-        sess.save()
+        sess.save(update_fields=["status"])
+        if sess.room_id:
+            sess.room.status = "waiting"
+            sess.room.save(update_fields=["status"])
     return sess
 
 
@@ -183,7 +187,7 @@ def _play_multiplayer(request: HttpRequest, session: GameSession, participant: G
         session = _check_and_make_complete(session)
         if session.status == "completed":
             #считаем что сессия завершена у всех GameParticipant
-            pass
+            return  redirect("gameplay:result", pk=session.pk)
 
     current_answer, _ = GameAnswer.objects.get_or_create(
         participant=participant,
