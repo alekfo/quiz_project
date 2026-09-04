@@ -1,4 +1,4 @@
-{% extends 'quizzes/base.html' %}
+{% extends 'base.html' %}
 
 {% block title %}
    {{ page_title }}
@@ -12,7 +12,7 @@
             {{ form.as_p }}
 
             {{ question_formset.management_form }}
-            <div class="formset_errors">
+            <div class="formset-errors">
                 {{ question_formset.non_form_errors }}
             </div>
             <p>{{ page_for_questions }}:</p>

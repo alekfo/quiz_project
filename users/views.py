@@ -84,7 +84,7 @@ def confirm_email(request:HttpRequest):
     except (signing.BadSignature, Exception) as e:
         logger.warning("Invalid email confirmation token: %s ip=%s", e, ip)
         messages.error(request, 'Недействительная ссылка подтверждения.')
-    return redirect('ai_generator:index')
+    return redirect('quizzes:menu')
 
 class RateLimitedLoginView(auth_views.LoginView):
     """LoginView с защитой от перебора пароля: не более _LOGIN_RATE_LIMIT неудачных
@@ -137,15 +137,19 @@ def register(request: HttpRequest):
                 )
             except Exception as e:
                 logger.warning("Confirmation email failed for user=%s: %s", user.username, e)
-            return redirect('ai_generator:index')
+            return redirect('quizzes:menu')
     else:
         form = RegisterForm()
     return render(request, 'users/register.html', {'form': form})
 
-def privacy_policy(request):
+def privacy_policy(request: HttpRequest):
     """Страница политики конфиденциальности."""
     return render(request, 'users/privacy_policy.html')
 
-def public_offer(request):
+def public_offer(request: HttpRequest):
     """Страница договора публичной оферты."""
     return render(request, 'users/public_offer.html')
+
+def feedback(request: HttpRequest):
+    """Страница для обратной связи"""
+    return render(request, 'users/feedback.html')

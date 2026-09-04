@@ -1,0 +1,9 @@
+<div id="room-status">
+    <p>Квиз: {{ object.current_quiz.title|default:"ещё не выбран" }}</p>
+    <p>Участники:</p>
+    <div class="player-list">
+      {% for part in object.room_players.all %}
+          <span>{{ part.user.username }} — {% if part.is_ready %}✅ готов{% else %}❌ не готов{% endif %}</span>
+      {% endfor %}
+    </div>
+</div>

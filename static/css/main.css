@@ -1,3 +1,71 @@
+/* ===== 1. RESET / BASE ===== */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+}
+
+/* ===== 2. LAYOUT ===== */
+
+.container {
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+    background: lightblue;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container-header-messages {
+    display: flex;
+    flex-direction: column;
+}
+
+.header-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-auth-right-section {
+    display: flex;
+}
+
+.header-not-auth-right-section {
+    display: flex;
+}
+
+main {
+    flex: 1;
+}
+
+footer {
+    margin-top: 50px;
+}
+
+/* ===== 3. COMPONENTS ===== */
+
+.btn {
+    display: inline-block;
+    padding: 6px 14px;
+    line-height: 1.2;
+    background-color: #ffffff;
+    color: #1a1a1a;
+    text-decoration: none;
+    border: 1px solid #333;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;      /* иначе <button> унаследует системный шрифт, а <a> - шрифт страницы, будут визуально разными */
+}
+
+.btn:hover {
+    background-color: #f0f0f0;
+}
+
 .messages {
     margin: 30px;
 }
@@ -10,18 +78,57 @@
     background-color: green;
 }
 
-.formset_errors {
+.formset-errors {
     background-color: red;
 }
 
-.delete_link {
+/* ===== 4. QUIZZES ===== */
+
+.main-menu-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.delete-link {
     color: red;
 }
 
-.update_link {
+.update-link {
     color: yellow;
 }
 
 .question-form p:has(input[name$="-DELETE"]) {
     display: none;
+}
+
+.quiz-list {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ===== 5. GAMEPLAY ===== */
+.session-section {
+    display: flex;
+    justify-content: space-between;
+}
+
+.question-section {
+    display: flex;
+    flex-direction: column;
+}
+/* ===== 6. AI_GENERATOR ===== */
+
+/* ===== 7. MULTIPLAYER ===== */
+.room-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.player-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.host-buttons {
+    display: flex;
 }

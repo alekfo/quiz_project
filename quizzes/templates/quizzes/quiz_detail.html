@@ -1,4 +1,4 @@
-{% extends 'quizzes/base.html' %}
+{% extends 'base.html' %}
 
 {% block title %}
     Quizzes #{{ object.pk }} detail
@@ -30,10 +30,10 @@
             <li>Факт: {{ question.fact }}</li>
         {% endfor %}
     </ul>
-    <a class="update_link" href="{% url 'quizzes:quizzes_update' pk=object.pk%}">
+    <a class="update-link" href="{% url 'quizzes:quizzes_update' pk=object.pk%}">
         Обновить квиз
     </a>
-    <a class="delete_link" href="{% url 'quizzes:quizzes_delete' pk=object.pk%}">
+    <a class="delete-link" href="{% url 'quizzes:quizzes_delete' pk=object.pk%}">
         Удалить квиз
     </a>
     <a href="{% url 'quizzes:quizzes_list' %}">

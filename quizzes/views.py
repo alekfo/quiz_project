@@ -11,17 +11,18 @@ from django.contrib import messages
 
 from .models import Quiz, Question, AnswerOption
 from .forms import QuizForm, QuestionFormSet
+from multiplayer.models import Room, RoomPlayer
 
 logger = logging.getLogger(__name__)
 
 def menu(request: HttpRequest):
 
-    if request.method == "POST":
-        print(request.POST)
-
-    context = {
-        "something": "",
-    }
+    context = {}
+    if request.user.is_authenticated:
+        context["rooms"] = Room.objects.filter(
+            room_players__user=request.user,
+            status__in=["waiting", "in_progress"]
+        ).prefetch_related("room_players__user")
 
     return render(request, "quizzes/quizzes_menu.html", context=context)
 

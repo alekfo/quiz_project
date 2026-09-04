@@ -17,11 +17,13 @@ class GameSession(models.Model):
     ]
 
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name="game_sessions")
+    room = models.ForeignKey("multiplayer.Room", on_delete=models.SET_NULL, null=True, blank=True, default=None, related_name="game_sessions")
     mode = models.CharField(max_length=50, choices=MODE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_game_sessions")
+    current_question = models.ForeignKey(Question, on_delete=models.SET_NULL, null=True, default=None)
 
     #невозможно создать инстанс с сочитанием одинаковых "quiz", "created_by" при status="in_progress"
     class Meta:
