@@ -11,11 +11,26 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db.models import F, Q
 from django.contrib.auth.decorators import login_required
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 from .models import GameSession, GameParticipant, GameAnswer
 from quizzes.models import Quiz, Question, AnswerOption
+from multiplayer.views import _notify_room
 
 logger = logging.getLogger(__name__)
+
+def _notify_session(session: GameSession) -> None:
+    """
+    Сигнал "что-то в сессии изменилось" всем открытым WebSocket-соединениям
+    этой сессии — сам
+    HTML не передаём, каждый подключённый рендерит фрагмент под себя.
+    """
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"session_{session.pk}",
+        {"type": "session.update"},
+    )
 
 def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, request: HttpRequest) -> GameAnswer:
     """
@@ -41,11 +56,13 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
         raise PermissionDenied("На этот вопрос уже отвечали")
     if opt and opt.question_id != answ.question_id:
         raise PermissionDenied
-    answ.chosen_option = opt
-    answ.is_skipped = opt is None or timed_out
-    answ.is_correct = opt is not None and opt.is_correct and not timed_out
-    answ.answered_at = timezone.now()
-    answ.save()
+    with transaction.atomic():
+        answ.chosen_option = opt
+        answ.is_skipped = opt is None or timed_out
+        answ.is_correct = opt is not None and opt.is_correct and not timed_out
+        answ.answered_at = timezone.now()
+        answ.save()
+        transaction.on_commit(lambda: _notify_session(session))
     return answ
 
 def _update_total_score(sess: GameSession, req: HttpRequest) -> GameParticipant:
@@ -96,16 +113,38 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
     :param sess: сессия для проверки завершенности
     :return: возвращает сессию (либо с измененным status на completed ли бо такую же
     """
+    #если current_question is None считаем что сессия завершена
     if sess.current_question is None:
-        for participant in sess.participants.all():
-            if not participant.finished_at:
-                participant.finished_at = timezone.now()
-                participant.save()
-        sess.status = "completed"
-        sess.save(update_fields=["status"])
-        if sess.room_id:
-            sess.room.status = "waiting"
-            sess.room.save(update_fields=["status"])
+        with transaction.atomic():
+            #проставляем время завершения у всех участников сессии
+            for participant in sess.participants.all():
+                if not participant.finished_at:
+                    participant.finished_at = timezone.now()
+                    participant.save()
+            #меняем статус сессии на completed
+            sess.status = "completed"
+            sess.save(update_fields=["status"])
+            if sess.room_id:
+                #меняем статус комнаты с in_progress на waiting
+                #и сбрасываем current_quiz у комнаты
+                sess.room.status = "waiting"
+                sess.room.current_quiz = None
+                sess.room.save(update_fields=["status", "current_quiz"])
+
+                #переключаем готовность у всех членов комнаты
+                sess.room.room_players.update(is_ready=False)
+
+            # on_commit, а не прямой вызов: этот notify всё ещё внутри
+            # транзакции, а WS-консьюмер читает БД через отдельное
+            # соединение — без on_commit он может успеть выполнить свой
+            # запрос раньше, чем эта транзакция закоммитится, и увидеть
+            # старый status/current_question. С on_commit колбэк
+            # _notify_session откладывается и реально выполняется только
+            # после того, как транзакция под этим with transaction.atomic()
+            # (внешняя, если это вложенный вызов) успешно закоммитится —
+            # то есть уже по гарантированно свежим данным.
+            transaction.on_commit(lambda: _notify_session(sess))
+            transaction.on_commit(lambda: _notify_room(sess.room))
     return sess
 
 
@@ -126,12 +165,13 @@ def _check_and_advance_round(session_pk):
 
         if answered < total:
             return session
-
-        next_question = session.quiz.questions.filter(
-            order__gt=current_question.order
-        ).order_by("order").first()
-        session.current_question = next_question
-        session.save(update_fields=["current_question"])
+        with transaction.atomic():
+            next_question = session.quiz.questions.filter(
+                order__gt=current_question.order
+            ).order_by("order").first()
+            session.current_question = next_question
+            session.save(update_fields=["current_question"])
+            transaction.on_commit(lambda: _notify_session(session))
         return session
 
 def _play_solo(request: HttpRequest, session: GameSession, participant: GameParticipant):
@@ -194,7 +234,7 @@ def _play_multiplayer(request: HttpRequest, session: GameSession, participant: G
         question=session.current_question
     )
 
-    already_answered = True if current_answer and (current_answer.answered_at or current_answer.is_skipped) else False
+    already_answered = bool(current_answer and (current_answer.answered_at or current_answer.is_skipped))
 
     elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
     # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
@@ -283,14 +323,16 @@ def play(request: HttpRequest, pk: int):
     session = get_object_or_404(
         GameSession.objects.select_related(
             "quiz",
-            "created_by"
+            "created_by",
+            "room"
         ).prefetch_related(
             "participants",
             "participants__user",
             "quiz__questions",
             "quiz__questions__options",
             "participants__participants_answers__question",
-            "participants__participants_answers__chosen_option"
+            "participants__participants_answers__chosen_option",
+            "room__room_players"
         ),
         pk=pk)
 

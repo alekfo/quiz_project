@@ -138,7 +138,13 @@ def room_join(request: HttpRequest, code: str):
     try:
         with transaction.atomic():
             RoomPlayer.objects.create(room=room, user=request.user)
-            _notify_room(room)
+            # on_commit, а не прямой вызов: WS-консьюмер (RoomConsumer)
+            # читает Room из БД через отдельное соединение — без on_commit
+            # он может успеть выполнить запрос раньше, чем эта транзакция
+            # закоммитится, и не увидеть только что созданного RoomPlayer.
+            # С on_commit колбэк _notify_room откладывается и реально
+            # выполняется только после успешного коммита этой транзакции.
+            transaction.on_commit(lambda: _notify_room(room))
     except IntegrityError:
         messages.error(request, "Вы уже участвуете в этой комнате")
     url = reverse("multiplayer:room_detail", kwargs={"code": code})
@@ -159,7 +165,12 @@ class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
         success_url = self.get_success_url()
         with transaction.atomic():
             self.object.delete()
-            _notify_room(room)
+            # on_commit: без него WS-консьюмер может прочитать Room ещё до
+            # коммита и увидеть уже удалённого RoomPlayer как существующего
+            # (или не увидеть только что удалённого — в зависимости от
+            # таймингов); on_commit гарантирует, что _notify_room выполнится
+            # только после того, как удаление реально закоммитится.
+            transaction.on_commit(lambda: _notify_room(room))
         return HttpResponseRedirect(success_url)
 
     def get_success_url(self):
@@ -177,7 +188,11 @@ def room_set_quiz(request: HttpRequest, code: str):
         with transaction.atomic():
             form.save()
             room.room_players.update(is_ready=False)
-            _notify_room(room)
+            # on_commit: без него WS-консьюмер может прочитать Room раньше,
+            # чем эта транзакция закоммитится, и отдать подключённым старый
+            # current_quiz/is_ready. on_commit откладывает _notify_room до
+            # момента, когда изменения уже гарантированно видны из БД.
+            transaction.on_commit(lambda: _notify_room(room))
         messages.success(request, "Квиз выбран, требуется подтверждение готовноти игроков")
     else:
         messages.error(request, "Не удалось выбрать квиз")
@@ -193,7 +208,10 @@ def room_reset_quiz(request: HttpRequest, code: str):
         room.current_quiz = None
         room.save(update_fields=["current_quiz"])
         room.room_players.update(is_ready=False)
-        _notify_room(room)
+        # on_commit: та же причина, что и в room_set_quiz — без него
+        # WS-консьюмер может прочитать Room до коммита и отдать
+        # подключённым ещё не сброшенный current_quiz/is_ready.
+        transaction.on_commit(lambda: _notify_room(room))
     messages.success(request, "Квиз сброшен. Можете выбрать другой")
     return redirect("multiplayer:room_detail", code=code)
 
@@ -204,7 +222,10 @@ def room_confirm_ready(request, code):
         room_player = get_object_or_404(RoomPlayer, room__token=code, user=request.user)
         room_player.is_ready = True
         room_player.save(update_fields=["is_ready"])
-        _notify_room(room_player.room)
+        # on_commit: без него WS-консьюмер может прочитать Room раньше,
+        # чем эта транзакция закоммитится, и отдать подключённым ещё
+        # не подтверждённую готовность этого игрока.
+        transaction.on_commit(lambda: _notify_room(room_player.room))
     messages.success(request, "Готовность подтверждена")
     return redirect("multiplayer:room_detail", code=code)
 
@@ -250,7 +271,12 @@ def room_start(request: HttpRequest, code: str):
             room.current_game_session = session
             room.status = "in_progress"
             room.save(update_fields=["current_game_session", "status"])
-            _notify_room(room)
+            # on_commit: без него WS-консьюмер (и RoomConsumer.room_update,
+            # который именно по status=="in_progress"+current_game_session_id
+            # решает слать редирект в игру) может прочитать Room раньше,
+            # чем эта транзакция закоммитится, и не увидеть ни новый
+            # status, ни созданную GameSession/GameParticipant.
+            transaction.on_commit(lambda: _notify_room(room))
             logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, room.current_quiz.pk, session.created_by.username)
     except IntegrityError:
         session = GameSession.objects.get(quiz=room.current_quiz, created_by=user, status="in_progress")

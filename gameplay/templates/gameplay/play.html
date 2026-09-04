@@ -6,32 +6,54 @@
 
 {% block body %}
     <p>Вопрос № {{ current_question.order }}:</p>
-    <div id="waiting-info" hidden>
-        ВЫ УЖЕ ОТВЕТИЛИ, ЖДЕМ ОСТАЛЬНЫХ ИГРОКОВ!
-    </div>
-    <div>
-        {{ current_question.text }}
-    </div>
-    <form method="post" id="answer-form">
-        {%  csrf_token %}
-        {% for option in current_question.options.all %}
+    <div class="session-section">
+        <div class="question-section">
             <div>
-<!--                за счет того, что у всех options будет один name, html сам организует чтобы был из них выюран только один-->
-                <input type="radio" name="chosen_option_id" value="{{ option.pk }}" id="option_{{ option.pk }}">
-                <label for="option_{{ option.pk }}">
-                    {{ option.text }}
-                </label>
+                {{ current_question.text }}
             </div>
-        {% endfor %}
-        <div>
-            <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
-            <button id="submit_button" type="submit">ОТВЕТИТЬ</button>
+            <div>
+                <form method="post" id="answer-form">
+                    {%  csrf_token %}
+                    {% for option in current_question.options.all %}
+                        <div>
+            <!--                за счет того, что у всех options будет один name, html сам организует чтобы был из них выюран только один-->
+                            <input type="radio" name="chosen_option_id" value="{{ option.pk }}" id="option_{{ option.pk }}">
+                            <label for="option_{{ option.pk }}">
+                                {{ option.text }}
+                            </label>
+                        </div>
+                    {% endfor %}
+                    <div>
+                        <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
+                        <button id="submit_button" type="submit">ОТВЕТИТЬ</button>
+                    </div>
+                </form>
+            </div>
+            <div id="fact" hidden>
+                <p>Любопытный факт: {{ current_question.fact }}</p>
+            </div>
+            <div id="timer">
+                Оставшееся время {{remaining_seconds}} сек
+            </div>
         </div>
-    </form>
-    <div id="timer">
-        Оставшееся время {{remaining_seconds}} сек
+        {% include "gameplay/_players_status.html" %}
     </div>
+
     <script>
+        // WebSocket block
+        (function () {
+            const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+            const socket = new WebSocket(protocol + "://" + window.location.host + "/ws/gameplay/session/{{ current_session.pk }}/");
+            socket.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                if (data.type === "redirect") {
+                    window.location = data.url;
+                    return;
+                }
+                document.getElementById("waiting-info").outerHTML = data.html;
+            };
+        })();
+
         const form = document.getElementById('answer-form');
         // стартовое значение посчитано на сервере (views.py::play) через
         // time_limit_seconds - elapsed, отдано сюда уже готовым целым числом -
@@ -41,14 +63,13 @@
         const mode = "{{ mode }}"
         const timerEl = document.getElementById('timer');
         const button = document.getElementById('submit_button');
-        const waitingInfo = document.getElementById('waiting-info');
+        const fact = document.getElementById('fact');
 
-        // --- УПРАВЛЕНИЕ ВИДИМОСТЬЮ БЛОКА WAITING-INFO и кнопкой для ответа и радио---
-        function updateWaitingInfoVisibility() {
+        // --- УПРАВЛЕНИЕ активностью кнопки для ответа и радио---
+        function updateButtonsActivity() {
             // Условие: уже ответил И режим multiplayer
             const showWaiting = already_answered && mode === "multiplayer";
-            // hidden - это свойство элемента, true = скрыт, false = показан
-            waitingInfo.hidden = !showWaiting;  // если showWaiting=true, то hidden=false (показан)
+            fact.hidden = !showWaiting;
             button.disabled = showWaiting;
             const options = form.querySelectorAll('input[name="chosen_option_id"]');
             options.forEach(input => {
@@ -57,8 +78,7 @@
         }
 
         // Вызываем сразу при загрузке
-        updateWaitingInfoVisibility();
-
+        updateButtonsActivity();
 
         // --- ТАЙМЕР
         // setInterval не крутит цикл сам - он просит браузер вызывать эту функцию

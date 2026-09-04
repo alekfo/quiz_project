@@ -22,10 +22,11 @@ from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
 
 import multiplayer.routing
+import gameplay.routing
 
 application = ProtocolTypeRouter({
     'http': django_asgi_app,
     'websocket': AuthMiddlewareStack(
-        URLRouter(multiplayer.routing.websocket_urlpatterns)
+        URLRouter(multiplayer.routing.websocket_urlpatterns + gameplay.routing.websocket_urlpatterns)
     ),
 })
