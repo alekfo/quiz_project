@@ -37,16 +37,19 @@ CLAUDE_API_SERVICE_KEY = os.environ.get('SERVICE_API_KEY', '')
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'quizzes.apps.QuizzesConfig',
     'ai_generator.apps.AiGeneratorConfig',
     'users.apps.UsersConfig',
     'gameplay.apps.GameplayConfig',
+    'multiplayer.apps.MultiplayerConfig',
 
 ]
 
@@ -78,6 +81,16 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'quiz_project.wsgi.application'
+ASGI_APPLICATION = 'quiz_project.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [(os.environ.get('REDIS_HOST', 'localhost'), int(os.environ.get('REDIS_PORT', 6379)))],
+        },
+    },
+}
 
 
 # Database

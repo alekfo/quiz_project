@@ -6,36 +6,81 @@
 
 {% block body %}
     <p>Вопрос № {{ current_question.order }}:</p>
-    <div>
-        {{ current_question.text }}
-    </div>
-    <form method="post" id="answer-form">
-        {%  csrf_token %}
-        {% for option in current_question.options.all %}
+    <div class="session-section">
+        <div class="question-section">
             <div>
-<!--                за счет того, что у всех options будет один name, html сам организует чтобы был из них выюран только один-->
-                <input type="radio" name="chosen_option_id" value="{{ option.pk }}" id="option_{{ option.pk }}">
-                <label for="option_{{ option.pk }}">
-                    {{ option.text }}
-                </label>
+                {{ current_question.text }}
             </div>
-        {% endfor %}
-        <div>
-            <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
-            <button type="submit">ОТВЕТИТЬ</button>
+            <div>
+                <form method="post" id="answer-form">
+                    {%  csrf_token %}
+                    {% for option in current_question.options.all %}
+                        <div>
+            <!--                за счет того, что у всех options будет один name, html сам организует чтобы был из них выюран только один-->
+                            <input type="radio" name="chosen_option_id" value="{{ option.pk }}" id="option_{{ option.pk }}">
+                            <label for="option_{{ option.pk }}">
+                                {{ option.text }}
+                            </label>
+                        </div>
+                    {% endfor %}
+                    <div>
+                        <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
+                        <button id="submit_button" type="submit">ОТВЕТИТЬ</button>
+                    </div>
+                </form>
+            </div>
+            <div id="fact" hidden>
+                <p>Любопытный факт: {{ current_question.fact }}</p>
+            </div>
+            <div id="timer">
+                Оставшееся время {{remaining_seconds}} сек
+            </div>
         </div>
-    </form>
-    <div id="timer">
-        Оставшееся время {{remaining_seconds}} сек
+        {% include "gameplay/_players_status.html" %}
     </div>
+
     <script>
+        // WebSocket block
+        (function () {
+            const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+            const socket = new WebSocket(protocol + "://" + window.location.host + "/ws/gameplay/session/{{ current_session.pk }}/");
+            socket.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                if (data.type === "redirect") {
+                    window.location = data.url;
+                    return;
+                }
+                document.getElementById("waiting-info").outerHTML = data.html;
+            };
+        })();
+
         const form = document.getElementById('answer-form');
         // стартовое значение посчитано на сервере (views.py::play) через
         // time_limit_seconds - elapsed, отдано сюда уже готовым целым числом -
         // клиенту не нужно сверяться с часами сервера, только отсчитывать вниз
         let remaining = {{ remaining_seconds }};
+        const already_answered = {{ already_answered|yesno:"true,false" }};  // безопасное приведение к JS-булеву
+        const mode = "{{ mode }}"
         const timerEl = document.getElementById('timer');
+        const button = document.getElementById('submit_button');
+        const fact = document.getElementById('fact');
 
+        // --- УПРАВЛЕНИЕ активностью кнопки для ответа и радио---
+        function updateButtonsActivity() {
+            // Условие: уже ответил И режим multiplayer
+            const showWaiting = already_answered && mode === "multiplayer";
+            fact.hidden = !showWaiting;
+            button.disabled = showWaiting;
+            const options = form.querySelectorAll('input[name="chosen_option_id"]');
+            options.forEach(input => {
+              input.disabled = showWaiting;
+            });
+        }
+
+        // Вызываем сразу при загрузке
+        updateButtonsActivity();
+
+        // --- ТАЙМЕР
         // setInterval не крутит цикл сам - он просит браузер вызывать эту функцию
         // заново каждые 1000 мс (1000 миллисекунд = 1 секунда, задержка у
         // setInterval/setTimeout всегда в мс), пока не вызовется clearInterval
@@ -47,7 +92,9 @@
               // останавливаем именно этот таймер по его id (interval),
               // иначе браузер продолжит дёргать колбэк и после 0
               clearInterval(interval);
-              form.requestSubmit();
+              if (!(already_answered && mode === "multiplayer")) {
+                form.requestSubmit();
+              }
             }
             timerEl.textContent = `Оставшееся время ${remaining} сек`;
         }, 1000);

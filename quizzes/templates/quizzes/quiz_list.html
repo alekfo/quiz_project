@@ -7,22 +7,18 @@
 {% block body %}
     <h1>Вот твои квизы:</h1>
     <ul>
-        {% for quiz in object_list %}
-            <div>
+        <div class="quiz-list">
+            {% for quiz in object_list %}
                 <a href="{% url 'quizzes:quizzes_preview' pk=quiz.pk%}">
-                    #{{ quiz.pk }} {{ quiz.title }}
+                    {{ quiz.title }}
                 </a>
-            </div>
-        {% empty %}
-        <li>
-            У вас пока еще нет квизов:
-            <a href="{% url 'ai_generator:index' %}">попробуй c помощью AI</a>
-        </li>
-        {% endfor %}
-        <div>
-            <a href="{% url 'quizzes:quizzes_create' %}">Создать новый квиз вручную</a>
-            <a href="{% url 'ai_generator:index' %}">Создать новый квиз с помощью AI</a>
+            {% empty %}
+                У вас пока еще нет квизов: <a href="{% url 'ai_generator:index' %}">попробуй c помощью AI</a>
+            {% endfor %}
         </div>
     </ul>
-
+    <div class="quiz-list">
+        <a href="{% url 'quizzes:quizzes_create' %}">Создать новый квиз вручную</a>
+        <a href="{% url 'ai_generator:index' %}">Создать новый квиз с помощью AI</a>
+    </div>
 {% endblock %}

@@ -10,7 +10,7 @@
     <p><b>Описание: {{ object.description }}</b></p>
     <p><b>Тема: {{ object.subject }}</b></p>
     <p><b>Уровень сложности: {{ object.get_level_display }}</b></p>
-    <a class="update_link" href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
+    <a class="update-link" href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
         Детальная информация
     </a>
     <a class="play_link" href="{% url 'gameplay:start' pk=object.pk%}">

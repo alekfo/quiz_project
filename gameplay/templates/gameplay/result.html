@@ -24,8 +24,14 @@
                 {% endif %}
             {% endfor %}
         </ul>
+        <div>
+            {% if session.room %}
+              <a href="{% url 'multiplayer:room_detail' code=session.room.token %}">Вернуться в комнату</a>
+            {% endif %}
+        </div>
+    {% else %}
+        <div>
+            <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
+        </div>
     {% endif %}
-    <div>
-        <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
-    </div>
 {% endblock %}
