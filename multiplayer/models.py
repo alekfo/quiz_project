@@ -18,11 +18,14 @@ class Room(models.Model):
     # предположительно current_game_session будет меняться и указывать на активную сессию (или последнюю)
     current_game_session = models.ForeignKey(GameSession, null=True, blank=True, on_delete=models.SET_NULL, default=None, related_name="current_for_rooms")
 
+    current_series_run = models.ForeignKey('gameplay.SeriesRun', on_delete=models.SET_NULL, null=True, blank=True, related_name='current_for_rooms')
+
     title = models.CharField(max_length=100)
     token = models.CharField(max_length=32, unique=True)
     host = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="own_rooms")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='waiting')
     created_at = models.DateTimeField(auto_now_add=True)
+
 
     def __str__(self):
         return self.title

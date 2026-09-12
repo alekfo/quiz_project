@@ -9,7 +9,7 @@ from django.urls import reverse, reverse_lazy
 from django.db import transaction
 from django.contrib import messages
 
-from .models import Quiz, Question, AnswerOption
+from .models import Quiz, Question, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet
 from multiplayer.models import Room, RoomPlayer
 
@@ -27,22 +27,66 @@ def menu(request: HttpRequest):
     return render(request, "quizzes/quizzes_menu.html", context=context)
 
 class QuizDetailView(LoginRequiredMixin, DetailView):
-    queryset = Quiz.objects.select_related("user").prefetch_related("questions__options")
+    """
+    Детальная страница КВИЗА-СЕРИИ (QuizSeries), а не отдельного раунда (Quiz).
+    "rounds" - это related_name у Quiz.series, поэтому object.rounds.all() и даёт
+    список раундов текущей серии. prefetch_related подтягивает разом все раунды
+    вместе с их вопросами и вариантами ответов - без этого шаблон, перебирающий
+    раунды/вопросы, бил бы в БД по отдельному запросу на каждый уровень вложенности.
+    """
+    queryset = QuizSeries.objects.select_related("user").prefetch_related("rounds__questions__options")
+
+    def get_context_data(self, **kwargs):
+        """
+        len(...), а не .rounds.count() - count() всегда шлёт отдельный SQL-запрос,
+        а len() на уже вызванном .all() использует кэш, который заполнил prefetch_related
+        в queryset выше.
+        """
+        context = super().get_context_data(**kwargs)
+        context.setdefault("nums_of_rounds", len(self.object.rounds.all()))
+        return context
 
 class QuizPreviewView(LoginRequiredMixin, DetailView):
-    model = Quiz
+    """
+    Превью серии (QuizSeries) перед стартом игры - тоже про серию целиком, не про
+    один раунд, поэтому queryset и prefetch такие же, как в QuizDetailView.
+    """
     template_name = "quizzes/quiz_preview.html"
 
+    def get_queryset(self):
+        """
+        get_queryset(), а не queryset-атрибут класса - тут нужен self.request.user,
+        а он существует только на инстансе вьюхи (на уровне тела класса self не
+        определён). filter(user=...) - чтобы нельзя было открыть превью чужой серии
+        по подобранному pk.
+        """
+        return (
+            QuizSeries.objects
+            .prefetch_related("rounds__questions__options")
+            .filter(user=self.request.user)
+        )
+
 class QuizListView(LoginRequiredMixin, ListView):
+    """Список СВОИХ квизов-серий (QuizSeries), не отдельных раундов."""
 
     def get_queryset(self):
+        """По той же причине, что и в QuizPreviewView, - фильтр по владельцу
+        возможен только через метод, не через атрибут класса."""
         return (
-            Quiz.objects
-            .prefetch_related("questions__options")
+            QuizSeries.objects
+            .prefetch_related("rounds__questions__options")
             .filter(user=self.request.user)
         )
 
 class QuizCreateView(LoginRequiredMixin, CreateView):
+    """
+    Одна вьюха на два сценария - создаётся объект model=Quiz (раунд) в обоих
+    случаях, а разница в том, к какой QuizSeries он привязывается:
+      - URL 'quizzes_create' (без параметров)        -> создаём новую QuizSeries
+      - URL 'quizzes_create_for_series' (series_id)   -> раунд добавляется в неё
+    Само переключение живёт в self.kwargs.get("series_id") внутри forms_valid/
+    get_success_url - оба маршрута указывают на один и тот же класс (см. urls.py).
+    """
     model = Quiz
     form_class = QuizForm
 
@@ -56,6 +100,7 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
         context.setdefault("page_header", "Создай новый квиз")
         context.setdefault("page_for_questions", "Создайте вопросы")
         context.setdefault("submit_label", "Создать")
+        context.setdefault("question_formset", QuestionFormSet())
         return context
 
     def post(self, request, *args, **kwargs):
@@ -76,10 +121,27 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
         после успешной валидации обеих форм создаем все необходимые инстансы моделей для квиза,
         в question_formset.instance = self.object мы призваиваем каждому вопросу в pk наш уже сохраненный
         self.object = form.save() - объект класса Quiz
+
+        Логика series здесь же, а не в QuizForm - "series"/"round_order" нет
+        в QuizForm.Meta.fields (это не то, что пользователь заполняет руками),
+        поэтому оба поля проставляются на form.instance напрямую, как и type/user.
+        Если series_id пришёл в URL - раунд подсоединяется к чужой(нет, своей же,
+        .get(..., user=self.request.user) это и проверяет) уже существующей серии,
+        иначе - создаётся новая QuizSeries специально под этот квиз.
+        round_order = series.rounds.count() - минимальный способ пронумеровать
+        раунд следующим по порядку без отдельного поля-счётчика на QuizSeries.
         """
+        #получаем или создаем series
+        series_id = self.kwargs.get("series_id", None)
+        if series_id:
+            series = QuizSeries.objects.get(pk=series_id, user=self.request.user)
+        else:
+            series = QuizSeries.objects.create(title=form.cleaned_data["title"], user=self.request.user)
         #сохраняем Quiz
         form.instance.type = "by_user"
         form.instance.user = self.request.user
+        form.instance.series = series
+        form.instance.round_order = series.rounds.count()
         self.object = form.save()
 
         #ссохраняем все Question из question_formset
@@ -123,23 +185,60 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
 
     def get_success_url(self):
         """
-        при успешной валидации и создании всех необходимых инстансов модели,
-        перенаправляем в quizzes:quizzes_detail
+        если был прнят series_id = self.kwargs.get("series_id", None),
+        то отправляем на quizzes_details (потому что пришли мы сюда именно с quizzes_details,
+        если series_id=None подразумевается что мы только создали квиз поэтому идем на quizzes_preview
+
+        Важно: kwargs={"pk": self.object.series_id}, НЕ self.object.series -
+        квиз_details/preview ждут pk серии числом, а self.object.series - это уже
+        загруженный инстанс QuizSeries (reverse() не умеет привести его к int,
+        падает NoReverseMatch). series_id - attname FK-поля, уже готовое число,
+        без похода в БД.
         """
-        return reverse("quizzes:quizzes_preview", kwargs={"pk": self.object.pk})
+        series_id = self.kwargs.get("series_id", None)
+        if series_id:
+            messages.success(self.request, "Новый раунд успешно создан")
+            logger.info("Пользователь %s добавил раунд №%s в квиз №%s", self.object.user.username, self.object.pk, self.object.series)
+            return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.series_id})
+        else:
+            messages.success(self.request, "Новый квиз успешно создан")
+            logger.info("Пользователь %s сохранил серию №%s и квиз №%s в базу", self.object.user.username, self.object.series,
+                        self.object.pk)
+            return reverse("quizzes:quizzes_preview", kwargs={"pk": self.object.series_id})
 
 class QuizDeleteView(LoginRequiredMixin, DeleteView):
+    """
+    Удаляет ВСЮ серию (QuizSeries) целиком - и все её раунды вместе с ней,
+    т.к. Quiz.series стоит на on_delete=CASCADE. Не путать с RoundDeleteView
+    ниже, который удаляет один конкретный раунд, не трогая остальную серию.
+    """
+    model = QuizSeries
+    template_name = "quizzes/quiz_confirm_delete.html"
+
+class RoundDeleteView(LoginRequiredMixin, DeleteView):
+    """Удаляет один раунд (Quiz) внутри серии, сама QuizSeries и остальные её
+    раунды не затрагиваются."""
     model = Quiz
+    template_name = "quizzes/round_confirm_delete.html"
 
     def get_success_url(self):
         logger.info("Пользователь %s успешно удалил квиз №%s", self.request.user.username, self.object.pk)
         messages.success(self.request, "Квиз успешно удален")
         return reverse("quizzes:quizzes_list")
 
-class QuizUpdateView(LoginRequiredMixin, UpdateView):
+class RoundUpdateView(LoginRequiredMixin, UpdateView):
+    """Редактирование одного раунда (Quiz). series/round_order не входят
+    в QuizForm.Meta.fields, поэтому form.save() их не трогает - раунд остаётся
+    в той же серии и на той же позиции, меняется только его содержимое."""
     model = Quiz
     form_class = QuizForm
     template_name = "quizzes/quiz_form.html"
+
+    def get_queryset(self):
+        """Без этого self.get_object() искал бы Quiz по pk среди ВСЕХ пользователей -
+        чужой pk в URL позволил бы отредактировать чужой раунд (IDOR). filter(user=...)
+        сужает выборку до своих же, чужой pk даёт закономерный 404."""
+        return Quiz.objects.filter(user=self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -218,7 +317,9 @@ class QuizUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_success_url(self):
         """
-        при успешной валидации и создании всех необходимых инстансов модели,
-        перенаправляем в quizzes:quizzes_detail
+        Редиректим на страницу СЕРИИ (quizzes_details), а не самого раунда - у Quiz
+        нет своей детальной страницы, раунд просматривается только внутри серии.
+        self.object.series_id - готовое число (attname FK), а не self.object.series
+        (это инстанс QuizSeries, reverse() с ним падает - см. QuizCreateView.get_success_url).
         """
-        return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.pk})
+        return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.series_id})

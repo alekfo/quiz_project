@@ -19,6 +19,7 @@
         {# subject/level/audience/style/title - их тут заново не редактируют, поэтому #}
         {# не тащим их через hidden-инпуты по отдельности. #}
         <input type="hidden" name="generation_request_id" value="{{ gen_request.id }}">
+        <input type="hidden" name="series_id" value="{{ series_id }}">
 
         {# management_form - ОБЯЗАТЕЛЬНАЯ часть formset'а. Рендерит скрытые поля #}
         {# form-TOTAL_FORMS / form-INITIAL_FORMS / form-MIN_NUM_FORMS / form-MAX_NUM_FORMS. #}

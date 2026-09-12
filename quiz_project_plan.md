@@ -12,7 +12,7 @@
 | AI-генерация | Anthropic Claude API (claude-sonnet-4-5)                                                                                                                                |
 | Фронтенд | Django Templates + HTMX                                                                                                                                                 |
 | Деплой | Hetzner / DigitalOcean (Frankfurt)                                                                                                                                      |
-| Веб-сервер | Daphne (ASGI) + Nginx — решение зафиксировано (не Gunicorn, WSGI не умеет WebSocket), сам деплой ещё не выполнен, см. Этап 5                                            |
+| Веб-сервер | Daphne (ASGI) + Nginx — решение зафиксировано (не Gunicorn, WSGI не умеет WebSocket), сам деплой ещё не выполнен, см. Этап 6                                            |
 
 ---
 
@@ -57,14 +57,27 @@
 
 **Этап 3 (мультиплеер) считается завершённым в первой итерации** (2026-09-04, ветка `multiplayer_start` закрывается) — полный цикл лобби → игра (соло и совместное прохождение с live-обновлением) → результат → новый раунд работает end-to-end и проверен в браузере. Оставшиеся пункты выше (Celery-сторож, хост-не-игрок, доп. UI итоговой таблицы) — это backlog на следующую итерацию, не блокеры.
 
-### Этап 4 — Социальные функции (3-4 недели)
+### Этап 4 — Раунды (несколько раундов в рамках одного квиза, 1-2 недели)
+
+Ветка `rounds_creating` (ответвлена от `release` сразу после мержа мультиплеера). Полная архитектура, модели и пошаговый флоу — в разделе «Раунды» ниже (сразу после раздела «Мультиплеер»), сюда — только чек-лист статуса. **Сессия от 2026-09-12**: модели реализованы полностью, `quizzes`/`ai_generator` переведены на работу с сериями (CRUD раундов/серий) — подробности в CLAUDE.md. Сам флоу «сыграть серию раундов подряд» (solo/multiplayer) ещё не начат.
+
+- [x] Модель `QuizSeries` (`quizzes/`) — контейнер, объединяющий несколько уже существующих `Quiz` в упорядоченный набор раундов (`Quiz.series`/`Quiz.round_order`, оба nullable — обычные одиночные `Quiz` не затронуты). Реализовано 2026-09-12, миграция `0007_quiz_round_order_alter_quiz_status_quizseries_and_more.py`
+- [x] Модель `SeriesRun` (`gameplay/`) — одна попытка прохождения серии целиком, общая для solo и multiplayer (`GameSession.series_run`, nullable; `Room.current_series_run`, nullable). Реализовано 2026-09-12, миграции `gameplay/0007_seriesrun_gamesession_series_run.py`, `multiplayer/0004_room_current_series_run.py`. Сама модель есть, но её `current_round_index`/`status` пока нигде не читаются и не пишутся — orchestration-логика не начата (см. ниже)
+- [x] `quizzes/views.py` переведён на `QuizSeries` как единицу просмотра/списка/превью (`QuizDetailView`/`QuizPreviewView`/`QuizListView`) + CRUD отдельных раундов и серий: `QuizCreateView` (создание раунда — новой серии или в существующую по `series_id`), `QuizDeleteView` (удаление серии целиком, каскадом), `RoundDeleteView`/`RoundUpdateView` (один раунд). `ai_generator` получил аналогичный второй маршрут (`index_for_series`) для генерации раунда в существующую серию. Реализовано 2026-09-12, см. CLAUDE.md — там же список багов «pk vs instance», пойманных и закрытых по ходу
+- [ ] UI сборки серии — сейчас раунд присоединяется к серии только через прямую ссылку с `series_id` в URL (с `quiz_detail.html`/`ai_generator`); отдельного экрана «выбери несколько уже существующих своих раундов и задай им порядок» нет
+- [ ] Соло: `start()`/`result()` узнают про `series_run` — после раунда предлагают следующий вместо голого итога — не начато
+- [ ] Мультиплеер: `room_start`/`_check_and_make_complete` продвигают раунд через `Room.current_series_run` (с повторным гейтом готовности между раундами) вместо возврата комнаты в чистое ожидание — не начато
+- [ ] Агрегированный счёт по серии — через `Sum('score')` по `GameParticipant` с `session__series_run=run`, без отдельной модели участника серии — не начато
+- [x] `play()`/`_update_gameAnswer`/`GameSession`/`GameParticipant`/`GameAnswer`/WS-consumers (`RoomConsumer`/`GameSessionConsumer`) — не изменены, как и планировалось
+
+### Этап 5 — Социальные функции (3-4 недели)
 - [ ] Подписки между пользователями
 - [ ] Лента новых викторин от подписок
 - [ ] Лайки и комментарии
 - [ ] Челленджи — вызов друга на конкретную викторину
 - [ ] Уведомления
 
-### Этап 5 — Деплой на сервер
+### Этап 6 — Деплой на сервер
 
 *(намеренно после социальных функций и до монетизации — деплой имеет смысл делать один раз на более-менее устоявшемся продукте, а не на каждом этапе заново; конкретную дату/повод разворачивать раньше — по ситуации, если понадобится показать рабочую версию раньше)*
 
@@ -77,7 +90,7 @@
 - [ ] Celery worker (+ beat, если к этому моменту уже реализован сторож из Этапа 3) как отдельный процесс/systemd-сервис
 - [ ] Домен, SSL
 
-### Этап 6 — Монетизация
+### Этап 7 — Монетизация
 - [ ] Бесплатный лимит: 5 AI-генераций в месяц
 - [ ] Подписка: безлимит AI + приватные комнаты + статистика
 - [ ] Интеграция платёжной системы
@@ -169,9 +182,10 @@ quizapp/
 
 ### quizzes/
 - **Category** — название темы (история, наука, спорт, кино...)
-- **Quiz** — название, описание, автор, тип (`ai` / `by_user`), категория (FK, `on_delete=PROTECT`), публичная/приватная (`status`, default `private`), `time_limit_seconds` (лимит времени на вопрос в секундах, задаётся автором при создании квиза, единый для всех вопросов — решение зафиксировано в разделе «Соло прохождение»: игрок это значение не выбирает, чтобы в будущем мультиплеере у всех участников партии было одинаковое время)
+- **Quiz** — теперь это РАУНД (может как входить в `QuizSeries`, так и оставаться самостоятельным при `series=None` — старое поведение не сломано): название, описание, автор, тип (`ai` / `by_user`), категория (FK, `on_delete=PROTECT`), приватный/публичный раунд (`status`, default `private`, лейблы «Приватный/Публичный раунд» — переименованы в сессии от 2026-09-12, раньше «Приватная/Публичная викторина»), `time_limit_seconds` (лимит времени на вопрос в секундах, задаётся автором при создании квиза, единый для всех вопросов — решение зафиксировано в разделе «Соло прохождение»: игрок это значение не выбирает, чтобы в будущем мультиплеере у всех участников партии было одинаковое время). **Реализовано 2026-09-12**: `series` (FK `QuizSeries`, `null=True, blank=True, on_delete=CASCADE, related_name='rounds'`) и `round_order` (`PositiveIntegerField`, `default=0`, простая нумерация — `series.rounds.count()` в момент создания раунда, без отдельного счётчика на `QuizSeries`)
 - **Question** — текст вопроса, порядок (`order`), интересный факт (`fact`, генерируется AI вместе с вопросом — отклонение от исходного плана: изначально это поле числилось за `AnswerOption` как «объяснение ответа», но Claude возвращает факт на уровне вопроса целиком, а не привязанным к конкретному варианту ответа, поэтому поле перенесено на `Question`)
 - **AnswerOption** — варианты ответа, `is_correct`, `order`
+- **QuizSeries** *(реализовано 2026-09-12)* — контейнер, объединяющий несколько `Quiz` пользователя в упорядоченный набор раундов: `title`, `user` (FK, `on_delete=CASCADE`), `created_at`, `status` (`private`/`public`, default `private` — независимое поле от `Quiz.status`, оба уровня приватности решили не объединять). `Quiz`/`Question`/`AnswerOption` не менялись — раунд это `Quiz` с проставленным `series`. Уже зарегистрирована в админке (`QuizSeriesAdmin`, inline `QuizInline`)
 
 ### ai_generator/
 - **GenerationRequest** — параметры (тема, кол-во вопросов, категория, сложность, стиль, аудитория), статус задачи, результат (`JSONField`)
@@ -183,9 +197,11 @@ quizapp/
 - **`GameSession.room`** (FK `multiplayer.Room`, `null=True, blank=True, related_name="game_sessions"`) — объявлено ещё в сессии от 2026-08-20 для истории игр комнаты (`room.game_sessions.all()`), но реально **проставляется с 2026-09-03**: `room_start()` теперь передаёт `room=room` при создании `GameSession` (раньше поле молча оставалось `None` для всех мультиплеерных сессий). Именно это поле, а не `Room.current_game_session`/`current_for_rooms`, нужно использовать, чтобы найти комнату по завершённой сессии — `current_game_session` перезаписывается каждый новый раунд и для истории/обратной ссылки не годится (используется в `result.html` для ссылки «Вернуться в комнату»)
 - **Завершение мультиплеерной `GameSession` теперь возвращает `Room.status` обратно в `"waiting"`** (2026-09-03) — раньше `Room.status` навсегда оставался `"in_progress"` после первого же раунда, из-за чего `RoomConsumer.room_update()` (см. «WS» ниже — условие редиректа смотрит только на `status == "in_progress" and current_game_session_id`, не разбирая, какое событие пришло) ложно редиректил всех участников лобби обратно в уже завершённую игру на любое следующее действие в комнате (например, сброс квиза хостом). `_check_and_make_complete` (`gameplay/views.py`) при простановке `sess.status = "completed"` теперь заодно возвращает `sess.room.status = "waiting"` — `current_game_session` при этом не зануляется, он больше не единственное условие редиректа и продолжает служить истории
 - **С 2026-09-04 завершение мультиплеерной `GameSession` дополнительно сбрасывает саму комнату к «чистому» состоянию** — `_check_and_make_complete` заодно зануляет `sess.room.current_quiz` и одним bulk-запросом (`sess.room.room_players.update(is_ready=False)`) сбрасывает готовность всех `RoomPlayer` (та же логика, что уже делают `room_set_quiz`/`room_reset_quiz` при смене квиза хостом — здесь применена и к моменту завершения партии), после чего шлёт `_notify_room(sess.room)` (импортирован из `multiplayer.views`, обёрнут в тот же `transaction.on_commit`, что и `_notify_session`) — открытое лобби (`room_detail.html`) видит полный сброс сразу, без ручной перезагрузки
+- **`GameSession.series_run`** *(реализовано 2026-09-12)* — FK на `SeriesRun` (nullable); проставляется только когда `GameSession` — один из раундов серии, обычные одиночные сессии (`series_run=None`) не меняются. Пока никем не проставляется и не читается — модель есть, orchestration-код ещё не написан (см. раздел «Раунды» ниже)
+- **SeriesRun** *(реализовано 2026-09-12, модель есть — логика продвижения раунда ещё нет)* — «одна попытка пройти всю `QuizSeries`», общая модель для solo и multiplayer (`series` FK, `mode`/`status` — те же choices, что и у `GameSession`, вынесены в `gameplay/models.py` модульными константами `MODE_CHOICES`/`STATUS_CHOICES` и переиспользуются обеими моделями, `room` FK — только для multiplayer, `created_by`, `current_round_index`, `started_at`/`finished_at`). Отношение к `GameSession` то же по смыслу, что уже есть `Room` → `GameSession` (`current_game_session`), только на уровень выше: `SeriesRun` объединяет несколько последовательных `GameSession`, каждый — отдельный раунд. Подробности и полный флоу — раздел «Раунды» ниже
 
 ### multiplayer/ *(реализовано полностью на первую итерацию — `create`/`detail`/`list`/`join`/`quit`/`set-quiz`/`reset-quiz`/`confirm-ready`/`start` работают, лобби обновляется у всех участников живьём через WebSocket (`RoomConsumer`), см. CLAUDE.md, сессии от 2026-08-20/24/25, 2026-09-01/02/03/04)*
-- **Room** — `title`, уникальный токен-приглашение (`token`), хост (FK `User`, `on_delete=SET_NULL`), `current_quiz`/`current_game_session` (FK, оба `null=True, blank=True`, меняются от раунда к раунду — `Room` персистентна, не одноразова, см. сессию от 2026-08-20). `current_quiz` выбирается хостом через `RoomQuizForm`, ограниченную его собственными квизами (`queryset=Quiz.objects.filter(user=host)`, выставляется в `__init__` формы); смена квиза сбрасывает `is_ready` всех `RoomPlayer`. Статус (`waiting` / `in_progress` / `finished`), `created_at`. **Отклонение от исходного плана**: хост при создании комнаты не становится `RoomPlayer` автоматически (создание закомментировано в `RoomCreateView`) — осознанно, хост может быть как играющим, так и чистым модератором; на `RoomDetailView` это учтено — общий блок лобби (список участников/готовности) виден при `is_host or is_player`, не только `is_player`
+- **Room** — `title`, уникальный токен-приглашение (`token`), хост (FK `User`, `on_delete=SET_NULL`), `current_quiz`/`current_game_session` (FK, оба `null=True, blank=True`, меняются от раунда к раунду — `Room` персистентна, не одноразова, см. сессию от 2026-08-20). `current_quiz` выбирается хостом через `RoomQuizForm`, ограниченную его собственными квизами (`queryset=Quiz.objects.filter(user=host)`, выставляется в `__init__` формы); смена квиза сбрасывает `is_ready` всех `RoomPlayer`. Статус (`waiting` / `in_progress` / `finished`), `created_at`. **Отклонение от исходного плана**: хост при создании комнаты не становится `RoomPlayer` автоматически (создание закомментировано в `RoomCreateView`) — осознанно, хост может быть как играющим, так и чистым модератором; на `RoomDetailView` это учтено — общий блок лобби (список участников/готовности) виден при `is_host or is_player`, не только `is_player`. **Реализовано 2026-09-12**: `current_series_run` (FK на `SeriesRun`, `on_delete=SET_NULL`, nullable) — аналог `current_game_session`, но на уровень серии целиком; пока не используется ни в одной вьюхе/consumer'е, см. «Раунды» ниже
 - **RoomPlayer** — комната (FK `Room`, `related_name="room_players"`), пользователь (FK `User`), `is_ready` (bool, `default=False`, переключается через `room_confirm_ready` — **одностороннее** подтверждение, `False → True`, без обратного действия игроком; сбрасывается в `False` только сменой `current_quiz` хостом), `joined_at`. `UniqueConstraint(room, user)`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
 
 ### social/
@@ -267,6 +283,8 @@ quizapp/
         → redirect на итоговый экран
     → итоговый экран: счёт участника, для мультиплеера (Этап 3) — также остальные участники
 ```
+
+**Запланировано для Этапа 4**: если `GameSession.quiz` — часть `QuizSeries` (`quiz.series` не пусто, через `GameSession.series_run`), `result()` вместо голого итога предлагает следующий раунд серии. Сам этот флоу (`play()`, `_update_gameAnswer`, таймер) не меняется — подробности в разделе «Раунды» ниже.
 
 #### Координация по вопросам: URL-схема
 
@@ -389,6 +407,132 @@ quizapp/
 - Переход с поллинга на WS **не потребовал переделывать модели или бизнес-логику** — только добавление `_notify_room(room)`/`_notify_session(session)` в конце нужных вьюх и замену клиентского `hx-trigger="every 2s"`/тишины на `new WebSocket(...)` в шаблонах.
 - **Найден и исправлен баг «редирект в уже завершённую игру» (2026-09-03)**: условие в `room_update()` (`room.status == "in_progress" and room.current_game_session_id`) не различало, какое именно событие вызвало `_notify_room` — если после завершения партии `Room.status` не возвращался в `"waiting"` (баг сам по себе, тоже исправлен в этой сессии, см. `GameSession.room`/раздел моделей выше), то **любой** следующий пуш в группу комнаты (например, от `room_reset_quiz`) ошибочно трактовался как «хост нажал Начать» и редиректил всех обратно в уже завершённую игру. Исправление — на стороне `gameplay`, не `multiplayer`: раз причина устранена (`Room.status` теперь корректно возвращается в `waiting`), сама проверка в `room_update()` осталась прежней и снова работает верно.
 
+### Раунды (Этап 4)
+
+**Статус на 2026-09-12: модели реализованы полностью, CRUD серий/раундов через `quizzes`/`ai_generator` работает, сам флоу «сыграть серию раундов подряд» (solo/multiplayer, `SeriesRun.current_round_index`) ещё не начат.** Архитектура обсуждена и зафиксирована в разговоре с Claude на ветке `rounds_creating` (ответвлена от `release` сразу после мержа мультиплеера, `74a2d4d`) — ниже итоговое решение с пометками по факту реализации; подробный список правок и найденных по пути багов — в CLAUDE.md, сессия от 2026-09-12.
+
+**Задача**: квиз может состоять из нескольких раундов подряд (разные наборы вопросов, например «раунд про историю» → «раунд про кино»), которые проходятся один за другим — и в соло, и в комнате мультиплеера (там ещё и с гейтом готовности участников между раундами, как сейчас есть гейт готовности перед стартом).
+
+**Рассмотренные и отклонённые варианты**:
+- *Переименовать `Quiz` → `Round`, завести новый `Quiz` как контейнер раундов.* Концептуально самое чистое решение (в конечном счёте пользователь думает про «квиз» как про всю серию целиком, а не про один раунд), но `Quiz` — модель с максимальным blast radius в проекте: на неё держат FK `GameSession.quiz`, `Room.current_quiz`, её создают `ai_generator`/`quizzes/services.py`, вокруг неё все urls/views/templates `quizzes` и переменные `quiz`/`object` по шаблонам всех четырёх приложений. Переименование не сложно концептуально, но огромно по площади правки и рискованно (собьётся что-то по цепочке, как уже не раз бывало в проекте с массовыми правками, см. CLAUDE.md) — ради результата, который аддитивный вариант ниже даёт без этой цены.
+- *Считать раундом сам `Quiz` без изменений модели* (создавать вручную N похожих `Quiz` и связывать их за пределами модели). Отклонено — нет самой группировки как сущности, создателю квиза пришлось бы вручную отслеживать порядок и переходы между независимыми `Quiz`, ничем не связанными в БД.
+
+**Выбранный вариант — аддитивный, без переименования `Quiz`.** `Quiz` остаётся ровно тем, чем является сейчас («один играемый набор вопросов» — то, что сегодня целиком потребляет `GameSession`), сверху добавляются две новые модели-контейнера.
+
+#### Модели (реализовано 2026-09-12)
+
+```python
+# quizzes/models.py
+class QuizSeries(models.Model):
+    title = models.CharField(max_length=50)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='quiz_series')
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='private')  # 'Приватный квиз'/'Публичный квиз' - решили дублировать с Quiz.status, не общее поле
+
+class Quiz(models.Model):
+    ...  # остальные поля без изменений
+    series = models.ForeignKey(QuizSeries, on_delete=models.CASCADE, null=True, blank=True, related_name='rounds')
+    round_order = models.PositiveIntegerField(default=0)
+```
+
+```python
+# gameplay/models.py - MODE_CHOICES/STATUS_CHOICES вынесены модульными константами
+# (не GameSession.MODE_CHOICES, как в черновике плана) - используются и тут, и в GameSession
+class SeriesRun(models.Model):
+    series = models.ForeignKey('quizzes.QuizSeries', on_delete=models.CASCADE, related_name='runs')
+    mode = models.CharField(max_length=50, choices=MODE_CHOICES)
+    room = models.ForeignKey('multiplayer.Room', on_delete=models.SET_NULL, null=True, blank=True, related_name='series_runs')  # только для mode=multiplayer
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='series_runs')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
+    current_round_index = models.PositiveIntegerField(default=0)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True)
+
+class GameSession(models.Model):
+    ...  # без изменений
+    series_run = models.ForeignKey(SeriesRun, on_delete=models.CASCADE, null=True, blank=True, related_name='rounds')
+```
+
+```python
+# multiplayer/models.py
+class Room(models.Model):
+    ...  # без изменений
+    current_series_run = models.ForeignKey('gameplay.SeriesRun', on_delete=models.SET_NULL, null=True, blank=True, related_name='current_for_rooms')
+```
+
+Миграции: `quizzes/0007_quiz_round_order_alter_quiz_status_quizseries_and_more.py`, `gameplay/0007_seriesrun_gamesession_series_run.py`, `multiplayer/0004_room_current_series_run.py`.
+
+**Принципиально важное следствие этой схемы, подтверждено по факту реализации**: `GameSession`, `GameParticipant`, `GameAnswer`, `play()`, `_update_gameAnswer`, `_check_and_advance_round`, оба WS-consumer'а (`RoomConsumer`/`GameSessionConsumer`) — **не тронуты**. Раунд как был обычным quiz-scoped `GameSession`, так и остаётся; модели `SeriesRun`/`current_series_run` пока существуют только в БД — ни `current_round_index`, ни `status` нигде в коде ещё не читаются/не пишутся, вся «новая логика» ниже (до создания раунда / после завершения последнего) — следующий шаг, не сделано.
+
+#### Создание серии (реализовано 2026-09-12, не так, как в черновике плана ниже)
+
+Не тронуло `ai_generator`/`quizzes/services.py` содержательно — отдельный раунд создаётся тем же существующим флоу (AI-генерация или ручной `QuizForm`+`QuestionFormSet`), что и обычный `Quiz` раньше, оба места лишь научились принимать необязательный `series_id`. Но отдельного экрана «выбери несколько уже существующих раундов и задай им порядок» **не завели** (черновик ниже предполагал именно такой) — вместо этого раунд присоединяется к серии в момент создания: без `series_id` в URL (`quizzes:quizzes_create` / `ai_generator:index`) создаётся новая `QuizSeries` и первый раунд сразу в неё; с `series_id` (`quizzes:quizzes_create_for_series` / `ai_generator:index_for_series`, обе — вторая `path()` на тот же view с `<int:series_id>` в пути) раунд добавляется в указанную (свою же, `.get(pk=series_id, user=...)`) серию. `round_order = series.rounds.count()` — простая нумерация без отдельного счётчика на `QuizSeries`. UI «собрать серию из уже готовых раундов» (с явным выбором и сортировкой) остаётся нереализованным на будущее — так же как и предзаполнение категории/аудитории/стиля нового раунда из уже существующих раундов серии.
+
+#### Флоу — соло
+
+```
+Пользователь выбирает QuizSeries
+    → POST старт серии → создаётся SeriesRun(mode=solo, series=series, created_by=user)
+      + GameSession(series_run=run, quiz=series.rounds.first()) + GameParticipant — тот же код,
+      что уже делает обычный gameplay:start, просто quiz берётся из первого раунда серии
+    → play()/сохранение ответов — без изменений, обычный одиночный цикл текущего раунда
+    → result() видит session.series_run:
+        если в series.rounds по round_order есть следующий раунд — вместо "Итоги" кнопка
+          "Следующий раунд", создающая новый GameSession(series_run=run, quiz=<следующий раунд>)
+        если раундов больше нет — SeriesRun.status=completed, показывается суммарный экран
+          (Sum('score') по GameParticipant всех GameSession с этим series_run)
+```
+
+#### Флоу — мультиплеер
+
+```
+Хост выбирает QuizSeries вместо одиночного Quiz (Room.current_series, аналог current_quiz)
+room_start (как сейчас) → создаёт SeriesRun(mode=multiplayer, room=room)
+    + первый раунд — GameSession+GameParticipant на каждого RoomPlayer, тот же код, что и сейчас
+    → Room.current_series_run = run, Room.current_game_session = <GameSession раунда>, status=in_progress
+→ игра идёт как обычный мультиплеерный GameSession (общий current_question,
+  WS-группа session_<id> — без изменений)
+→ _check_and_make_complete при завершении раунда смотрит session.series_run:
+    если в серии остались раунды — вместо сброса Room в чистое "waiting" переводит комнату
+      в промежуточное состояние ожидания готовности к следующему раунду (переиспользует
+      is_ready/room_confirm_ready — тот же гейт, что уже есть между "выбрал квиз" и "начал"),
+      current_round_index += 1
+      → как только все снова готовы — создаётся GameSession следующего раунда
+        (тот же путь, что и в room_start)
+    если раундов не осталось — SeriesRun.status=completed, Room возвращается в чистое
+      ожидание (как сейчас) — итоговый экран строится по агрегированному счёту всего
+      series_run, а не по одному последнему GameSession
+```
+
+#### Эндпоинты (дополнение к таблице мультиплеера выше)
+
+Реализованный CRUD серий/раундов пошёл не по путям `/quizzes/series/...` из черновика ниже, а переиспользовал/расширил уже существующие маршруты `quizzes`/`ai_generator` (см. `quizzes/urls.py`, `ai_generator/urls.py`):
+
+| Метод | URL | Что делает | Статус |
+|---|---|---|---|
+| `GET` | `/quizzes/` | Список своих серий (`QuizListView`, теперь на `QuizSeries`) | готово |
+| `GET` | `/quizzes/<pk>/` | Детальный экран серии — раунды по порядку (`QuizDetailView` → `quizzes_details`, теперь на `QuizSeries`) | готово |
+| `GET` | `/quizzes/<pk>/preview` | Превью серии перед игрой (`QuizPreviewView` → `quizzes_preview`) | готово |
+| `GET`/`POST` | `/quizzes/create/` | Создаёт новый раунд + новую `QuizSeries` под него (`QuizCreateView` → `quizzes_create`) | готово |
+| `GET`/`POST` | `/quizzes/<series_id>/round/create/` | Создаёт раунд в уже существующей серии (`QuizCreateView` → `quizzes_create_for_series`) | готово |
+| `POST` | `/quizzes/<pk>/delete/` | Удаляет серию целиком, каскадом раунды (`QuizDeleteView` → `quiz_delete`, `model=QuizSeries`) | готово |
+| `GET`/`POST` | `/quizzes/round/<pk>/delete/` | Удаляет один раунд, серию не трогает (`RoundDeleteView` → `round_delete`) | готово |
+| `GET`/`POST` | `/quizzes/round/<pk>/update/` | Редактирует один раунд (`RoundUpdateView` → `round_update`) | готово |
+| `GET`/`POST` | `/ai_generator/` | Генерация нового раунда + новой серии (`index`) | готово |
+| `GET`/`POST` | `/ai_generator/series/<series_id>` | Генерация раунда в существующую серию (`index_for_series`) | готово |
+| `POST` | `/multiplayer/rooms/<code>/set-series` | Хост выбирает `QuizSeries` вместо одиночного `Quiz` (либо `set-quiz` расширяется на приём того и другого — решить при реализации) | не реализовано |
+| `POST` | `/gameplay/series/<series_id>/start/` | Соло-старт серии — создаёт `SeriesRun` + `GameSession` первого раунда | не реализовано |
+| — | (без нового урла) `gameplay:result` | Дополняется веткой "следующий раунд"/"итог серии", если у `session` есть `series_run` | не реализовано |
+
+WS-инфраструктура не меняется — `RoomConsumer`/`GameSessionConsumer` уже реагируют на изменения `Room`/`GameSession` в БД сигналом без HTML (см. «WS — реализовано» выше); продвижение раунда серии становится просто ещё одним местом, откуда вызывается уже существующий `_notify_room`/`_notify_session`, в `consumers.py` ничего нового не требуется.
+
+#### Открытые вопросы (решить по ходу реализации, не раньше)
+
+- Нужен ли отдельный повторный readiness-гейт между раундами в мультиплеере, или запускать следующий раунд сразу автоматически без повторного подтверждения всех игроков — в схеме выше заложен гейт (по аналогии с уже привычным UX выбора квиза), но это можно упростить, если по факту окажется избыточным.
+- ~~Публичность на уровне `QuizSeries` — дублировать поля с `Quiz` или нет~~ — решено 2026-09-12: `QuizSeries.status` — отдельное независимое поле (private/public), не переиспользует и не наследует `Quiz.status`.
+- Названия сущностей в UI ("квиз" vs "серия" vs "раунд") — не обязаны совпадать с именами моделей в БД; финальные подписи — по ходу вёрстки экранов.
+- UI «собрать серию из уже существующих раундов» (множественный выбор + сортировка) так и не спроектирован — текущая реализация привязывает раунд к серии только в момент его создания (см. «Создание серии» выше), явного экрана управления составом уже существующей серии нет.
+
 ### Социальный сценарий
 ```
 Лента новых викторин от подписок
@@ -406,6 +550,7 @@ quizapp/
 | Обычные страницы (список, профиль, лента) | Django sync views |
 | AI-генерация викторины | Сейчас: синхронно в view. Целевая архитектура: Celery + Redis (см. отклонение в «Сценарии использования») |
 | Мультиплеер реального времени | Лобби: Django Channels (WebSocket), реализовано, включая редирект в игру. Экран игры (`gameplay`, мультиплеерный `play()`): базовый цикл (общий вопрос, продвижение раунда) — обычные sync-view; live-обновление у ожидающих участников — свой WebSocket (`GameSessionConsumer`, группа `session_<id>`), реализовано 2026-09-04 |
+| Раунды серии (`QuizSeries`/`SeriesRun`, Этап 4, план) | Тот же путь, что и обычный `Quiz`/`GameSession` — продвижение раунда просто ещё один вызывающий код для уже существующих sync-view и `_notify_room`/`_notify_session`, новых типов запросов не появляется, см. «Раунды» |
 | Кэш повторных AI-запросов | Redis cache |
 
 ---

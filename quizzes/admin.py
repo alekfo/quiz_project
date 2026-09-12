@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Quiz, Question, AnswerOption, Category
+from .models import Quiz, Question, AnswerOption, Category, QuizSeries
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
@@ -14,6 +14,9 @@ class QuestionInline(admin.TabularInline):
 class AnswerInline(admin.TabularInline):
     model = AnswerOption
 
+class QuizInline(admin.TabularInline):
+    model = Quiz
+
 @admin.register(Quiz)
 class QuizAdmin(admin.ModelAdmin):
 
@@ -21,7 +24,7 @@ class QuizAdmin(admin.ModelAdmin):
         QuestionInline
     ]
 
-    list_display = "pk", "user", "title", "description", "type", "category", "subject", "level", "status", "created_at", "style"
+    list_display = "pk", "user", "series", "title", "description", "type", "category", "subject", "level", "status", "created_at", "style", "round_order"
     ordering = ("pk",)
 
     def get_queryset(self, request):
@@ -48,3 +51,12 @@ class AnswerOptionAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return  AnswerOption.objects.select_related("question")
+
+@admin.register(QuizSeries)
+class QuizSeriesAdmin(admin.ModelAdmin):
+    inlines = [
+        QuizInline
+    ]
+
+    list_display = "pk", "title", "user", "status"
+    ordering = ("pk",)

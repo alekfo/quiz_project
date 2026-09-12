@@ -5,7 +5,7 @@
 {% endblock %}
 
 {% block body %}
-    <h1>Давай попробуем составить викторину</h1>
+    <h1>Заполни поля для генерации квиза/раунда</h1>
     <form method="post" enctype="multipart/form-data">
         {%  csrf_token %}
         {{ form.as_p }}
