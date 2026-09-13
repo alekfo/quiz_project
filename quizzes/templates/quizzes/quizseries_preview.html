@@ -7,6 +7,7 @@
 {% block body %}
     <p><b>Номер квиза: {{ object.pk }}</b></p>
     <p><b>Название: {{ object.title }}</b></p>
+    <p><b>Количество раундов: {{ nums_of_rounds }}</b></p>
     <a class="update-link" href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
         Детальная информация
     </a>

@@ -10,7 +10,7 @@ from django.db import transaction
 from django.contrib import messages
 
 from .models import Quiz, Question, AnswerOption, QuizSeries
-from .forms import QuizForm, QuestionFormSet
+from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId
 from multiplayer.models import Room, RoomPlayer
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,12 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
     Превью серии (QuizSeries) перед стартом игры - тоже про серию целиком, не про
     один раунд, поэтому queryset и prefetch такие же, как в QuizDetailView.
     """
-    template_name = "quizzes/quiz_preview.html"
+    template_name = "quizzes/quizseries_preview.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.setdefault("nums_of_rounds", len(self.object.rounds.all()))
+        return context
 
     def get_queryset(self):
         """
@@ -88,7 +93,11 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
     get_success_url - оба маршрута указывают на один и тот же класс (см. urls.py).
     """
     model = Quiz
-    form_class = QuizForm
+
+    def get_form_class(self):
+        if self.kwargs.get("series_id"):
+            return QuizFormWithSeriesId
+        return QuizForm
 
     def get_context_data(self, **kwargs):
         """"тут переопределяем то, что пойдет в контекст шаблона по GET,
@@ -97,7 +106,7 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
         """
         context = super().get_context_data(**kwargs)
         context.setdefault("page_title", "Quiz Creating")
-        context.setdefault("page_header", "Создай новый квиз")
+        context.setdefault("page_header", "Создай новый квиз/раунд")
         context.setdefault("page_for_questions", "Создайте вопросы")
         context.setdefault("submit_label", "Создать")
         context.setdefault("question_formset", QuestionFormSet())
@@ -136,7 +145,13 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
         if series_id:
             series = QuizSeries.objects.get(pk=series_id, user=self.request.user)
         else:
-            series = QuizSeries.objects.create(title=form.cleaned_data["title"], user=self.request.user)
+            series = QuizSeries.objects.create(
+                title=form.cleaned_data["title"],
+                user=self.request.user,
+                category=form.cleaned_data["category"], # уже инстанс Category, не pk
+                description=form.cleaned_data["description"],
+                status=form.cleaned_data["status"],
+            )
         #сохраняем Quiz
         form.instance.type = "by_user"
         form.instance.user = self.request.user
@@ -215,6 +230,11 @@ class QuizDeleteView(LoginRequiredMixin, DeleteView):
     model = QuizSeries
     template_name = "quizzes/quiz_confirm_delete.html"
 
+    def get_success_url(self):
+        logger.info("Пользователь %s успешно удалил квиз №%s", self.request.user.username, self.object.pk)
+        messages.success(self.request, "Квиз успешно удален")
+        return reverse("quizzes:quizzes_list")
+
 class RoundDeleteView(LoginRequiredMixin, DeleteView):
     """Удаляет один раунд (Quiz) внутри серии, сама QuizSeries и остальные её
     раунды не затрагиваются."""
@@ -222,16 +242,16 @@ class RoundDeleteView(LoginRequiredMixin, DeleteView):
     template_name = "quizzes/round_confirm_delete.html"
 
     def get_success_url(self):
-        logger.info("Пользователь %s успешно удалил квиз №%s", self.request.user.username, self.object.pk)
-        messages.success(self.request, "Квиз успешно удален")
-        return reverse("quizzes:quizzes_list")
+        logger.info("Пользователь %s успешно удалил раунд №%s", self.request.user.username, self.object.pk)
+        messages.success(self.request, "Раунд успешно удален")
+        return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.series_id})
 
 class RoundUpdateView(LoginRequiredMixin, UpdateView):
     """Редактирование одного раунда (Quiz). series/round_order не входят
     в QuizForm.Meta.fields, поэтому form.save() их не трогает - раунд остаётся
     в той же серии и на той же позиции, меняется только его содержимое."""
     model = Quiz
-    form_class = QuizForm
+    form_class = QuizFormWithSeriesId
     template_name = "quizzes/quiz_form.html"
 
     def get_queryset(self):
@@ -259,7 +279,7 @@ class RoundUpdateView(LoginRequiredMixin, UpdateView):
 
         context.setdefault("question_formset", question_formset)
         context.setdefault("page_title", "Quiz Updating")
-        context.setdefault("page_header", "Обнови квиз")
+        context.setdefault("page_header", "Обнови раунд")
         context.setdefault("page_for_questions", "Обновите/Создайте вопросы")
         context.setdefault("submit_label", "Обновить")
         return context

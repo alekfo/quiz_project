@@ -24,11 +24,11 @@ class QuizAdmin(admin.ModelAdmin):
         QuestionInline
     ]
 
-    list_display = "pk", "user", "series", "title", "description", "type", "category", "subject", "level", "status", "created_at", "style", "round_order"
+    list_display = "pk", "user", "series", "type", "subject", "level", "created_at", "style", "audience", "time_limit_seconds",  "round_order"
     ordering = ("pk",)
 
     def get_queryset(self, request):
-        return  Quiz.objects.select_related("user", "category").prefetch_related("questions__options")
+        return  Quiz.objects.select_related("user", "series").prefetch_related("questions__options")
 
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
@@ -58,5 +58,13 @@ class QuizSeriesAdmin(admin.ModelAdmin):
         QuizInline
     ]
 
-    list_display = "pk", "title", "user", "status"
+    list_display = "pk", "title", "user", "description_short",  "category", "status"
     ordering = ("pk",)
+
+    def get_queryset(self, request):
+        return  QuizSeries.objects.select_related("user", "category").prefetch_related("rounds__questions__options")
+
+    def description_short(self, obj: QuizSeries) -> str:
+        if len(obj.description) < 30:
+            return obj.description
+        return obj.description[:30] + "..."

@@ -1,7 +1,7 @@
 import json
 import logging
+
 import requests
-from django.contrib.messages.api import success
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -10,9 +10,9 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
 from .models import GenerationRequest
-from .forms import GenerationRequestForm, QuestionFormSet
+from .forms import GenerationRequestFormWithSeries_id, GenerationRequestForm, QuestionFormSet
 from .prompts import generate_quiz_questions
-from quizzes.models import Category
+from quizzes.models import QuizSeries, Category
 from quizzes.services import create_quiz_from_any_data
 
 logger = logging.getLogger(__name__)
@@ -67,12 +67,28 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
     чтобы temp_ai_quiz.html положил его в hidden-поле и он долетел до save(),
     где уже и происходит реальная привязка к QuizSeries.
     """
+    if series_id:
+        form_class = GenerationRequestFormWithSeries_id
+    else:
+        form_class = GenerationRequestForm
     if request.method == "POST":
-        form = GenerationRequestForm(request.POST)
+        form = form_class(request.POST)
         if form.is_valid():
+            if series_id:
+                series = QuizSeries.objects.get(pk=series_id, user=request.user)
+                title = series.title
+                category = series.category_id
+                description = series.description
+                quiz_status = series.status
+            else:
+                title = form.cleaned_data.get("title", "")
+                category = form.cleaned_data.get("category", "")
+                description = form.cleaned_data.get("description", "")
+                quiz_status = form.cleaned_data.get("quiz_status", "private")
 
             instruction_data = {
-                "quiz_title": form.cleaned_data.get("title", ""),
+                "quiz_title": title,
+                "quiz_category": Category.objects.get(pk=category).title,
                 "quiz_subject": form.cleaned_data.get("subject", ""),
                 "quiz_questions": form.cleaned_data.get("questions"),
                 "quiz_level": form.cleaned_data.get("level", ""),
@@ -87,16 +103,19 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
                 return render(request, "ai_generator/ai_generator_index.html", {"form": form})
 
             gen_request = GenerationRequest.objects.create(
-                user = request.user,
-                title = instruction_data.get("quiz_title", ""),
-                subject = instruction_data.get("quiz_subject", ""),
-                category_id=form.cleaned_data['category'],
-                questions = instruction_data.get("quiz_questions", 0),
-                level = instruction_data.get("quiz_level", ""),
-                audience = instruction_data.get("quiz_audience", ""),
-                style = instruction_data.get("question_style", ""),
-                result = res,
-                status = "completed"
+                user=request.user,
+                title=title,
+                description=description,
+                subject=instruction_data.get("quiz_subject", ""),
+                category_id=category,
+                questions=instruction_data.get("quiz_questions", 0),
+                level=instruction_data.get("quiz_level", ""),
+                audience=instruction_data.get("quiz_audience", ""),
+                style=instruction_data.get("question_style", ""),
+                result=res,
+                time_limit_seconds=form.cleaned_data.get("time_limit_seconds", 50),
+                status="completed",
+                quiz_status=quiz_status
             )
             logger.info("Новый запрос к Claude API от пользователя %s "
                            "успешно прошел и добавлен в базу: GenerationRequest №%s", request.user.username, gen_request.pk)
@@ -118,9 +137,11 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
                 "series_id": series_id,
             }
             return render(request, "ai_generator/temp_ai_quiz.html", context=context)
+    else:
+        form = form_class()
 
     context = {
-        "form": GenerationRequestForm(),
+        "form": form,
     }
 
     return render(request, "ai_generator/ai_generator_index.html", context=context)

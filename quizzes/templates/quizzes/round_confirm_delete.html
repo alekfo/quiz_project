@@ -5,9 +5,9 @@
 {% endblock %}
 
 {% block body %}
-    <h1>Ты уверен, что хочешь удалить раунд № {{ object.pk }}?</h1>
+    <h1>Ты уверен, что хочешь удалить раунд № {{ object.round_order }}?</h1>
     <div>
-        <a href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
+        <a href="{% url 'quizzes:quizzes_details' pk=object.series_id %}">
             Вернуться обратно к квизу
         </a>
     </div>

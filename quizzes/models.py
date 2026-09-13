@@ -2,6 +2,13 @@ from django.db import models
 
 from django.conf import settings
 
+class Category(models.Model):
+    """Категория квиза (история, наука, спорт...) - плоский справочник, без иерархии."""
+    title = models.CharField(max_length=50)
+
+    def __str__(self):
+        return self.title
+
 class QuizSeries(models.Model):
     """
     Контейнер верхнего уровня - то, что пользователь в UI и называет "квиз":
@@ -16,18 +23,16 @@ class QuizSeries(models.Model):
     ]
     title = models.CharField(max_length=50)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='quiz_series')
+    description = models.CharField(max_length=255, blank=True)
+    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='quiz_series')
+
     created_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='private')
 
     def __str__(self):
         return self.title
 
-class Category(models.Model):
-    """Тема раунда (история, наука, спорт...) - плоский справочник, без иерархии."""
-    title = models.CharField(max_length=50)
 
-    def __str__(self):
-        return self.title
 
 class Quiz(models.Model):
     """
@@ -48,11 +53,6 @@ class Quiz(models.Model):
     TYPE_CHOICES = [
         ('ai', 'Сгенерировано AI'),
         ('by_user', 'Создано вручную'),
-    ]
-
-    STATUS_CHOICES = [
-        ('private', 'Приватный раунд'),
-        ('public', 'Публичный раунд'),
     ]
 
     LEVEL_CHOICES = [
@@ -76,13 +76,12 @@ class Quiz(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='quizzes')
     series = models.ForeignKey(QuizSeries, on_delete=models.CASCADE, null=True, blank=True, related_name='rounds')
-    title = models.CharField(max_length=50)
-    description = models.CharField(max_length=255, blank=True)
+
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='quizzes')
+
     subject = models.CharField(max_length=50)
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='private')
+
     created_at = models.DateTimeField(auto_now_add=True)
     style = models.CharField(max_length=20, choices=STYLE_CHOICES)
     audience = models.CharField(max_length=20, choices=AUDIENCE_CHOICES, default='common')
@@ -90,7 +89,7 @@ class Quiz(models.Model):
     round_order = models.PositiveIntegerField(default=0)
 
     def __str__(self):
-        return self.title
+        return self.subject
 
 class Question(models.Model):
     """Один вопрос внутри раунда (Quiz). fact - "любопытный факт", показывается

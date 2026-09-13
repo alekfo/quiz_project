@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List
 
 from django.db import transaction
 
@@ -24,19 +24,21 @@ def create_quiz_from_any_data(gen_request: GenerationRequest, questions_data: Li
     else:
         series = QuizSeries.objects.create(
             title=gen_request.title,
-            user=gen_request.user
+            user=gen_request.user,
+            category_id=gen_request.category_id,
+            description=gen_request.description,
+            status=gen_request.quiz_status
         )
 
     quiz = Quiz.objects.create(
         user=gen_request.user,
         series=series,
-        title=gen_request.title,
         type="ai",
-        category=gen_request.category,
         subject=gen_request.subject,
         level=gen_request.level,
         style=gen_request.style,
         audience=gen_request.audience,
+        time_limit_seconds=gen_request.time_limit_seconds,
         round_order=series.rounds.count()
     )
     for i_index, i_question in enumerate(questions_data):
