@@ -14,8 +14,8 @@ from django.contrib.auth.decorators import login_required
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from .models import GameSession, GameParticipant, GameAnswer
-from quizzes.models import Quiz, Question, AnswerOption
+from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
+from quizzes.models import Quiz, Question, AnswerOption, QuizSeries
 from multiplayer.views import _notify_room
 
 logger = logging.getLogger(__name__)
@@ -195,6 +195,16 @@ def _play_solo(request: HttpRequest, session: GameSession, participant: GamePart
         session.status = "completed"
         session.save()
 
+        #также проставляем session.series_run следующий current_round_index или None
+        next_current_round = session.series_run.current_round_index + 1
+        max_round_index = session.series_run.series.rounds.count()
+        if next_current_round < max_round_index:
+            session.series_run.current_round_index = next_current_round
+        else:
+            #считаем что это был последний раунд и присваиваем next_current_round значение None
+            session.series_run.current_round_index = None
+        session.series_run.save()
+
         url = reverse("gameplay:result", kwargs={"pk": session.pk})
         return redirect(url)
 
@@ -254,8 +264,11 @@ def _play_multiplayer(request: HttpRequest, session: GameSession, participant: G
 
 @login_required
 def start(request: HttpRequest, pk: int):
-    quiz = get_object_or_404(
-        Quiz.objects.annotate(questions_count=Count("questions")),
+    """
+    Стартовая вьюха для соло прохождения
+    """
+    series = get_object_or_404(
+        QuizSeries.objects.prefetch_related("rounds", "runs__game_sessions").annotate(rounds_count=Count("rounds")),
         pk=pk
     )
 
@@ -264,32 +277,85 @@ def start(request: HttpRequest, pk: int):
         #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
         try:
             with transaction.atomic():
-                session = GameSession.objects.create(
-                    quiz=quiz,
+                series_run = SeriesRun.objects.create(
+                    series=series,
                     mode="solo",
                     created_by=user
+                )
+                logger.info("Пользователем %s создана соло комната №%s для квиза №%s",series_run.created_by.username, series_run.pk, series.pk)
+        except IntegrityError:
+            series_run = SeriesRun.objects.get(series=series, created_by=user, status="in_progress")
+        url = reverse("gameplay:solo_room", kwargs={"pk": series_run.pk})
+        return redirect(url)
+
+    #если есть активный раунд (есть GameSession) - переходим в игру сразу
+    for run in series.runs.all():
+        for game_session in run.game_sessions.all():
+            if game_session.status == "in_progress":
+                url = reverse("gameplay:play", kwargs={"pk": game_session.pk})
+                return redirect(url)
+
+    #если активных раундов нет - проверяем, нет ли активной серии (solo_room), если есть - переходим туда
+    series_run_in_progress = SeriesRun.objects.filter(series=series, created_by=request.user, status="in_progress").first()
+    if series_run_in_progress:
+        url = reverse("gameplay:solo_room", kwargs={"pk": series_run_in_progress.pk})
+        return redirect(url)
+
+    #если это первый вход по данной серии данного пользователя:
+    context = {
+        "series": series,
+        "rounds_count": series.rounds_count
+    }
+
+    return render(request, "gameplay/start.html", context=context)
+
+@login_required
+def solo_room(request: HttpRequest, pk: int):
+    series_run = get_object_or_404(
+        SeriesRun.objects.select_related("series", "created_by").prefetch_related("series__rounds", "game_sessions__quiz"),
+        pk=pk
+    )
+
+    if request.method == "POST":
+        curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
+        user = request.user
+        # проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
+        try:
+            with transaction.atomic():
+                session = GameSession.objects.create(
+                    quiz=curr_quiz,
+                    mode="solo",
+                    created_by=user,
+                    series_run=series_run
                 )
                 participant = GameParticipant.objects.create(
                     session=session,
                     user=user
                 )
-                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, quiz.pk, session.created_by.username)
+                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, curr_quiz.pk,
+                            session.created_by.username)
         except IntegrityError:
-            session = GameSession.objects.get(quiz=quiz, created_by=user, status="in_progress")
+            session = GameSession.objects.get(quiz=curr_quiz, created_by=user, status="in_progress")
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
 
-    sessions_in_progress = GameSession.objects.filter(quiz=quiz, created_by=request.user, status="in_progress").first()
-    if sessions_in_progress:
-        url = reverse("gameplay:play", kwargs={"pk": sessions_in_progress.pk})
+    #проверяем, нет ли активной game_sessions
+    game_session_in_progress = next((g for g in series_run.game_sessions.all() if g.status == "in_progress"), None)
+    if game_session_in_progress:
+        url = reverse("gameplay:play", kwargs={"pk": game_session_in_progress.pk})
         return redirect(url)
 
+    current_round = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
+
+    completed_session = [game_session for game_session in series_run.game_sessions.all() if game_session.status == "completed"]
+
     context = {
-        "quiz": quiz,
-        "questions_count": quiz.questions_count
+        "series_run": series_run,
+        "current_round": current_round,
+        "completed_session": completed_session,
     }
 
-    return render(request, "gameplay/start.html", context=context)
+    return render(request, "gameplay/solo_room.html", context=context)
 
 @login_required
 def play(request: HttpRequest, pk: int):
@@ -324,7 +390,8 @@ def play(request: HttpRequest, pk: int):
         GameSession.objects.select_related(
             "quiz",
             "created_by",
-            "room"
+            "room",
+            "series_run"
         ).prefetch_related(
             "participants",
             "participants__user",
@@ -332,7 +399,8 @@ def play(request: HttpRequest, pk: int):
             "quiz__questions__options",
             "participants__participants_answers__question",
             "participants__participants_answers__chosen_option",
-            "room__room_players"
+            "room__room_players",
+            "series_run__series__rounds"
         ),
         pk=pk)
 

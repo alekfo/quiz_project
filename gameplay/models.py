@@ -20,9 +20,19 @@ class SeriesRun(models.Model):
     room = models.ForeignKey('multiplayer.Room', on_delete=models.SET_NULL, null=True, blank=True, related_name='series_runs')  # только для mode=multiplayer
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='series_runs')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
-    current_round_index = models.PositiveIntegerField(default=0)
+    current_round_index = models.PositiveIntegerField(null=True, blank=True, default=0)
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True)
+
+    # невозможно создать инстанс с сочитанием одинаковых "series", "created_by" при status="in_progress"
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["series", "created_by"],
+                condition=models.Q(status="in_progress"),
+                name="unique_in_progress_session_run_per_user_series",
+            )
+        ]
 
 class GameSession(models.Model):
 
@@ -34,7 +44,7 @@ class GameSession(models.Model):
     finished_at = models.DateTimeField(null=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_game_sessions")
     current_question = models.ForeignKey(Question, on_delete=models.SET_NULL, null=True, default=None)
-    series_run = models.ForeignKey(SeriesRun, on_delete=models.CASCADE, null=True, blank=True, related_name='rounds')
+    series_run = models.ForeignKey(SeriesRun, on_delete=models.CASCADE, null=True, blank=True, related_name='game_sessions')
 
     #невозможно создать инстанс с сочитанием одинаковых "quiz", "created_by" при status="in_progress"
     class Meta:

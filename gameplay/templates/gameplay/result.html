@@ -5,7 +5,7 @@
 {% endblock %}
 
 {% block body %}
-    <h1>Вы завершили игру №{{ session.pk }}</h1>
+    <h1>Вы завершили раунд №{{ session.pk }}</h1>
     <h1>Режим: {{ session.mode }}</h1>
     <p>Количество набранных очков: {{ curr_participant.score }}</p>
     {% if session.mode == "multiplayer" %}
@@ -31,7 +31,7 @@
         </div>
     {% else %}
         <div>
-            <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
+            <a href="{% url 'gameplay:solo_room' pk=session.series_run.pk %}">Вернуться в комнату</a>
         </div>
     {% endif %}
 {% endblock %}

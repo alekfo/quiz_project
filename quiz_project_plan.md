@@ -65,7 +65,7 @@
 - [x] Модель `SeriesRun` (`gameplay/`) — одна попытка прохождения серии целиком, общая для solo и multiplayer (`GameSession.series_run`, nullable; `Room.current_series_run`, nullable). Реализовано 2026-09-12, миграции `gameplay/0007_seriesrun_gamesession_series_run.py`, `multiplayer/0004_room_current_series_run.py`. Сама модель есть, но её `current_round_index`/`status` пока нигде не читаются и не пишутся — orchestration-логика не начата (см. ниже)
 - [x] `quizzes/views.py` переведён на `QuizSeries` как единицу просмотра/списка/превью (`QuizDetailView`/`QuizPreviewView`/`QuizListView`) + CRUD отдельных раундов и серий: `QuizCreateView` (создание раунда — новой серии или в существующую по `series_id`), `QuizDeleteView` (удаление серии целиком, каскадом), `RoundDeleteView`/`RoundUpdateView` (один раунд). `ai_generator` получил аналогичный второй маршрут (`index_for_series`) для генерации раунда в существующую серию. Реализовано 2026-09-12, см. CLAUDE.md — там же список багов «pk vs instance», пойманных и закрытых по ходу
 - [ ] UI сборки серии — сейчас раунд присоединяется к серии только через прямую ссылку с `series_id` в URL (с `quiz_detail.html`/`ai_generator`); отдельного экрана «выбери несколько уже существующих своих раундов и задай им порядок» нет
-- [ ] Соло: `start()`/`result()` узнают про `series_run` — после раунда предлагают следующий вместо голого итога — не начато
+- [~] **Соло — начато 2026-09-13** (`gameplay/views.py::start`/`solo_room`/`_play_solo`, см. раздел «Флоу — соло» ниже и CLAUDE.md/CLAUDE_HISTORY.md): `start(pk)` создаёт `SeriesRun` и ведёт на промежуточный экран `solo_room(pk)` (список завершённых раундов + кнопка "начать следующий", сама создаёт `GameSession` текущего раунда по `current_round_index`); `_play_solo` при завершении раунда продвигает `series_run.current_round_index`/выставляет `None` на последнем раунде. **Не готово**: `result()` пока не знает про `series_run` — нет кнопки "следующий раунд"/сводного итога серии прямо с итогового экрана, переход только через `solo_room`; само продвижение `current_round_index` прогнано только вручную в shell, живым end-to-end прохождением ещё не подтверждено (см. TODO.md)
 - [ ] Мультиплеер: `room_start`/`_check_and_make_complete` продвигают раунд через `Room.current_series_run` (с повторным гейтом готовности между раундами) вместо возврата комнаты в чистое ожидание — не начато
 - [ ] Агрегированный счёт по серии — через `Sum('score')` по `GameParticipant` с `session__series_run=run`, без отдельной модели участника серии — не начато
 - [x] `play()`/`_update_gameAnswer`/`GameSession`/`GameParticipant`/`GameAnswer`/WS-consumers (`RoomConsumer`/`GameSessionConsumer`) — не изменены, как и планировалось
@@ -468,20 +468,31 @@ class Room(models.Model):
 
 Не тронуло `ai_generator`/`quizzes/services.py` содержательно — отдельный раунд создаётся тем же существующим флоу (AI-генерация или ручной `QuizForm`+`QuestionFormSet`), что и обычный `Quiz` раньше, оба места лишь научились принимать необязательный `series_id`. Но отдельного экрана «выбери несколько уже существующих раундов и задай им порядок» **не завели** (черновик ниже предполагал именно такой) — вместо этого раунд присоединяется к серии в момент создания: без `series_id` в URL (`quizzes:quizzes_create` / `ai_generator:index`) создаётся новая `QuizSeries` и первый раунд сразу в неё; с `series_id` (`quizzes:quizzes_create_for_series` / `ai_generator:index_for_series`, обе — вторая `path()` на тот же view с `<int:series_id>` в пути) раунд добавляется в указанную (свою же, `.get(pk=series_id, user=...)`) серию. `round_order = series.rounds.count()` — простая нумерация без отдельного счётчика на `QuizSeries`. UI «собрать серию из уже готовых раундов» (с явным выбором и сортировкой) остаётся нереализованным на будущее — так же как и предзаполнение категории/аудитории/стиля нового раунда из уже существующих раундов серии.
 
-#### Флоу — соло
+#### Флоу — соло (начато 2026-09-13, не так, как в черновике плана ниже — см. пометки)
 
 ```
 Пользователь выбирает QuizSeries
-    → POST старт серии → создаётся SeriesRun(mode=solo, series=series, created_by=user)
-      + GameSession(series_run=run, quiz=series.rounds.first()) + GameParticipant — тот же код,
-      что уже делает обычный gameplay:start, просто quiz берётся из первого раунда серии
+    → POST на gameplay:start (pk серии, URL исторически /gameplay/quiz/<pk>/start/) →
+      создаётся SeriesRun(mode=solo, series=series, created_by=user)
+      (та же защита от гонки, что уже была у GameSession — UniqueConstraint
+      unique_in_progress_session_run_per_user_series + try/except IntegrityError)
+    → redirect на gameplay:solo_room (pk SeriesRun) — ОТДЕЛЬНЫЙ промежуточный экран
+      между раундами (в черновике ниже не планировался): список уже завершённых
+      раундов серии + кнопка "начать следующий раунд"
+    → POST solo_room находит текущий раунд (series_run.series.rounds.filter(
+      round_order=series_run.current_round_index).first()) → создаёт
+      GameSession(series_run=run, quiz=curr_quiz) + GameParticipant → redirect на play/
     → play()/сохранение ответов — без изменений, обычный одиночный цикл текущего раунда
-    → result() видит session.series_run:
-        если в series.rounds по round_order есть следующий раунд — вместо "Итоги" кнопка
-          "Следующий раунд", создающая новый GameSession(series_run=run, quiz=<следующий раунд>)
-        если раундов больше нет — SeriesRun.status=completed, показывается суммарный экран
-          (Sum('score') по GameParticipant всех GameSession с этим series_run)
+    → _play_solo при завершении раунда (вопросов не осталось) продвигает
+      session.series_run.current_round_index на 1 (если в серии есть следующий раунд)
+      либо выставляет None (если это был последний) — сразу после session.status=completed,
+      И РЕДИРЕКТИТ НА result() ОБЫЧНОГО ОДНОГО РАУНДА, не на solo_room и не на сводный экран
+    → result() ПОКА НЕ ЗНАЕТ про series_run — кнопки "следующий раунд"/сводного итога
+      серии там нет; чтобы перейти к следующему раунду, пользователь возвращается
+      на solo_room вручную (по прямой ссылке/навигации) — не реализовано автоматически
 ```
+
+**Статус на 2026-09-13**: код есть и прогнан один раз, но продвижение `current_round_index` в `_play_solo` не подтверждено сквозным браузерным тестом (см. TODO.md/CLAUDE_HISTORY.md) — раунд стоит перепройти заново прежде чем считать этот кусок надёжным. Ветка «`result()` дополняется кнопкой "следующий раунд"/сводным итогом» из черновика ниже — по-прежнему не реализована, это следующий шаг.
 
 #### Флоу — мультиплеер
 
@@ -521,8 +532,9 @@ room_start (как сейчас) → создаёт SeriesRun(mode=multiplayer, 
 | `GET`/`POST` | `/ai_generator/` | Генерация нового раунда + новой серии (`index`) | готово |
 | `GET`/`POST` | `/ai_generator/series/<series_id>` | Генерация раунда в существующую серию (`index_for_series`) | готово |
 | `POST` | `/multiplayer/rooms/<code>/set-series` | Хост выбирает `QuizSeries` вместо одиночного `Quiz` (либо `set-quiz` расширяется на приём того и другого — решить при реализации) | не реализовано |
-| `POST` | `/gameplay/series/<series_id>/start/` | Соло-старт серии — создаёт `SeriesRun` + `GameSession` первого раунда | не реализовано |
-| — | (без нового урла) `gameplay:result` | Дополняется веткой "следующий раунд"/"итог серии", если у `session` есть `series_run` | не реализовано |
+| `GET`/`POST` | `/gameplay/quiz/<pk>/start/` | Соло-старт серии (`pk` — `QuizSeries`, URL исторический) — создаёт `SeriesRun`, редиректит на `solo_room` (`gameplay:start`) | готово (2026-09-13), не подтверждено сквозным тестом |
+| `GET`/`POST` | `/gameplay/quiz/<pk>/solo_room/` | Промежуточный экран между раундами серии (`pk` — `SeriesRun`) — список завершённых раундов + запуск `GameSession` текущего раунда по `current_round_index` (`gameplay:solo_room`) | готово (2026-09-13), не подтверждено сквозным тестом |
+| — | (без нового урла) `gameplay:result` | Дополняется веткой "следующий раунд"/"итог серии", если у `session` есть `series_run` | не реализовано — переход к следующему раунду пока только через `solo_room` вручную |
 
 WS-инфраструктура не меняется — `RoomConsumer`/`GameSessionConsumer` уже реагируют на изменения `Room`/`GameSession` в БД сигналом без HTML (см. «WS — реализовано» выше); продвижение раунда серии становится просто ещё одним местом, откуда вызывается уже существующий `_notify_room`/`_notify_session`, в `consumers.py` ничего нового не требуется.
 

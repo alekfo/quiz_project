@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    SOLO ROOM
+{% endblock %}
+
+{% block body %}
+    <h1>{{ series_run.series.title }}</h1>
+    <p>Завершенные раунды:</p>
+    {% for session in completed_session %}
+        <a href="{% url 'gameplay:result' pk=session.pk%}">
+        {{ session.quiz.subject }}
+    </a>
+    {% empty %}
+        <p>Еще нет завершенных раундов</p>
+    {%endfor%}
+    <form method="post">
+        {%  csrf_token %}
+        <p>Следующий раунд: {{ current_round.subject }}</p>
+        <div>
+            <button type="submit">НАЧАТЬ СЛЕДУЮЩИЙ РАУНД</button>
+        </div>
+    </form>
+{% endblock %}
