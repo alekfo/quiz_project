@@ -148,7 +148,30 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
     return sess
 
 
-def _check_and_advance_round(session_pk):
+def _advance_series_run(series_run: SeriesRun, completed_round_order: int) -> SeriesRun:
+    """
+    продвигает раунд в SeriesRun в соло
+    """
+    with transaction.atomic():
+        #__gt — это field lookup Django ORM ("greater than"), транслируется в WHERE order > значение на уровне SQL. В _check_and_advance_round:
+        #Логика: "найди среди вопросов те, у которых order строго больше текущего, отсортируй по возрастанию, возьми первый" — то есть ближайший следующий по значению, а не по позиции в списке.
+        next_round = series_run.series.rounds.filter(
+            round_order__gt=completed_round_order
+        ).order_by("round_order").first()
+
+        if next_round:
+            series_run.current_round_index = next_round.round_order
+        else:
+            series_run.current_round_index = None
+            series_run.status = "completed"
+
+        series_run.save(update_fields=["current_round_index", "status"])
+        return series_run
+
+def _check_and_advance_question(session_pk):
+    """"
+    продвигает вопрос в рамках раунда в мультплеере
+    """
     with transaction.atomic():
         session = GameSession.objects.select_for_update().get(pk=session_pk)
         current_question = session.current_question
@@ -196,14 +219,7 @@ def _play_solo(request: HttpRequest, session: GameSession, participant: GamePart
         session.save()
 
         #также проставляем session.series_run следующий current_round_index или None
-        next_current_round = session.series_run.current_round_index + 1
-        max_round_index = session.series_run.series.rounds.count()
-        if next_current_round < max_round_index:
-            session.series_run.current_round_index = next_current_round
-        else:
-            #считаем что это был последний раунд и присваиваем next_current_round значение None
-            session.series_run.current_round_index = None
-        session.series_run.save()
+        series_run = _advance_series_run(session.series_run, completed_round_order=session.quiz.round_order)
 
         url = reverse("gameplay:result", kwargs={"pk": session.pk})
         return redirect(url)
@@ -276,11 +292,14 @@ def start(request: HttpRequest, pk: int):
         user = request.user
         #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
         try:
+            #для заполнения current_round_index определяем какой индекс первого раунда реально щас у series (при удаении первого раунда в серии (с индеком 0) первый раунд может стать с индексом не 0
+            first_round = series.rounds.order_by('round_order').first()
             with transaction.atomic():
                 series_run = SeriesRun.objects.create(
                     series=series,
                     mode="solo",
-                    created_by=user
+                    created_by=user,
+                    current_round_index=first_round.round_order if first_round else None
                 )
                 logger.info("Пользователем %s создана соло комната №%s для квиза №%s",series_run.created_by.username, series_run.pk, series.pk)
         except IntegrityError:
@@ -289,11 +308,10 @@ def start(request: HttpRequest, pk: int):
         return redirect(url)
 
     #если есть активный раунд (есть GameSession) - переходим в игру сразу
-    for run in series.runs.all():
-        for game_session in run.game_sessions.all():
-            if game_session.status == "in_progress":
-                url = reverse("gameplay:play", kwargs={"pk": game_session.pk})
-                return redirect(url)
+    game_session_in_progress = GameSession.objects.filter(series_run__series=series, created_by=request.user, status="in_progress").first()
+    if game_session_in_progress:
+        url = reverse("gameplay:play", kwargs={"pk": game_session_in_progress.pk})
+        return redirect(url)
 
     #если активных раундов нет - проверяем, нет ли активной серии (solo_room), если есть - переходим туда
     series_run_in_progress = SeriesRun.objects.filter(series=series, created_by=request.user, status="in_progress").first()
@@ -312,11 +330,15 @@ def start(request: HttpRequest, pk: int):
 @login_required
 def solo_room(request: HttpRequest, pk: int):
     series_run = get_object_or_404(
-        SeriesRun.objects.select_related("series", "created_by").prefetch_related("series__rounds", "game_sessions__quiz"),
+        SeriesRun.objects.select_related("series", "created_by").prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants"),
         pk=pk
     )
+    if series_run.created_by_id != request.user.id:
+        raise PermissionDenied
 
     if request.method == "POST":
+        if series_run.status == "completed":
+            raise PermissionDenied
         curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
         user = request.user
         # проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
@@ -347,12 +369,17 @@ def solo_room(request: HttpRequest, pk: int):
 
     current_round = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
 
-    completed_session = [game_session for game_session in series_run.game_sessions.all() if game_session.status == "completed"]
+    completed_sessions = [game_session for game_session in series_run.game_sessions.all() if game_session.status == "completed"]
+
+    #определяем общее количество очков по всем раундам этого series_run
+    total_score = sum([sess.participants.all()[0].score for sess in completed_sessions])
 
     context = {
         "series_run": series_run,
         "current_round": current_round,
-        "completed_session": completed_session,
+        "completed_session": completed_sessions,
+        "is_completed": series_run.status == "completed",
+        "total_score": total_score
     }
 
     return render(request, "gameplay/solo_room.html", context=context)
@@ -381,7 +408,7 @@ def play(request: HttpRequest, pk: int):
                 participant = _update_total_score(session, request)
 
             if session.mode == "multiplayer":
-                _check_and_advance_round(session.pk)
+                _check_and_advance_question(session.pk)
 
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)

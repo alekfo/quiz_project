@@ -126,6 +126,17 @@ footer {
     display: flex;
     flex-direction: column;
 }
+
+.solo-room-main {
+    display: flex;
+    flex-direction: column;
+}
+
+.solo-room-completed-rounds {
+    display: flex;
+    flex-direction: column;
+}
+
 /* ===== 6. AI_GENERATOR ===== */
 
 /* ===== 7. MULTIPLAYER ===== */
