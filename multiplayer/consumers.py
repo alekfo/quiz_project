@@ -52,9 +52,11 @@ class RoomConsumer(WebsocketConsumer):
         только флаги видимости, JS переключает hidden на уже существующих
         DOM-элементах.
         """
-        room = Room.objects.prefetch_related("room_players__user", "game_sessions__quiz").filter(
-            token=self.room_code
-        ).first()
+        room = (Room.objects
+                .select_related("current_series_run", "current_series")
+                .prefetch_related("room_players__user", "game_sessions__quiz", "current_series_run__game_sessions__participants__user", "current_series_run__series__rounds")
+                .filter(token=self.room_code)
+                .first())
         if room is None:
             return
 
@@ -75,7 +77,10 @@ class RoomConsumer(WebsocketConsumer):
         is_ready = bool(my_room_player and my_room_player.is_ready)
         payload = {
             "html": html,
-            "can_confirm": bool(room.current_quiz_id) and my_room_player is not None and not is_ready,
-            "is_ready": is_ready,
+            "can_confirm": bool(room.current_series_id) and my_room_player is not None and not is_ready,
+            "is_ready": bool(my_room_player and my_room_player.is_ready),
+            "can_start_round": context["can_start_round"],
+            "has_selected_series": context["has_selected_series"],
+            "is_first_round": context["is_first_round"],
         }
         self.send(text_data=json.dumps(payload))

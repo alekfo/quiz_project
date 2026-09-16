@@ -1,0 +1,31 @@
+<div class="solo-room-main">
+    <div>
+        <h1>{{ series_run.series.title }}</h1>
+    </div>
+    <div>
+        <p>Завершенные раунды:</p>
+        <div class="solo-room-completed-rounds">
+            {% for session in completed_sessions %}
+                <a href="{% url 'gameplay:result' pk=session.pk%}">
+                    {{ session.quiz.subject }}
+                </a>
+            {% empty %}
+                <p>Еще нет завершенных раундов</p>
+            {%endfor%}
+        </div>
+    </div>
+    <div>
+        {% if is_completed %}
+            <p>Квиз завершен. Результаты:</p>
+            {% for user, total_score in leaderboard %}
+                {% if series_run.mode == "solo" %}
+                    <p>Вы набрали {{ total_score }} очков по всем {{ series_run.series.rounds.count }} раундам</p>
+                {% else %}
+                    <p>{{ user.username }} набрал {{ total_score }} очков по всем {{ series_run.series.rounds.count }} раундам</p>
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            <p>Следующий раунд: {{ current_round.subject }}</p>
+        {% endif %}
+    </div>
+</div>

@@ -66,7 +66,7 @@
 - [x] `quizzes/views.py` переведён на `QuizSeries` как единицу просмотра/списка/превью (`QuizDetailView`/`QuizPreviewView`/`QuizListView`) + CRUD отдельных раундов и серий: `QuizCreateView` (создание раунда — новой серии или в существующую по `series_id`), `QuizDeleteView` (удаление серии целиком, каскадом), `RoundDeleteView`/`RoundUpdateView` (один раунд). `ai_generator` получил аналогичный второй маршрут (`index_for_series`) для генерации раунда в существующую серию. Реализовано 2026-09-12, см. CLAUDE.md — там же список багов «pk vs instance», пойманных и закрытых по ходу
 - [ ] UI сборки серии — сейчас раунд присоединяется к серии только через прямую ссылку с `series_id` в URL (с `quiz_detail.html`/`ai_generator`); отдельного экрана «выбери несколько уже существующих своих раундов и задай им порядок» нет
 - [~] **Соло — начато 2026-09-13** (`gameplay/views.py::start`/`solo_room`/`_play_solo`, см. раздел «Флоу — соло» ниже и CLAUDE.md/CLAUDE_HISTORY.md): `start(pk)` создаёт `SeriesRun` и ведёт на промежуточный экран `solo_room(pk)` (список завершённых раундов + кнопка "начать следующий", сама создаёт `GameSession` текущего раунда по `current_round_index`); `_play_solo` при завершении раунда продвигает `series_run.current_round_index`/выставляет `None` на последнем раунде. **Не готово**: `result()` пока не знает про `series_run` — нет кнопки "следующий раунд"/сводного итога серии прямо с итогового экрана, переход только через `solo_room`; само продвижение `current_round_index` прогнано только вручную в shell, живым end-to-end прохождением ещё не подтверждено (см. TODO.md)
-- [ ] Мультиплеер: `room_start`/`_check_and_make_complete` продвигают раунд через `Room.current_series_run` (с повторным гейтом готовности между раундами) вместо возврата комнаты в чистое ожидание — не начато
+- [x] **Мультиплеер — начато и доведено до рабочего состояния 2026-09-15/16** (ветка `rounds_creating`, план `temp_plan_multiplayer.md`, пользователь писал код сам, Claude — ревью каждого захода): `room_start`/`_check_and_make_complete` продвигают раунд через `Room.current_series_run`, с повторным гейтом готовности между раундами (`is_ready` сбрасывается при завершении раунда, требует нового подтверждения перед следующим). Подробности механики и цепочка закрытых по ходу ревью блокеров (обращение к удалённому `current_quiz`, `.update()` на инстансах моделей вместо `.save()`, `current_round`, вычисляемый раньше создания `SeriesRun`, `KeyError` на `is_first_round` в консьюмере и др.) — в `CLAUDE.md` (раздел "Текущее состояние") и `CLAUDE_HISTORY.md`. **Живого сквозного теста в браузере ещё не было** — см. `TODO.md`.
 - [ ] Агрегированный счёт по серии — через `Sum('score')` по `GameParticipant` с `session__series_run=run`, без отдельной модели участника серии — не начато
 - [x] `play()`/`_update_gameAnswer`/`GameSession`/`GameParticipant`/`GameAnswer`/WS-consumers (`RoomConsumer`/`GameSessionConsumer`) — не изменены, как и планировалось
 
@@ -494,26 +494,48 @@ class Room(models.Model):
 
 **Статус на 2026-09-13**: код есть и прогнан один раз, но продвижение `current_round_index` в `_play_solo` не подтверждено сквозным браузерным тестом (см. TODO.md/CLAUDE_HISTORY.md) — раунд стоит перепройти заново прежде чем считать этот кусок надёжным. Ветка «`result()` дополняется кнопкой "следующий раунд"/сводным итогом» из черновика ниже — по-прежнему не реализована, это следующий шаг.
 
-#### Флоу — мультиплеер
+#### Флоу — мультиплеер (реализовано 2026-09-15/16, не так, как в черновике ниже — см. пометки)
 
 ```
-Хост выбирает QuizSeries вместо одиночного Quiz (Room.current_series, аналог current_quiz)
-room_start (как сейчас) → создаёт SeriesRun(mode=multiplayer, room=room)
-    + первый раунд — GameSession+GameParticipant на каждого RoomPlayer, тот же код, что и сейчас
-    → Room.current_series_run = run, Room.current_game_session = <GameSession раунда>, status=in_progress
+Хост выбирает QuizSeries вместо одиночного Quiz — POST room_select_series (замена room_set_quiz)
+    → Room.current_series = series (form.save()), is_ready=False у всех RoomPlayer.
+      SeriesRun здесь ЕЩЁ НЕ СОЗДАЁТСЯ (отличие от черновика ниже) — если хост
+      передумал/сбросил серию до первого раунда, нечего чистить/помечать abandoned.
+    (room_reset_series — если current_series_run уже существует (хост сбрасывает уже
+      частично пройденную серию), он помечается status="abandoned"/finished_at=now()
+      перед обнулением Room.current_series/current_series_run — иначе последующий
+      SeriesRun.objects.create() для той же (series, created_by) упёрся бы в constraint
+      unique_in_progress_session_run_per_user_series)
+→ хост жмёт "Начать" → POST room_start:
+    если Room.current_series_run ещё нет (первый раунд этой серии в этой комнате) —
+      создаётся SeriesRun(mode=multiplayer, room=room, series=room.current_series,
+      created_by=host, current_round_index=<round_order первого раунда>),
+      записывается в room.current_series_run
+    (если current_series_run уже есть и там есть GameSession со status=in_progress —
+      сразу редирект в неё, доигрываем; если current_series_run.status=="completed" —
+      ошибка, серия уже пройдена)
+    → создаётся GameSession(quiz=<раунд по current_round_index>, series_run=current_series_run)
+      + GameParticipant на каждого RoomPlayer — тот же код, что и был для одиночного Quiz
+    → Room.current_game_session = session, status=in_progress, всё одной транзакцией
+      вместе с _notify_room(room)
 → игра идёт как обычный мультиплеерный GameSession (общий current_question,
   WS-группа session_<id> — без изменений)
-→ _check_and_make_complete при завершении раунда смотрит session.series_run:
-    если в серии остались раунды — вместо сброса Room в чистое "waiting" переводит комнату
-      в промежуточное состояние ожидания готовности к следующему раунду (переиспользует
-      is_ready/room_confirm_ready — тот же гейт, что уже есть между "выбрал квиз" и "начал"),
-      current_round_index += 1
-      → как только все снова готовы — создаётся GameSession следующего раунда
-        (тот же путь, что и в room_start)
-    если раундов не осталось — SeriesRun.status=completed, Room возвращается в чистое
-      ожидание (как сейчас) — итоговый экран строится по агрегированному счёту всего
-      series_run, а не по одному последнему GameSession
+→ _check_and_make_complete при завершении раунда (без изменений в сигнатуре, добавлен
+  один вызов) — если sess.series_run не None, вызывает уже существующую
+  _advance_series_run(sess.series_run, completed_round_order=sess.quiz.round_order)
+  (переиспользована как есть из соло-флоу, mode-agnostic, ищет следующий раунд через
+  round_order__gt — устойчиво к дыркам от RoundDeleteView). Отдельно, как и раньше:
+  Room.current_game_session = None, status="waiting", is_ready=False у всех RoomPlayer —
+  тот же повторный гейт готовности, что уже был между "выбрал квиз" и "начал", просто
+  теперь ведёт либо к следующему раунду той же серии (current_series_run НЕ обнуляется —
+  хост жмёт "Начать" снова, room_start видит существующий current_series_run и продолжает
+  ту же серию), либо (если раундов не осталось, SeriesRun.status="completed" после
+  _advance_series_run) к выбору новой серии. Итоговый счёт всей серии — get_series_progress()
+  (общий с соло-флоу хелпер, gameplay/services.py), рендерится в лобби через partial
+  gameplay/_series_progress.html, не по одному последнему GameSession.
 ```
+
+**Расхождения с черновиком выше, зафиксированные по факту реализации**: `SeriesRun` создаётся не в момент выбора серии, а только в `room_start` (см. "что выбрано" vs "что реально идёт" в начале раздела «Мультиплеер»/`CLAUDE.md`); `current_round_index` продвигается не собственной арифметикой мультиплеерной ветки, а переиспользованием `_advance_series_run` из соло-флоу (один источник правды на оба режима); прогресс/лидерборд между раундами — общий `get_series_progress()`+partial, а не отдельная мультиплеерная разметка. Живого браузерного теста цикла "несколько раундов подряд с реальным вторым игроком" ещё не было, подробности незакрытых мелочей — `TODO.md`/`CLAUDE_HISTORY.md` (сессии от 2026-09-15/16).
 
 #### Эндпоинты (дополнение к таблице мультиплеера выше)
 
@@ -531,7 +553,8 @@ room_start (как сейчас) → создаёт SeriesRun(mode=multiplayer, 
 | `GET`/`POST` | `/quizzes/round/<pk>/update/` | Редактирует один раунд (`RoundUpdateView` → `round_update`) | готово |
 | `GET`/`POST` | `/ai_generator/` | Генерация нового раунда + новой серии (`index`) | готово |
 | `GET`/`POST` | `/ai_generator/series/<series_id>` | Генерация раунда в существующую серию (`index_for_series`) | готово |
-| `POST` | `/multiplayer/rooms/<code>/set-series` | Хост выбирает `QuizSeries` вместо одиночного `Quiz` (либо `set-quiz` расширяется на приём того и другого — решить при реализации) | не реализовано |
+| `POST` | `/multiplayer/rooms/<code>/set-quiz` | Хост выбирает `QuizSeries` вместо одиночного `Quiz` (`room_select_series`/`RoomSeriesForm`, заменили `room_set_quiz`/`RoomQuizForm`) — URL-путь/имя маршрута остались старые (`set-quiz`/`room_set_quiz`), переименование в `set-series`/`room_select_series` на уровне `urls.py` не сделано (Шаг 10 `temp_plan_multiplayer.md`) | готово (2026-09-15/16), не подтверждено сквозным тестом |
+| `POST` | `/multiplayer/rooms/<code>/reset-quiz` | Симметрично — `room_reset_series`, закрывает `current_series_run` как `abandoned`, если он уже существовал | готово (2026-09-15/16), не подтверждено сквозным тестом |
 | `GET`/`POST` | `/gameplay/quiz/<pk>/start/` | Соло-старт серии (`pk` — `QuizSeries`, URL исторический) — создаёт `SeriesRun`, редиректит на `solo_room` (`gameplay:start`) | готово (2026-09-13), не подтверждено сквозным тестом |
 | `GET`/`POST` | `/gameplay/quiz/<pk>/solo_room/` | Промежуточный экран между раундами серии (`pk` — `SeriesRun`) — список завершённых раундов + запуск `GameSession` текущего раунда по `current_round_index` (`gameplay:solo_room`) | готово (2026-09-13), не подтверждено сквозным тестом |
 | — | (без нового урла) `gameplay:result` | Дополняется веткой "следующий раунд"/"итог серии", если у `session` есть `series_run` | не реализовано — переход к следующему раунду пока только через `solo_room` вручную |

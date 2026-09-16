@@ -17,6 +17,7 @@ from channels.layers import get_channel_layer
 from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
 from quizzes.models import Quiz, Question, AnswerOption, QuizSeries
 from multiplayer.views import _notify_room
+from .services import get_series_progress
 
 logger = logging.getLogger(__name__)
 
@@ -124,12 +125,19 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
             #меняем статус сессии на completed
             sess.status = "completed"
             sess.save(update_fields=["status"])
+
+            #продвигаем раунд в series_run
+            if sess.series_run is not None:
+                _advance_series_run(sess.series_run, completed_round_order=sess.quiz.round_order)
+
+
+
             if sess.room_id:
                 #меняем статус комнаты с in_progress на waiting
                 #и сбрасываем current_quiz у комнаты
                 sess.room.status = "waiting"
-                sess.room.current_quiz = None
-                sess.room.save(update_fields=["status", "current_quiz"])
+                sess.room.current_game_session = None
+                sess.room.save(update_fields=["status", "current_game_session"])
 
                 #переключаем готовность у всех членов комнаты
                 sess.room.room_players.update(is_ready=False)
@@ -330,9 +338,10 @@ def start(request: HttpRequest, pk: int):
 @login_required
 def solo_room(request: HttpRequest, pk: int):
     series_run = get_object_or_404(
-        SeriesRun.objects.select_related("series", "created_by").prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants"),
+        SeriesRun.objects.select_related("series", "created_by", "room").prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants"),
         pk=pk
     )
+
     if series_run.created_by_id != request.user.id:
         raise PermissionDenied
 
@@ -367,20 +376,7 @@ def solo_room(request: HttpRequest, pk: int):
         url = reverse("gameplay:play", kwargs={"pk": game_session_in_progress.pk})
         return redirect(url)
 
-    current_round = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
-
-    completed_sessions = [game_session for game_session in series_run.game_sessions.all() if game_session.status == "completed"]
-
-    #определяем общее количество очков по всем раундам этого series_run
-    total_score = sum([sess.participants.all()[0].score for sess in completed_sessions])
-
-    context = {
-        "series_run": series_run,
-        "current_round": current_round,
-        "completed_session": completed_sessions,
-        "is_completed": series_run.status == "completed",
-        "total_score": total_score
-    }
+    context = get_series_progress(series_run)
 
     return render(request, "gameplay/solo_room.html", context=context)
 

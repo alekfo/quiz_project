@@ -14,10 +14,12 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.conf import settings
+from django.utils import timezone
 
 from .models import Room, RoomPlayer
-from .forms import RoomQuizForm, RoomPlayerReadyForm
-from gameplay.models import GameSession, GameParticipant
+from .forms import RoomSeriesForm, RoomPlayerReadyForm
+from gameplay.models import GameSession, GameParticipant, SeriesRun
+from gameplay.services import get_series_progress
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +44,27 @@ def _get_room_context(context: dict, room: Room, user: settings.AUTH_USER_MODEL)
         (p for p in room.room_players.all() if p.user_id == user.id),
         None,
     )
+    #является ли пользователь игроком в комнате
     context["my_room_player"] = my_room_player
     context["is_player"] = my_room_player is not None
+
+    #передаем форму для выбора серии
     if context["is_host"]:
-        context["quiz_form"] = RoomQuizForm(instance=room, user=user)
+        context["series_form"] = RoomSeriesForm(instance=room, user=user)
+
+    context["is_first_round"] = room.current_series_run is None
+
+    #получаем данные для отображения прогресса current_series_run
+    if room.current_series_run:
+        series_progress = get_series_progress(room.current_series_run)
+        context.update(series_progress)
+
+
+    #флаг о том, выбрана ли хостом серия
+    context["has_selected_series"] = room.current_series is not None
+
+    #флаг о том, может ли пользователь стартовать раунд
+    context["can_start_round"] = room.current_series is not None and (room.current_series_run is None or room.current_series_run.status != "completed") and room.current_game_session is None
     return context
 
 class RoomListView(LoginRequiredMixin, ListView):
@@ -178,15 +197,24 @@ class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
 
 @login_required
 @require_POST
-def room_set_quiz(request: HttpRequest, code: str):
+def room_select_series (request: HttpRequest, code: str):
     room = get_object_or_404(Room.objects.prefetch_related("room_players"), token=code)
     if room.host != request.user:
         raise PermissionDenied
-    form = RoomQuizForm(request.POST, instance=room, user=request.user)
+    form = RoomSeriesForm(request.POST, instance=room, user=request.user)
 
     if form.is_valid():
         with transaction.atomic():
             form.save()
+            #Практическое правило: если related_name стоит на чужой модели и указывает на текущую (обратная связь) — доступ через него даёт менеджер, .update()/.filter() работают.
+            #Если поле ForeignKey объявлено прямо на этой модели (прямая связь) — доступ даёт инстанс, только .save(). room.game_sessions (обратнаясвязь от GameSession.room) — тоже менеджер, тоже можно .update().
+            #А room.current_series, room.current_series_run, room.current_game_session, room.host — все прямые FK на Room, все дают инстанс.
+            if room.current_series_run:
+                room.current_series_run.status = "abandoned"
+                room.current_series_run.finished_at = timezone.now()
+                room.current_series_run.save(update_fields=["status", "finished_at"])
+                room.current_series_run = None
+                room.save(update_fields=["current_series_run"])
             room.room_players.update(is_ready=False)
             # on_commit: без него WS-консьюмер может прочитать Room раньше,
             # чем эта транзакция закоммитится, и отдать подключённым старый
@@ -200,13 +228,19 @@ def room_set_quiz(request: HttpRequest, code: str):
 
 @login_required
 @require_POST
-def room_reset_quiz(request: HttpRequest, code: str):
+def room_reset_series(request: HttpRequest, code: str):
     room = get_object_or_404(Room.objects.prefetch_related("room_players"), token=code)
     if room.host != request.user:
         raise PermissionDenied
     with transaction.atomic():
-        room.current_quiz = None
-        room.save(update_fields=["current_quiz"])
+
+        if room.current_series_run:
+            room.current_series_run.status = "abandoned"
+            room.current_series_run.finished_at = timezone.now()
+            room.current_series_run.save(update_fields=["status", "finished_at"])
+            room.current_series_run = None
+        room.current_series = None
+        room.save(update_fields=["current_series", "current_series_run"])
         room.room_players.update(is_ready=False)
         # on_commit: та же причина, что и в room_set_quiz — без него
         # WS-консьюмер может прочитать Room до коммита и отдать
@@ -232,13 +266,13 @@ def room_confirm_ready(request, code):
 @login_required
 @require_POST
 def room_start(request: HttpRequest, code: str):
-    room = get_object_or_404(Room.objects.prefetch_related("room_players", "current_quiz__questions"), token=code)
+    room = get_object_or_404(Room.objects.select_related("current_series", "current_series_run").prefetch_related("room_players", "current_series__rounds__questions", "current_series_run__game_sessions"), token=code)
     user = request.user
 
     if room.host != user:
         raise PermissionDenied
 
-    if room.current_quiz is None:
+    if room.current_series is None:
         messages.error(request, "Не выбран квиз")
         url = reverse("multiplayer:room_detail", kwargs={"code": code})
         return redirect(url)
@@ -253,22 +287,68 @@ def room_start(request: HttpRequest, code: str):
         url = reverse("multiplayer:room_detail", kwargs={"code": code})
         return redirect(url)
 
+    if not room.current_series.rounds.exists():
+        messages.error(request, "Выбранный квиз не содержит ни одного раунда. Попробуйте другой")
+        url = reverse("multiplayer:room_detail", kwargs={"code": code})
+        return redirect(url)
+
+    if room.current_series_run:
+        #серияуже пройдена - ошибка
+        if room.current_series_run.status == "completed":
+            raise PermissionDenied
+        #у current_series_run уже есть активная game_session - переходим в нее и доигрываем
+        for game_session in room.current_series_run.game_sessions.all():
+            if game_session.status == "in_progress":
+                url = reverse("gameplay:play", kwargs={"pk": game_session.pk})
+                return redirect(url)
+
     #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
-    try:
-        with transaction.atomic():
+    with transaction.atomic():
+        current_series_run = room.current_series_run
+        if current_series_run is None:
+            first_round = room.current_series.rounds.order_by("round_order").first()
+            try:
+                current_series_run = SeriesRun.objects.create(
+                    series=room.current_series,
+                    mode="multiplayer",
+                    room=room,
+                    created_by=user,
+                    current_round_index=first_round.round_order
+                )
+            except IntegrityError:
+                messages.error(request, "Вы уже проходите эту серию в другом месте")
+                return redirect("multiplayer:room_detail", code=code)
+            # сохраняем тут, т.к в определении current_round нам нужно точно чтобы current_round_index сохранился в current_series_run
+            room.current_series_run = current_series_run
+            room.save(update_fields=["current_series_run"])
+
+        current_round = next((current_round for current_round in room.current_series.rounds.all() if
+                              current_round.round_order == current_series_run.current_round_index), None)
+        if current_round is None:
+            messages.error(request, "Раунд не найден — возможно, был удалён. Обратитесь к организатору")
+            return redirect("multiplayer:room_detail", code=code)
+
+        try:
             session = GameSession.objects.create(
-                quiz=room.current_quiz,
+                quiz=current_round,
                 mode="multiplayer",
                 created_by=user,
-                current_question=room.current_quiz.questions.first(),
-                room=room
+                current_question=current_round.questions.first(),
+                room=room,
+                series_run=current_series_run
             )
+        except IntegrityError:
+            # настоящий двойной клик по "Начать раунд" — конкурентный запрос
+            # уже создал GameSession для этого quiz+user
+            session = GameSession.objects.get(quiz=current_round, created_by=user, status="in_progress")
+        else:
             for participant in room.room_players.all():
                 GameParticipant.objects.create(
                     session=session,
                     user=participant.user
                 )
             room.current_game_session = session
+            room.current_series_run = current_series_run
             room.status = "in_progress"
             room.save(update_fields=["current_game_session", "status"])
             # on_commit: без него WS-консьюмер (и RoomConsumer.room_update,
@@ -277,8 +357,6 @@ def room_start(request: HttpRequest, code: str):
             # чем эта транзакция закоммитится, и не увидеть ни новый
             # status, ни созданную GameSession/GameParticipant.
             transaction.on_commit(lambda: _notify_room(room))
-            logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, room.current_quiz.pk, session.created_by.username)
-    except IntegrityError:
-        session = GameSession.objects.get(quiz=room.current_quiz, created_by=user, status="in_progress")
+            logger.info("Сессия %s квиза %s серии %s создана и начата пользователем %s", session.pk, current_round.pk, room.current_series.pk, session.created_by.username)
     url = reverse("gameplay:play", kwargs={"pk": session.pk})
     return redirect(url)

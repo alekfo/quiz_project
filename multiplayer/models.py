@@ -12,8 +12,8 @@ class Room(models.Model):
         ('finished', 'Завершена'),
     ]
 
-    #предположительно current_quiz будет меняться
-    current_quiz = models.ForeignKey(Quiz, on_delete=models.SET_NULL, null=True, blank=True, default=None, related_name="rooms")
+    #предположительно current_series будет меняться
+    current_series = models.ForeignKey('quizzes.QuizSeries', on_delete=models.SET_NULL, null=True, blank=True, default=None, related_name="rooms_selecting")
 
     # предположительно current_game_session будет меняться и указывать на активную сессию (или последнюю)
     current_game_session = models.ForeignKey(GameSession, null=True, blank=True, on_delete=models.SET_NULL, default=None, related_name="current_for_rooms")

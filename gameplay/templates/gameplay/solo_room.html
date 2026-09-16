@@ -5,34 +5,17 @@
 {% endblock %}
 
 {% block body %}
-    <div class="solo-room-main">
-        <div>
-            <h1>{{ series_run.series.title }}</h1>
-        </div>
-        <div>
-            <p>Завершенные раунды:</p>
-            <div class="solo-room-completed-rounds">
-                {% for session in completed_session %}
-                    <a href="{% url 'gameplay:result' pk=session.pk%}">
-                        {{ session.quiz.subject }}
-                    </a>
-                {% empty %}
-                    <p>Еще нет завершенных раундов</p>
-                {%endfor%}
+    {% include "gameplay/_series_progress.html" %}
+    {% if not is_completed %}
+        <form method="post">
+            {%  csrf_token %}
+            <div>
+                <button type="submit">НАЧАТЬ СЛЕДУЮЩИЙ РАУНД</button>
             </div>
-        </div>
-        <div>
-            {% if is_completed %}
-                <p>Квиз завершен. Вы набрали {{ total_score }} очков по всем {{ series_run.series.rounds.count }} раундам</p>
-            {% else %}
-                <form method="post">
-                    {%  csrf_token %}
-                    <p>Следующий раунд: {{ current_round.subject }}</p>
-                    <div>
-                        <button type="submit">НАЧАТЬ СЛЕДУЮЩИЙ РАУНД</button>
-                    </div>
-                </form>
-            {% endif %}
-        </div>
-    </div>
+        </form>
+    {% else %}
+        {% if series_run.mode == "multiplayer" %}
+            <a class="btn" href="{% url 'multiplayer:room_detail' code=series_run.room.token %}">Вернуться в комнату</a>
+        {% endif %}
+    {% endif %}
 {% endblock %}
