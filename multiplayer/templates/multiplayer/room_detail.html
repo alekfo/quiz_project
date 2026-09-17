@@ -86,12 +86,13 @@
             </form>
         </div>
     {% endif %}
-    {% if object.game_sessions.all %}
+    {% if completed_series_run %}
         <ul>
             <p>История игр:</p>
-            {% for run in object.series_runs.all %}
+            {% for run in completed_series_run %}
                 <li>
-                    <a class="btn" href="{% url 'gameplay:solo_room' pk=run.pk %}">{{ run.series.title }}</a>
+                    <a href="{% url 'gameplay:solo_room' pk=run.pk %}">{{ run.series.title }}</a>
+                    <p>{% if run.status == "completed" %}Завершена {% else %}Заброшена {% endif %}{{ run.finished_at }}</p>
                 </li>
             {% endfor %}
         </ul>

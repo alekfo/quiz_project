@@ -54,7 +54,7 @@ class RoomConsumer(WebsocketConsumer):
         """
         room = (Room.objects
                 .select_related("current_series_run", "current_series")
-                .prefetch_related("room_players__user", "game_sessions__quiz", "current_series_run__game_sessions__participants__user", "current_series_run__series__rounds")
+                .prefetch_related("room_players__user", "game_sessions__quiz", "current_series_run__game_sessions__participants__user", "current_series_run__series__rounds", "series_runs")
                 .filter(token=self.room_code)
                 .first())
         if room is None:

@@ -11,7 +11,7 @@
     <p>Количество набранных очков: {{ curr_participant.score }}</p>
     <p>Подробности:</p>
     {% for answer in curr_participant.participants_answers.all %}
-        <p>Вопрос №{{answer.question.order}}: {{ answer.question.text|truncatechars:40 }} - {% if answer.is_correct %} ✅ верно {% elif answer.is_skipped%} ❌ пропущено {% else %} ❌ неверно {% endif %}</p>
+        <p>Вопрос №{{answer.question.order}}: {{ answer.question.text|truncatechars:40 }}? Ваш ответ: {{answer.chosen_option.text|truncatechars:40}} - {% if answer.is_correct %} ✅ верно {% elif answer.is_skipped%} ❌ пропущено {% else %} ❌ неверно {% endif %}</p>
     {% endfor %}
     {% if session.mode == "multiplayer" %}
         <h1>Результаты других участников:</h1>
@@ -31,7 +31,7 @@
         </ul>
         <div>
             {% if session.room %}
-              <a href="{% url 'multiplayer:room_detail' code=session.room.token %}">Вернуться в комнату</a>
+              <a href="{% url 'multiplayer:room_detail' code=session.room.token %}">Вернуться в лобби мультплеера</a>
             {% endif %}
         </div>
     {% else %}

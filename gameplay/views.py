@@ -128,19 +128,25 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
 
             #продвигаем раунд в series_run
             if sess.series_run is not None:
-                _advance_series_run(sess.series_run, completed_round_order=sess.quiz.round_order)
-
-
+                curr_series_run = _advance_series_run(sess.series_run, completed_round_order=sess.quiz.round_order)
 
             if sess.room_id:
                 #меняем статус комнаты с in_progress на waiting
-                #и сбрасываем current_quiz у комнаты
+                #и сбрасываем current_game_session у комнаты
                 sess.room.status = "waiting"
                 sess.room.current_game_session = None
                 sess.room.save(update_fields=["status", "current_game_session"])
 
                 #переключаем готовность у всех членов комнаты
                 sess.room.room_players.update(is_ready=False)
+
+                #если после продвижения раунда в series_run в _advance_series_run серия приняла статус completed,
+                #то у комнаты удаляем current_series и current_series_run
+                if sess.series_run.status == "completed":
+                    sess.room.current_series = None
+                    sess.room.current_series_run = None
+                    sess.room.save(update_fields=["current_series", "current_series_run"])
+
 
             # on_commit, а не прямой вызов: этот notify всё ещё внутри
             # транзакции, а WS-консьюмер читает БД через отдельное
@@ -172,8 +178,9 @@ def _advance_series_run(series_run: SeriesRun, completed_round_order: int) -> Se
         else:
             series_run.current_round_index = None
             series_run.status = "completed"
+            series_run.finished_at = timezone.now()
 
-        series_run.save(update_fields=["current_round_index", "status"])
+        series_run.save(update_fields=["current_round_index", "status", "finished_at"])
         return series_run
 
 def _check_and_advance_question(session_pk):

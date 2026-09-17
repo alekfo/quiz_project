@@ -13,7 +13,7 @@ def get_series_progress(series_run: SeriesRun) -> dict:
     ]
     current_round = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
 
-    is_completed = series_run.status == "completed"
+    is_completed = series_run.status != "in_progress"
 
     #получаем список инстансов GameParticipant для данной series_run, группируем их
     #с помощью values по user_id а второй столбец будет просчитанной суммой score у всех одинаковых user_id

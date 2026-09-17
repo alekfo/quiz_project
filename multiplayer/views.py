@@ -65,6 +65,15 @@ def _get_room_context(context: dict, room: Room, user: settings.AUTH_USER_MODEL)
 
     #флаг о том, может ли пользователь стартовать раунд
     context["can_start_round"] = room.current_series is not None and (room.current_series_run is None or room.current_series_run.status != "completed") and room.current_game_session is None
+
+    #завершенные series_run
+    completed_series_run = [
+        sr
+        for sr in room.series_runs.all()
+        if sr.status in ["completed", "abandoned"]
+    ]
+    context["completed_series_run"] = completed_series_run
+
     return context
 
 class RoomListView(LoginRequiredMixin, ListView):
@@ -130,7 +139,7 @@ class RoomDetailView(LoginRequiredMixin, DetailView):
         return _get_room_context(context, self.object, self.request.user)
 
     def get_queryset(self):
-        return Room.objects.prefetch_related("room_players__user", "game_sessions__quiz")
+        return Room.objects.prefetch_related("room_players__user", "game_sessions__quiz", "series_runs")
 
 @login_required
 def room_join(request: HttpRequest, code: str):
