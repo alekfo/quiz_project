@@ -1,7 +1,8 @@
 from django import forms
+from django.db.models import Q
 
 from .models import Room, RoomPlayer
-from quizzes.models import Quiz
+from quizzes.models import QuizSeries
 
 class RoomForm(forms.ModelForm):
 
@@ -12,17 +13,16 @@ class RoomForm(forms.ModelForm):
             "title": "Название комнаты",
         }
 
-
-class RoomQuizForm(forms.ModelForm):
+class RoomSeriesForm(forms.ModelForm):
     class Meta:
         model = Room
-        fields = ["current_quiz"]
+        fields = ["current_series"]
 
-    #переопределяем получение всех Quiz текущего пользователя, иначе для хоста в комнате будут и чужие квизы тоже
+    # переопределяем получение всех QuizSeries текущего пользователя или все публичные, иначе для хоста в комнате будут и чужие приватные QuizSeries тоже
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         if user is not None:
-            self.fields["current_quiz"].queryset = Quiz.objects.filter(user=user)
+            self.fields["current_series"].queryset = QuizSeries.objects.filter(Q(user=user) | Q(status="public"))
 
 class RoomPlayerReadyForm(forms.ModelForm):
     class Meta:

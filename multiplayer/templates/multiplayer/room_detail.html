@@ -35,7 +35,7 @@
         {% include "multiplayer/_room_status.html" %}
     {% endif %}
     {% if is_player %}
-        <form id="confirm-ready-form" method="post" action="{% url 'multiplayer:room_confirm_ready' code=object.token %}"{% if not object.current_quiz or my_room_player.is_ready %} hidden{% endif %}>
+        <form id="confirm-ready-form" method="post" action="{% url 'multiplayer:room_confirm_ready' code=object.token %}"{% if not object.current_series or my_room_player.is_ready %} hidden{% endif %}>
             {% csrf_token %}
             <button class="btn" type="submit">Подтвердить готовность</button>
         </form>
@@ -55,37 +55,44 @@
                     document.getElementById("room-status").outerHTML = data.html;
                     const confirmForm = document.getElementById("confirm-ready-form");
                     if (confirmForm) confirmForm.hidden = !data.can_confirm;
+                    const selectForm = document.getElementById("select-series-form");
+                    if (selectForm) selectForm.hidden = data.has_selected_series;
+                    const resetForm = document.getElementById("reset-series-form");
+                    if (resetForm) resetForm.hidden = !data.has_selected_series;
+                    const startForm = document.getElementById("start-form");
+                    if (startForm) startForm.hidden = !data.can_start_round;
                     const readyMsg = document.getElementById("ready-confirmed-msg");
                     if (readyMsg) readyMsg.hidden = !data.is_ready;
+
+                    const startButton = document.getElementById("start-button");
+                    startButton.textContent = data.is_first_round ? "НАЧАТЬ ИГРУ" : "НАЧАТЬ СЛЕДУЮЩИЙ РАУНД"
                 };
             })();
         </script>
     {% if is_host %}
-        {% if object.current_quiz %}
-            <div class="host-buttons">
-                <form method="post" action="{% url 'multiplayer:room_reset_quiz' code=object.token %}">
-                    {% csrf_token %}
-                    <button class="btn" type="submit">Сбросить</button>
-                </form>
-                <form method="post" action="{% url 'multiplayer:room_start' code=object.token %}">
-                    {% csrf_token %}
-                    <button class="btn" type="submit">Начать игру</button>
-                </form>
-            </div>
-        {% else %}
-            <form method="post" action="{% url 'multiplayer:room_set_quiz' code=object.token %}">
+        <div class="host-buttons">
+            <form method="post" id="select-series-form" action="{% url 'multiplayer:room_set_quiz' code=object.token %}" {% if has_selected_series %} hidden{% endif %}>
                 {% csrf_token %}
-                {{quiz_form.current_quiz}}
+                {{series_form.current_series}}
                 <button class="btn" type="submit">Выбрать квиз</button>
             </form>
-        {% endif %}
+            <form method="post" id="reset-series-form" action="{% url 'multiplayer:room_reset_quiz' code=object.token %}" {% if not has_selected_series %} hidden{% endif %}>
+                {% csrf_token %}
+                <button class="btn" type="submit">Сбросить квиз</button>
+            </form>
+            <form method="post"  id="start-form" action="{% url 'multiplayer:room_start' code=object.token %}" {% if not can_start_round %} hidden{% endif %}>
+                {% csrf_token %}
+                <button class="btn" id="start-button" type="submit">{% if is_first_round %}НАЧАТЬ ИГРУ{% else %}НАЧАТЬ СЛЕДУЮЩИЙ РАУНД{% endif %}</button>
+            </form>
+        </div>
     {% endif %}
-    {% if object.game_sessions.all %}
+    {% if completed_series_run %}
         <ul>
             <p>История игр:</p>
-            {% for game in object.game_sessions.all %}
+            {% for run in completed_series_run %}
                 <li>
-                    <a class="btn" href="{% url 'gameplay:result' pk=game.pk %}">{{ game.quiz.title }}</a>
+                    <a href="{% url 'gameplay:solo_room' pk=run.pk %}">{{ run.series.title }}</a>
+                    <p>{% if run.status == "completed" %}Завершена {% else %}Заброшена {% endif %}{{ run.finished_at }}</p>
                 </li>
             {% endfor %}
         </ul>

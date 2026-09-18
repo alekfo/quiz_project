@@ -106,6 +106,16 @@ footer {
     flex-direction: column;
 }
 
+.quizseries-detail-main-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.footer-buttons {
+    display: flex;
+    flex-direction: column;
+}
+
 /* ===== 5. GAMEPLAY ===== */
 .session-section {
     display: flex;
@@ -116,6 +126,17 @@ footer {
     display: flex;
     flex-direction: column;
 }
+
+.solo-room-main {
+    display: flex;
+    flex-direction: column;
+}
+
+.solo-room-completed-rounds {
+    display: flex;
+    flex-direction: column;
+}
+
 /* ===== 6. AI_GENERATOR ===== */
 
 /* ===== 7. MULTIPLAYER ===== */

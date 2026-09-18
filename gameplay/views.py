@@ -14,9 +14,10 @@ from django.contrib.auth.decorators import login_required
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from .models import GameSession, GameParticipant, GameAnswer
-from quizzes.models import Quiz, Question, AnswerOption
+from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
+from quizzes.models import Quiz, Question, AnswerOption, QuizSeries
 from multiplayer.views import _notify_room
+from .services import get_series_progress
 
 logger = logging.getLogger(__name__)
 
@@ -124,15 +125,28 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
             #меняем статус сессии на completed
             sess.status = "completed"
             sess.save(update_fields=["status"])
+
+            #продвигаем раунд в series_run
+            if sess.series_run is not None:
+                curr_series_run = _advance_series_run(sess.series_run, completed_round_order=sess.quiz.round_order)
+
             if sess.room_id:
                 #меняем статус комнаты с in_progress на waiting
-                #и сбрасываем current_quiz у комнаты
+                #и сбрасываем current_game_session у комнаты
                 sess.room.status = "waiting"
-                sess.room.current_quiz = None
-                sess.room.save(update_fields=["status", "current_quiz"])
+                sess.room.current_game_session = None
+                sess.room.save(update_fields=["status", "current_game_session"])
 
                 #переключаем готовность у всех членов комнаты
                 sess.room.room_players.update(is_ready=False)
+
+                #если после продвижения раунда в series_run в _advance_series_run серия приняла статус completed,
+                #то у комнаты удаляем current_series и current_series_run
+                if sess.series_run.status == "completed":
+                    sess.room.current_series = None
+                    sess.room.current_series_run = None
+                    sess.room.save(update_fields=["current_series", "current_series_run"])
+
 
             # on_commit, а не прямой вызов: этот notify всё ещё внутри
             # транзакции, а WS-консьюмер читает БД через отдельное
@@ -148,7 +162,31 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
     return sess
 
 
-def _check_and_advance_round(session_pk):
+def _advance_series_run(series_run: SeriesRun, completed_round_order: int) -> SeriesRun:
+    """
+    продвигает раунд в SeriesRun в соло
+    """
+    with transaction.atomic():
+        #__gt — это field lookup Django ORM ("greater than"), транслируется в WHERE order > значение на уровне SQL. В _check_and_advance_round:
+        #Логика: "найди среди вопросов те, у которых order строго больше текущего, отсортируй по возрастанию, возьми первый" — то есть ближайший следующий по значению, а не по позиции в списке.
+        next_round = series_run.series.rounds.filter(
+            round_order__gt=completed_round_order
+        ).order_by("round_order").first()
+
+        if next_round:
+            series_run.current_round_index = next_round.round_order
+        else:
+            series_run.current_round_index = None
+            series_run.status = "completed"
+            series_run.finished_at = timezone.now()
+
+        series_run.save(update_fields=["current_round_index", "status", "finished_at"])
+        return series_run
+
+def _check_and_advance_question(session_pk):
+    """"
+    продвигает вопрос в рамках раунда в мультплеере
+    """
     with transaction.atomic():
         session = GameSession.objects.select_for_update().get(pk=session_pk)
         current_question = session.current_question
@@ -194,6 +232,9 @@ def _play_solo(request: HttpRequest, session: GameSession, participant: GamePart
 
         session.status = "completed"
         session.save()
+
+        #также проставляем session.series_run следующий current_round_index или None
+        series_run = _advance_series_run(session.series_run, completed_round_order=session.quiz.round_order)
 
         url = reverse("gameplay:result", kwargs={"pk": session.pk})
         return redirect(url)
@@ -254,8 +295,11 @@ def _play_multiplayer(request: HttpRequest, session: GameSession, participant: G
 
 @login_required
 def start(request: HttpRequest, pk: int):
-    quiz = get_object_or_404(
-        Quiz.objects.annotate(questions_count=Count("questions")),
+    """
+    Стартовая вьюха для соло прохождения
+    """
+    series = get_object_or_404(
+        QuizSeries.objects.prefetch_related("rounds", "runs__game_sessions").annotate(rounds_count=Count("rounds")),
         pk=pk
     )
 
@@ -263,33 +307,89 @@ def start(request: HttpRequest, pk: int):
         user = request.user
         #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
         try:
+            #для заполнения current_round_index определяем какой индекс первого раунда реально щас у series (при удаении первого раунда в серии (с индеком 0) первый раунд может стать с индексом не 0
+            first_round = series.rounds.order_by('round_order').first()
+            with transaction.atomic():
+                series_run = SeriesRun.objects.create(
+                    series=series,
+                    mode="solo",
+                    created_by=user,
+                    current_round_index=first_round.round_order if first_round else None
+                )
+                logger.info("Пользователем %s создана соло комната №%s для квиза №%s",series_run.created_by.username, series_run.pk, series.pk)
+        except IntegrityError:
+            series_run = SeriesRun.objects.get(series=series, created_by=user, status="in_progress")
+        url = reverse("gameplay:solo_room", kwargs={"pk": series_run.pk})
+        return redirect(url)
+
+    #если есть активный раунд (есть GameSession) - переходим в игру сразу
+    game_session_in_progress = GameSession.objects.filter(series_run__series=series, created_by=request.user, status="in_progress").first()
+    if game_session_in_progress:
+        url = reverse("gameplay:play", kwargs={"pk": game_session_in_progress.pk})
+        return redirect(url)
+
+    #если активных раундов нет - проверяем, нет ли активной серии (solo_room), если есть - переходим туда
+    series_run_in_progress = SeriesRun.objects.filter(series=series, created_by=request.user, status="in_progress").first()
+    if series_run_in_progress:
+        url = reverse("gameplay:solo_room", kwargs={"pk": series_run_in_progress.pk})
+        return redirect(url)
+
+    #если это первый вход по данной серии данного пользователя:
+    context = {
+        "series": series,
+        "rounds_count": series.rounds_count
+    }
+
+    return render(request, "gameplay/start.html", context=context)
+
+@login_required
+def solo_room(request: HttpRequest, pk: int):
+    series_run = get_object_or_404(
+        SeriesRun.objects.select_related("series", "created_by", "room").prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants", "room__room_players__user"),
+        pk=pk
+    )
+    #формируем список room_players для определения доступа к solo_room для не владельцев SeriesRun, но участников комнаты
+    room_players = []
+    if series_run.room:
+        room_players = [rp.user for rp in series_run.room.room_players.all()]
+
+    if series_run.created_by_id != request.user.id and request.user not in room_players:
+        raise PermissionDenied
+
+    if request.method == "POST":
+        if series_run.status in ["completed", "abandoned"] or series_run.created_by_id != request.user.id:
+            raise PermissionDenied
+        curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
+        user = request.user
+        # проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
+        try:
             with transaction.atomic():
                 session = GameSession.objects.create(
-                    quiz=quiz,
+                    quiz=curr_quiz,
                     mode="solo",
-                    created_by=user
+                    created_by=user,
+                    series_run=series_run
                 )
                 participant = GameParticipant.objects.create(
                     session=session,
                     user=user
                 )
-                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, quiz.pk, session.created_by.username)
+                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, curr_quiz.pk,
+                            session.created_by.username)
         except IntegrityError:
-            session = GameSession.objects.get(quiz=quiz, created_by=user, status="in_progress")
+            session = GameSession.objects.get(quiz=curr_quiz, created_by=user, status="in_progress")
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
 
-    sessions_in_progress = GameSession.objects.filter(quiz=quiz, created_by=request.user, status="in_progress").first()
-    if sessions_in_progress:
-        url = reverse("gameplay:play", kwargs={"pk": sessions_in_progress.pk})
+    #проверяем, нет ли активной game_sessions
+    game_session_in_progress = next((g for g in series_run.game_sessions.all() if g.status == "in_progress"), None)
+    if game_session_in_progress:
+        url = reverse("gameplay:play", kwargs={"pk": game_session_in_progress.pk})
         return redirect(url)
 
-    context = {
-        "quiz": quiz,
-        "questions_count": quiz.questions_count
-    }
+    context = get_series_progress(series_run)
 
-    return render(request, "gameplay/start.html", context=context)
+    return render(request, "gameplay/solo_room.html", context=context)
 
 @login_required
 def play(request: HttpRequest, pk: int):
@@ -315,7 +415,7 @@ def play(request: HttpRequest, pk: int):
                 participant = _update_total_score(session, request)
 
             if session.mode == "multiplayer":
-                _check_and_advance_round(session.pk)
+                _check_and_advance_question(session.pk)
 
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
@@ -324,7 +424,8 @@ def play(request: HttpRequest, pk: int):
         GameSession.objects.select_related(
             "quiz",
             "created_by",
-            "room"
+            "room",
+            "series_run"
         ).prefetch_related(
             "participants",
             "participants__user",
@@ -332,7 +433,8 @@ def play(request: HttpRequest, pk: int):
             "quiz__questions__options",
             "participants__participants_answers__question",
             "participants__participants_answers__chosen_option",
-            "room__room_players"
+            "room__room_players",
+            "series_run__series__rounds"
         ),
         pk=pk)
 

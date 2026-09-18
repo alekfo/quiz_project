@@ -9,8 +9,6 @@
     {% if user.is_authenticated %}
         <div class="main-menu-list">
             <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
-            <a href="{% url 'quizzes:quizzes_create' %}">Создать квиз</a>
-            <a href="{% url 'ai_generator:index' %}">Сгенерировать квиз с помощью AI</a>
             <a href="{% url 'multiplayer:room_list' %}">Мультиплеер</a>
         </div>
         <div>

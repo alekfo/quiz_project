@@ -52,30 +52,38 @@ class RoomConsumer(WebsocketConsumer):
         только флаги видимости, JS переключает hidden на уже существующих
         DOM-элементах.
         """
-        room = Room.objects.prefetch_related("room_players__user", "game_sessions__quiz").filter(
-            token=self.room_code
-        ).first()
+        room = (Room.objects
+                .select_related("current_series_run", "current_series")
+                .prefetch_related("room_players__user", "game_sessions__quiz", "current_series_run__game_sessions__participants__user", "current_series_run__series__rounds", "series_runs")
+                .filter(token=self.room_code)
+                .first())
         if room is None:
             return
+
+        user = self.scope["user"]
+        is_player = any(p.user_id == user.id for p in room.room_players.all())
 
         # Хост нажал "Начать игру" (room_start) — вместо статуса лобби
         # шлём сигнал редиректа, ждать следующего тика поллинга не нужно,
         # т.к. группа и так уже оповещается через _notify_room(room).
-        if room.status == "in_progress" and room.current_game_session_id:
+        if is_player and (room.status == "in_progress" and room.current_game_session_id):
             self.send(text_data=json.dumps({
                 "type": "redirect",
                 "url": reverse("gameplay:play", kwargs={"pk": room.current_game_session_id}),
             }))
             return
 
-        user = self.scope["user"]
+
         context = _get_room_context({"object": room}, room, user)
         html = render_to_string("multiplayer/_room_status.html", context)
         my_room_player = context["my_room_player"]
         is_ready = bool(my_room_player and my_room_player.is_ready)
         payload = {
             "html": html,
-            "can_confirm": bool(room.current_quiz_id) and my_room_player is not None and not is_ready,
-            "is_ready": is_ready,
+            "can_confirm": bool(room.current_series_id) and my_room_player is not None and not is_ready,
+            "is_ready": bool(my_room_player and my_room_player.is_ready),
+            "can_start_round": context["can_start_round"],
+            "has_selected_series": context["has_selected_series"],
+            "is_first_round": context["is_first_round"],
         }
         self.send(text_data=json.dumps(payload))
