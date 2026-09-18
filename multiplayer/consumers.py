@@ -60,17 +60,20 @@ class RoomConsumer(WebsocketConsumer):
         if room is None:
             return
 
+        user = self.scope["user"]
+        is_player = any(p.user_id == user.id for p in room.room_players.all())
+
         # Хост нажал "Начать игру" (room_start) — вместо статуса лобби
         # шлём сигнал редиректа, ждать следующего тика поллинга не нужно,
         # т.к. группа и так уже оповещается через _notify_room(room).
-        if room.status == "in_progress" and room.current_game_session_id:
+        if is_player and (room.status == "in_progress" and room.current_game_session_id):
             self.send(text_data=json.dumps({
                 "type": "redirect",
                 "url": reverse("gameplay:play", kwargs={"pk": room.current_game_session_id}),
             }))
             return
 
-        user = self.scope["user"]
+
         context = _get_room_context({"object": room}, room, user)
         html = render_to_string("multiplayer/_room_status.html", context)
         my_room_player = context["my_room_player"]

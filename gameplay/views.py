@@ -345,15 +345,19 @@ def start(request: HttpRequest, pk: int):
 @login_required
 def solo_room(request: HttpRequest, pk: int):
     series_run = get_object_or_404(
-        SeriesRun.objects.select_related("series", "created_by", "room").prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants"),
+        SeriesRun.objects.select_related("series", "created_by", "room").prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants", "room__room_players__user"),
         pk=pk
     )
+    #формируем список room_players для определения доступа к solo_room для не владельцев SeriesRun, но участников комнаты
+    room_players = []
+    if series_run.room:
+        room_players = [rp.user for rp in series_run.room.room_players.all()]
 
-    if series_run.created_by_id != request.user.id:
+    if series_run.created_by_id != request.user.id and request.user not in room_players:
         raise PermissionDenied
 
     if request.method == "POST":
-        if series_run.status == "completed":
+        if series_run.status in ["completed", "abandoned"] or series_run.created_by_id != request.user.id:
             raise PermissionDenied
         curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
         user = request.user
