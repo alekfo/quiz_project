@@ -27,6 +27,7 @@ urlpatterns = [
     path('ai_generator/', include('ai_generator.urls')),
     path('users/', include('users.urls')),
     path('gameplay/', include('gameplay.urls')),
+    path('multiplayer/', include('multiplayer.urls')),
 ]
 
 if settings.DEBUG:

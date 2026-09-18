@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    SOLO ROOM
+{% endblock %}
+
+{% block body %}
+    {% include "gameplay/_series_progress.html" %}
+    {% if not is_completed %}
+        <form method="post">
+            {%  csrf_token %}
+            <div>
+                <button type="submit">НАЧАТЬ СЛЕДУЮЩИЙ РАУНД</button>
+            </div>
+        </form>
+    {% else %}
+        {% if series_run.mode == "multiplayer" %}
+            <a class="btn" href="{% url 'multiplayer:room_detail' code=series_run.room.token %}">Вернуться в лобби мультплеера</a>
+        {% endif %}
+    {% endif %}
+{% endblock %}

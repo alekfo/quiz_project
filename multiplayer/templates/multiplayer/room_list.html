@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block title %}
+   Room List
+{% endblock %}
+
+{% block body %}
+    <h1>Активные комнаты:</h1>
+    <ul>
+        {% for room in active_rooms %}
+            <div class="room-list">
+                <a href="{% url 'multiplayer:room_detail' code=room.token %}">{{ room.title }}</a>
+            </div>
+        {% empty %}
+            Нет активных комнат
+        {% endfor %}
+    </ul>
+    <h1>Завершенные комнаты:</h1>
+    <ul>
+        {% for room in finished_rooms %}
+            <div class="room-list">
+                <a href="{% url 'multiplayer:room_detail' code=room.token %}">{{ room.title }}</a>
+            </div>
+        {% empty %}
+            Нет завершенных комнат
+        {% endfor %}
+    </ul>
+    <a class="btn" href="{% url 'multiplayer:room_create' %}">Создать комнату</a>
+{% endblock %}
