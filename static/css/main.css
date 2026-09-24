@@ -153,3 +153,13 @@ footer {
 .host-buttons {
     display: flex;
 }
+
+.series-history {
+    display: flex;
+    align-items: center;   /* выравнивает по центру по вертикали */
+    gap: 10px;
+}
+
+.series-history p {
+    margin: 0;
+}

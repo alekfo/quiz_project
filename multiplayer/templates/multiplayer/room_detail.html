@@ -5,31 +5,51 @@
 {% endblock %}
 
 {% block body %}
+    <script>
+<!--        Скрипт для работы кнопки для разворачивания контейнера-->
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.toggle-btn');
+            if (!btn) return;
+
+            const container = document.getElementById(btn.dataset.target);
+            if (!container) return;
+
+            const isHidden = container.hasAttribute('hidden');
+            container.toggleAttribute('hidden', !isHidden);
+            btn.textContent = isHidden ? 'Скрыть' : 'Показать';
+        });
+    </script>
     <h1>Комната (#<strong>{{ object.pk }})</strong></h1>
     <p><b>Название: {{ object.title }}</b></p>
     {% if is_host %}
-        <p>Ссылка на комнату: <span id="room-link">{{ request.scheme }}://{{ request.get_host }}{% url 'multiplayer:room_detail' code=object.token %}</span></p>
-        <button class="btn" type="button" id="copy-link-btn">Скопировать ссылку</button>
-        <script>
-            document.getElementById('copy-link-btn').addEventListener('click', function () {
-                const link = document.getElementById('room-link').textContent;
-                navigator.clipboard.writeText(link).then(function () {
-                    let messagesList = document.querySelector('.messages');
-                    if (!messagesList) {
-                        messagesList = document.createElement('ul');
-                        messagesList.className = 'messages';
-                        document.querySelector('.container-header-messages').prepend(messagesList);
-                    }
-                    const li = document.createElement('li');
-                    li.className = 'success';
-                    li.textContent = 'Ссылка скопирована';
-                    messagesList.appendChild(li);
-                    setTimeout(function () {
-                        li.remove();
-                    }, 15000);
+        <p>
+            Ссылка на комнату:
+            <button type="button" class="toggle-btn" data-target="link-container">Показать</button>
+        </p>
+        <div id="link-container" hidden>
+            <span id="room-link">{{ request.scheme }}://{{ request.get_host }}{% url 'multiplayer:room_detail' code=object.token %}</span>
+            <button class="btn" type="button" id="copy-link-btn">Скопировать ссылку</button>
+            <script>
+                document.getElementById('copy-link-btn').addEventListener('click', function () {
+                    const link = document.getElementById('room-link').textContent;
+                    navigator.clipboard.writeText(link).then(function () {
+                        let messagesList = document.querySelector('.messages');
+                        if (!messagesList) {
+                            messagesList = document.createElement('ul');
+                            messagesList.className = 'messages';
+                            document.querySelector('.container-header-messages').prepend(messagesList);
+                        }
+                        const li = document.createElement('li');
+                        li.className = 'success';
+                        li.textContent = 'Ссылка скопирована';
+                        messagesList.appendChild(li);
+                        setTimeout(function () {
+                            li.remove();
+                        }, 15000);
+                    });
                 });
-            });
-        </script>
+            </script>
+        </div>
     {% endif %}
     {% if is_host or is_player %}
         {% include "multiplayer/_room_status.html" %}
@@ -86,23 +106,11 @@
             </form>
         </div>
     {% endif %}
-    {% if completed_series_run %}
-        <ul>
-            <p>История игр:</p>
-            {% for run in completed_series_run %}
-                <li>
-                    <a href="{% url 'gameplay:solo_room' pk=run.pk %}">{{ run.series.title }}</a>
-                    <p>{% if run.status == "completed" %}Завершена {% else %}Заброшена {% endif %}{{ run.finished_at }}</p>
-                </li>
-            {% endfor %}
-        </ul>
-    {% else %}
-        <p>Игр еще не было</p>
-    {% endif %}
+
     {% endif %}
     {% if is_player %}
-      <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие</a>
+      <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие в квизе</a>
     {% else %}
-      <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником</a>
+      <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником квиза</a>
     {% endif %}
 {% endblock %}
