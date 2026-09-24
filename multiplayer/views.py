@@ -139,7 +139,7 @@ class RoomDetailView(LoginRequiredMixin, DetailView):
         return _get_room_context(context, self.object, self.request.user)
 
     def get_queryset(self):
-        return Room.objects.prefetch_related("room_players__user", "game_sessions__quiz", "series_runs")
+        return Room.objects.select_related("current_series_run").prefetch_related("room_players__user", "game_sessions__quiz", "current_series_run__game_sessions__quiz")
 
 @login_required
 def room_join(request: HttpRequest, code: str):

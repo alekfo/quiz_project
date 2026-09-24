@@ -31,10 +31,17 @@ def get_series_progress(series_run: SeriesRun) -> dict:
     #формируем конечный список из (user_instance, total_score)
     leaderboard = [(users_by_id[row["user_id"]], row["total_score"]) for row in scores]
 
+    #проверяем в процессе ли текущий current_round
+    is_current_round_is_in_progress = any(
+        gs for gs in series_run.game_sessions.all()
+        if gs.quiz == current_round and gs.status == "in_progress"
+    )
+
     return {
         "series_run": series_run,
         "completed_sessions": completed_sessions,
         "current_round": current_round,
         "is_completed": is_completed,
         "leaderboard": leaderboard,
+        "is_current_round_is_in_progress": is_current_round_is_in_progress,
     }
