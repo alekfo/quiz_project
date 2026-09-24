@@ -15,16 +15,18 @@
     {% else %}
         <p>Игр еще не было</p>
     {% endif %}
-    <p>Квиз: {{ object.current_series.title|default:"ещё не выбран" }}</p>
-    <p>Участники:</p>
-    <div class="player-list">
-      {% for part in object.room_players.all %}
-          <span>{{ part.user.username }} — {% if part.is_ready %}✅ готов{% else %}❌ не готов{% endif %}</span>
-      {% endfor %}
-    </div>
-    {% if series_run %}
-        {% include "gameplay/_series_progress.html" %}
-    {% else %}
-        После старта тут будет отображаться прогресс
+    {% if object.status != "finished" %}
+        <p>Квиз: {{ object.current_series.title|default:"ещё не выбран" }}</p>
+        <p>Участники:</p>
+        <div class="player-list">
+          {% for part in object.room_players.all %}
+              <span>{{ part.user.username }} — {% if part.is_ready %}✅ готов{% else %}❌ не готов{% endif %}</span>
+          {% endfor %}
+        </div>
+        {% if series_run %}
+            {% include "gameplay/_series_progress.html" %}
+        {% else %}
+            После старта тут будет отображаться прогресс
+        {% endif %}
     {% endif %}
 </div>

@@ -13,4 +13,5 @@ urlpatterns = [
     path('rooms/<str:code>/reset-quiz', views.room_reset_series, name='room_reset_quiz'),
     path('rooms/<str:code>/ready', views.room_confirm_ready, name='room_confirm_ready'),
     path('rooms/<str:code>/start', views.room_start, name='room_start'),
+    path('rooms/<str:code>/close', views.room_close, name='room_close'),
 ]
