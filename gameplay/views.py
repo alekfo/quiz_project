@@ -460,16 +460,21 @@ def result(request: HttpRequest, pk: int):
     session = get_object_or_404(
         GameSession.objects.select_related(
             "quiz",
-            "created_by"
+            "created_by",
+            "room"
         ).prefetch_related(
             "participants",
             "participants__user",
             "quiz__questions",
             "quiz__questions__options",
             "participants__participants_answers__question",
-            "participants__participants_answers__chosen_option"
+            "participants__participants_answers__chosen_option",
+            "room__host"
         ),
         pk=pk)
+
+    #хоста пропускаем даже если он не участник (может смотреть результаты)
+    is_host = session.room.host == request.user
 
     # Получаем всех участников из кэша (без дополнительного запроса)
     participants = session.participants.all()
@@ -477,11 +482,11 @@ def result(request: HttpRequest, pk: int):
     # Находим нужного. Останавливаемся на первом найденном за счет next
     curr_participant = next((p for p in participants if p.user_id == request.user.id), None)
 
-    if curr_participant is None:
+    if curr_participant is None and not is_host:
         raise PermissionDenied
 
     context = {
         "curr_participant": curr_participant,
-        "session": session
+        "session": session,
     }
     return render(request, "gameplay/result.html", context=context)

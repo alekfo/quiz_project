@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block title %}
+   confirm_close
+{% endblock %}
+
+{% block body %}
+    <div>
+        <form method="POST">
+            {% csrf_token  %}
+            <p>Вы уверены, что хотите закрыть комнату {{ room.title }}?</p>
+            <button class="btn" type="submit">Да, уверен</button>
+        </form>
+        <a class="btn" href="{% url 'multiplayer:room_detail' code=room.token %}">Вернуться</a>
+    </div>
+{% endblock %}

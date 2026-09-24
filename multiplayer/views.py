@@ -139,7 +139,7 @@ class RoomDetailView(LoginRequiredMixin, DetailView):
         return _get_room_context(context, self.object, self.request.user)
 
     def get_queryset(self):
-        return Room.objects.prefetch_related("room_players__user", "game_sessions__quiz", "series_runs")
+        return Room.objects.select_related("current_series_run").prefetch_related("room_players__user", "game_sessions__quiz", "current_series_run__game_sessions__quiz")
 
 @login_required
 def room_join(request: HttpRequest, code: str):
@@ -380,3 +380,34 @@ def room_start(request: HttpRequest, code: str):
     else:
         url = reverse("multiplayer:room_detail", kwargs={"code": code})
     return redirect(url)
+
+@login_required
+def room_close(request: HttpRequest, code: str):
+    room = get_object_or_404(
+        Room.objects.select_related("current_game_session", "current_series", "current_series_run"),
+        token=code)
+    user = request.user
+
+    if room.host != user:
+        raise PermissionDenied
+
+    if room.status == "finished":
+        raise PermissionDenied
+
+    if room.current_game_session:
+        messages.error(request, "Идет игра - попробуйте позже")
+        return redirect("multiplayer:room_detail", code=code)
+
+    if request.method == "POST":
+        with transaction.atomic():
+            room.status = "finished"
+            room.save(update_fields=["status"])
+            if room.current_series_run:
+                room.current_series_run.status = "completed"
+                room.current_series_run.save(update_fields=["status"])
+            messages.success(request, "Комната успешно закрыта")
+            return redirect("multiplayer:room_detail", code=code)
+
+    context = {"room": room}
+
+    return render(request, "multiplayer/room_close.html", context=context)

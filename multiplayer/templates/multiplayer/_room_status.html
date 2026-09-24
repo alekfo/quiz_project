@@ -1,14 +1,32 @@
 <div id="room-status">
-    <p>Квиз: {{ object.current_series.title|default:"ещё не выбран" }}</p>
-    <p>Участники:</p>
-    <div class="player-list">
-      {% for part in object.room_players.all %}
-          <span>{{ part.user.username }} — {% if part.is_ready %}✅ готов{% else %}❌ не готов{% endif %}</span>
-      {% endfor %}
-    </div>
-    {% if series_run %}
-        {% include "gameplay/_series_progress.html" %}
+    {% if completed_series_run %}
+        <p>
+            История игр:
+            <button type="button" class="toggle-btn" data-target="series-history-container">Показать</button>
+        </p>
+        <div id="series-history-container" hidden>
+            {% for run in completed_series_run %}
+                <div class="series-history">
+                    <a href="{% url 'gameplay:solo_room' pk=run.pk %}">{{ run.series.title }}</a>
+                    <p>{% if run.status == "completed" %}Завершена {% else %}Заброшена {% endif %}{{ run.finished_at }}</p>
+                </div>
+            {% endfor %}
+        </div>
     {% else %}
-        После выбора квиза тут будет отображаться прогресс по серии
+        <p>Игр еще не было</p>
+    {% endif %}
+    {% if object.status != "finished" %}
+        <p>Квиз: {{ object.current_series.title|default:"ещё не выбран" }}</p>
+        <p>Участники:</p>
+        <div class="player-list">
+          {% for part in object.room_players.all %}
+              <span>{{ part.user.username }} — {% if part.is_ready %}✅ готов{% else %}❌ не готов{% endif %}</span>
+          {% endfor %}
+        </div>
+        {% if series_run %}
+            {% include "gameplay/_series_progress.html" %}
+        {% else %}
+            После старта тут будет отображаться прогресс
+        {% endif %}
     {% endif %}
 </div>

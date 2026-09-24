@@ -25,7 +25,7 @@
                 {% endif %}
             {% endfor %}
         {% else %}
-            <p>Следующий раунд: {{ current_round.subject }}</p>
+            <p>Следующий раунд: {{ current_round.subject }} {% if is_current_round_is_in_progress %} - <span class="spinner">⏳</span> в процессе...{% endif %}</p>
         {% endif %}
     </div>
 </div>

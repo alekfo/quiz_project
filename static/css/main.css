@@ -137,6 +137,16 @@ footer {
     flex-direction: column;
 }
 
+.spinner {
+    display: inline-block;
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* ===== 6. AI_GENERATOR ===== */
 
 /* ===== 7. MULTIPLAYER ===== */
@@ -152,4 +162,14 @@ footer {
 
 .host-buttons {
     display: flex;
+}
+
+.series-history {
+    display: flex;
+    align-items: center;   /* выравнивает по центру по вертикали */
+    gap: 10px;
+}
+
+.series-history p {
+    margin: 0;
 }
