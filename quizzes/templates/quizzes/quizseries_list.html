@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Quizzes list
+{% endblock %}
+
+{% block body %}
+    <h1>Вот твои квизы:</h1>
+    <ul>
+        <div class="quiz-list">
+            {% for quiz in object_list %}
+                <a href="{% url 'quizzes:quizzes_preview' pk=quiz.pk%}">
+                    {{ quiz.title }}
+                </a>
+            {% empty %}
+                У вас пока еще нет квизов: <a href="{% url 'ai_generator:index' %}">попробуй c помощью AI</a>
+            {% endfor %}
+        </div>
+    </ul>
+    <div class="quiz-list">
+        <a href="{% url 'quizzes:quizzes_create' %}">Создать новый квиз вручную</a>
+        <a href="{% url 'ai_generator:index' %}">Создать новый квиз с помощью AI</a>
+    </div>
+{% endblock %}

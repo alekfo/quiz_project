@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}
+   Confirm quit room #{{ object.room.pk }}
+{% endblock %}
+
+{% block body %}
+    <h1>Вы уверены, что хотите выйти из комнаты #{{ object.room.pk }}?</h1>
+    <br>
+    <div>
+        <form method="post">
+            {% csrf_token  %}
+            {{ form.as_p }}
+            <button type="submit">Да, уверен</button>
+        </form>
+    </div>
+    <div>
+        <a href="{% url 'multiplayer:room_detail' code=object.room.token %}">
+            Вернуться в комнату #{{ object.room.pk }}
+        </a>
+    </div>
+    <br>
+
+{% endblock %}

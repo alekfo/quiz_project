@@ -9,12 +9,29 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
-from django.db.models import F
+from django.db.models import F, Q
+from django.contrib.auth.decorators import login_required
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
-from .models import GameSession, GameParticipant, GameAnswer
-from quizzes.models import Quiz, Question, AnswerOption
+from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
+from quizzes.models import Quiz, Question, AnswerOption, QuizSeries
+from multiplayer.views import _notify_room
+from .services import get_series_progress
 
 logger = logging.getLogger(__name__)
+
+def _notify_session(session: GameSession) -> None:
+    """
+    Сигнал "что-то в сессии изменилось" всем открытым WebSocket-соединениям
+    этой сессии — сам
+    HTML не передаём, каждый подключённый рендерит фрагмент под себя.
+    """
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"session_{session.pk}",
+        {"type": "session.update"},
+    )
 
 def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, request: HttpRequest) -> GameAnswer:
     """
@@ -30,15 +47,23 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
         participant__user=request.user,
         participant__session=session
     )
+    #вычисляем время, затраченное на вопрос для дальнейшего определения is_skipped
+    elapsed = (timezone.now() - answ.shown_at).total_seconds()
+
+    #определяем наличие таймаута
+    timed_out = elapsed > session.quiz.time_limit_seconds
+
     if answ.answered_at:
         raise PermissionDenied("На этот вопрос уже отвечали")
     if opt and opt.question_id != answ.question_id:
         raise PermissionDenied
-    answ.chosen_option = opt
-    answ.is_correct = opt.is_correct if opt else False
-    answ.is_skipped = opt is None
-    answ.answered_at = timezone.now()
-    answ.save()
+    with transaction.atomic():
+        answ.chosen_option = opt
+        answ.is_skipped = opt is None or timed_out
+        answ.is_correct = opt is not None and opt.is_correct and not timed_out
+        answ.answered_at = timezone.now()
+        answ.save()
+        transaction.on_commit(lambda: _notify_session(session))
     return answ
 
 def _update_total_score(sess: GameSession, req: HttpRequest) -> GameParticipant:
@@ -89,17 +114,192 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
     :param sess: сессия для проверки завершенности
     :return: возвращает сессию (либо с измененным status на completed ли бо такую же
     """
-    for participant in sess.participants.all():
-        if not participant.finished_at:
-            break
-    else:
-        sess.status = "completed"
-        sess.save()
+    #если current_question is None считаем что сессия завершена
+    if sess.current_question is None:
+        with transaction.atomic():
+            #проставляем время завершения у всех участников сессии
+            for participant in sess.participants.all():
+                if not participant.finished_at:
+                    participant.finished_at = timezone.now()
+                    participant.save()
+            #меняем статус сессии на completed
+            sess.status = "completed"
+            sess.save(update_fields=["status"])
+
+            #продвигаем раунд в series_run
+            if sess.series_run is not None:
+                curr_series_run = _advance_series_run(sess.series_run, completed_round_order=sess.quiz.round_order)
+
+            if sess.room_id:
+                #меняем статус комнаты с in_progress на waiting
+                #и сбрасываем current_game_session у комнаты
+                sess.room.status = "waiting"
+                sess.room.current_game_session = None
+                sess.room.save(update_fields=["status", "current_game_session"])
+
+                #переключаем готовность у всех членов комнаты
+                sess.room.room_players.update(is_ready=False)
+
+                #если после продвижения раунда в series_run в _advance_series_run серия приняла статус completed,
+                #то у комнаты удаляем current_series и current_series_run
+                if sess.series_run.status == "completed":
+                    sess.room.current_series = None
+                    sess.room.current_series_run = None
+                    sess.room.save(update_fields=["current_series", "current_series_run"])
+
+
+            # on_commit, а не прямой вызов: этот notify всё ещё внутри
+            # транзакции, а WS-консьюмер читает БД через отдельное
+            # соединение — без on_commit он может успеть выполнить свой
+            # запрос раньше, чем эта транзакция закоммитится, и увидеть
+            # старый status/current_question. С on_commit колбэк
+            # _notify_session откладывается и реально выполняется только
+            # после того, как транзакция под этим with transaction.atomic()
+            # (внешняя, если это вложенный вызов) успешно закоммитится —
+            # то есть уже по гарантированно свежим данным.
+            transaction.on_commit(lambda: _notify_session(sess))
+            transaction.on_commit(lambda: _notify_room(sess.room))
     return sess
 
+
+def _advance_series_run(series_run: SeriesRun, completed_round_order: int) -> SeriesRun:
+    """
+    продвигает раунд в SeriesRun в соло
+    """
+    with transaction.atomic():
+        #__gt — это field lookup Django ORM ("greater than"), транслируется в WHERE order > значение на уровне SQL. В _check_and_advance_round:
+        #Логика: "найди среди вопросов те, у которых order строго больше текущего, отсортируй по возрастанию, возьми первый" — то есть ближайший следующий по значению, а не по позиции в списке.
+        next_round = series_run.series.rounds.filter(
+            round_order__gt=completed_round_order
+        ).order_by("round_order").first()
+
+        if next_round:
+            series_run.current_round_index = next_round.round_order
+        else:
+            series_run.current_round_index = None
+            series_run.status = "completed"
+            series_run.finished_at = timezone.now()
+
+        series_run.save(update_fields=["current_round_index", "status", "finished_at"])
+        return series_run
+
+def _check_and_advance_question(session_pk):
+    """"
+    продвигает вопрос в рамках раунда в мультплеере
+    """
+    with transaction.atomic():
+        session = GameSession.objects.select_for_update().get(pk=session_pk)
+        current_question = session.current_question
+        if current_question is None:
+            return session
+
+        total = session.participants.count()
+        answered = GameAnswer.objects.filter(
+            participant__session=session,
+            question=current_question,
+        ).filter(
+            Q(answered_at__isnull=False) | Q(is_skipped=True)
+        ).count()
+
+        if answered < total:
+            return session
+        with transaction.atomic():
+            next_question = session.quiz.questions.filter(
+                order__gt=current_question.order
+            ).order_by("order").first()
+            session.current_question = next_question
+            session.save(update_fields=["current_question"])
+            transaction.on_commit(lambda: _notify_session(session))
+        return session
+
+def _play_solo(request: HttpRequest, session: GameSession, participant: GameParticipant):
+    """
+    Логика view-функции play для solo-режима
+    :param request:
+    :param session:
+    :param participant:
+    :return:
+    """
+
+    # получаем список вопросов данного квиза без ответов для данного GameParticipant
+    questions_without_answers = _get_questions_without_answer(participant, session)
+
+    if not questions_without_answers:
+        # считаем, что у данного GameParticipant все вопросы пройдены и сессия для него завершена, ставим время finished_at для данного participant
+        if not participant.finished_at:
+            participant.finished_at = timezone.now()
+            participant.save()
+
+        session.status = "completed"
+        session.save()
+
+        #также проставляем session.series_run следующий current_round_index или None
+        series_run = _advance_series_run(session.series_run, completed_round_order=session.quiz.round_order)
+
+        url = reverse("gameplay:result", kwargs={"pk": session.pk})
+        return redirect(url)
+
+    current_question = questions_without_answers[0]
+
+    current_answer, _ = GameAnswer.objects.get_or_create(
+        participant=participant,
+        question=current_question
+    )
+    elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
+    # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
+    # уйдёт в минус; на экране должно быть "0", а не отрицательное число
+    remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
+
+    context = {
+        "mode": "solo",
+        "current_question": current_question,
+        "current_answer": current_answer,
+        "current_session": session,
+        "remaining_seconds": remaining_seconds,
+    }
+
+    return render(request, "gameplay/play.html", context=context)
+
+def _play_multiplayer(request: HttpRequest, session: GameSession, participant: GameParticipant):
+
+    # проверяем для mode=multiplayer, завершена ли для всех сессия
+    if session.current_question == None:
+        # проверяем, завершена ли GameSession в целом для всех GameParticipant, т.к как нет текущего вопроса
+        session = _check_and_make_complete(session)
+        if session.status == "completed":
+            #считаем что сессия завершена у всех GameParticipant
+            return  redirect("gameplay:result", pk=session.pk)
+
+    current_answer, _ = GameAnswer.objects.get_or_create(
+        participant=participant,
+        question=session.current_question
+    )
+
+    already_answered = bool(current_answer and (current_answer.answered_at or current_answer.is_skipped))
+
+    elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
+    # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
+    # уйдёт в минус; на экране должно быть "0", а не отрицательное число
+    remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
+
+    context = {
+        "mode": "multiplayer",
+        "current_question": session.current_question,
+        "current_answer": current_answer,
+        "current_session": session,
+        "remaining_seconds": remaining_seconds,
+        "already_answered": already_answered,
+    }
+
+    return render(request, "gameplay/play.html", context=context)
+
+@login_required
 def start(request: HttpRequest, pk: int):
-    quiz = get_object_or_404(
-        Quiz.objects.annotate(questions_count=Count("questions")),
+    """
+    Стартовая вьюха для соло прохождения
+    """
+    series = get_object_or_404(
+        QuizSeries.objects.prefetch_related("rounds", "runs__game_sessions").annotate(rounds_count=Count("rounds")),
         pk=pk
     )
 
@@ -107,34 +307,91 @@ def start(request: HttpRequest, pk: int):
         user = request.user
         #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
         try:
+            #для заполнения current_round_index определяем какой индекс первого раунда реально щас у series (при удаении первого раунда в серии (с индеком 0) первый раунд может стать с индексом не 0
+            first_round = series.rounds.order_by('round_order').first()
+            with transaction.atomic():
+                series_run = SeriesRun.objects.create(
+                    series=series,
+                    mode="solo",
+                    created_by=user,
+                    current_round_index=first_round.round_order if first_round else None
+                )
+                logger.info("Пользователем %s создана соло комната №%s для квиза №%s",series_run.created_by.username, series_run.pk, series.pk)
+        except IntegrityError:
+            series_run = SeriesRun.objects.get(series=series, created_by=user, status="in_progress")
+        url = reverse("gameplay:solo_room", kwargs={"pk": series_run.pk})
+        return redirect(url)
+
+    #если есть активный раунд (есть GameSession) - переходим в игру сразу
+    game_session_in_progress = GameSession.objects.filter(series_run__series=series, created_by=request.user, status="in_progress").first()
+    if game_session_in_progress:
+        url = reverse("gameplay:play", kwargs={"pk": game_session_in_progress.pk})
+        return redirect(url)
+
+    #если активных раундов нет - проверяем, нет ли активной серии (solo_room), если есть - переходим туда
+    series_run_in_progress = SeriesRun.objects.filter(series=series, created_by=request.user, status="in_progress").first()
+    if series_run_in_progress:
+        url = reverse("gameplay:solo_room", kwargs={"pk": series_run_in_progress.pk})
+        return redirect(url)
+
+    #если это первый вход по данной серии данного пользователя:
+    context = {
+        "series": series,
+        "rounds_count": series.rounds_count
+    }
+
+    return render(request, "gameplay/start.html", context=context)
+
+@login_required
+def solo_room(request: HttpRequest, pk: int):
+    series_run = get_object_or_404(
+        SeriesRun.objects.select_related("series", "created_by", "room").prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants", "room__room_players__user"),
+        pk=pk
+    )
+    #формируем список room_players для определения доступа к solo_room для не владельцев SeriesRun, но участников комнаты
+    room_players = []
+    if series_run.room:
+        room_players = [rp.user for rp in series_run.room.room_players.all()]
+
+    if series_run.created_by_id != request.user.id and request.user not in room_players:
+        raise PermissionDenied
+
+    if request.method == "POST":
+        if series_run.status in ["completed", "abandoned"] or series_run.created_by_id != request.user.id:
+            raise PermissionDenied
+        curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
+        user = request.user
+        # проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
+        try:
             with transaction.atomic():
                 session = GameSession.objects.create(
-                    quiz=quiz,
+                    quiz=curr_quiz,
                     mode="solo",
-                    created_by=user
+                    created_by=user,
+                    series_run=series_run
                 )
                 participant = GameParticipant.objects.create(
                     session=session,
                     user=user
                 )
-                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, quiz.pk, session.created_by.username)
+                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, curr_quiz.pk,
+                            session.created_by.username)
         except IntegrityError:
-            session = GameSession.objects.get(quiz=quiz, created_by=user, status="in_progress")
+            session = GameSession.objects.get(quiz=curr_quiz, created_by=user, status="in_progress")
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
 
-    sessions_in_progress = GameSession.objects.filter(quiz=quiz, created_by=request.user, status="in_progress").first()
-    if sessions_in_progress:
-        url = reverse("gameplay:play", kwargs={"pk": sessions_in_progress.pk})
+    #проверяем, нет ли активной game_sessions
+    game_session_in_progress = next((g for g in series_run.game_sessions.all() if g.status == "in_progress"), None)
+    if game_session_in_progress:
+        url = reverse("gameplay:play", kwargs={"pk": game_session_in_progress.pk})
         return redirect(url)
 
-    context = {
-        "quiz": quiz,
-        "questions_count": quiz.questions_count
-    }
+    context = get_series_progress(series_run)
 
-    return render(request, "gameplay/start.html", context=context)
+    return render(request, "gameplay/solo_room.html", context=context)
 
+@login_required
 def play(request: HttpRequest, pk: int):
     if request.method == "POST":
         #достаем все необходимое из POST
@@ -143,7 +400,7 @@ def play(request: HttpRequest, pk: int):
         current_answer_pk = request.POST.get("current_answer_id", "")
 
         #получаем сессию для редиректа на gameplay:play
-        session = get_object_or_404(GameSession, pk=pk)
+        session = get_object_or_404(GameSession.objects.select_related('quiz'), pk=pk)
 
         #получаем AnswerOption по chosen_option_pk
         if chosen_option_pk:
@@ -157,20 +414,27 @@ def play(request: HttpRequest, pk: int):
             if answer.is_correct:
                 participant = _update_total_score(session, request)
 
+            if session.mode == "multiplayer":
+                _check_and_advance_question(session.pk)
+
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
 
     session = get_object_or_404(
         GameSession.objects.select_related(
             "quiz",
-            "created_by"
+            "created_by",
+            "room",
+            "series_run"
         ).prefetch_related(
             "participants",
             "participants__user",
             "quiz__questions",
             "quiz__questions__options",
             "participants__participants_answers__question",
-            "participants__participants_answers__chosen_option"
+            "participants__participants_answers__chosen_option",
+            "room__room_players",
+            "series_run__series__rounds"
         ),
         pk=pk)
 
@@ -187,54 +451,30 @@ def play(request: HttpRequest, pk: int):
     if participant is None:
         raise PermissionDenied
 
-    #получаем список вопросов данного квиза без ответов для данного GameParticipant
-    questions_without_answers = _get_questions_without_answer(participant, session)
+    if session.mode == "multiplayer":
+        return _play_multiplayer(request, session, participant)
+    return _play_solo(request, session, participant)
 
-    if not questions_without_answers:
-        #считаем, что у данного GameParticipant все вопросы пройдены и сессия для него завершена, ставим время finished_at для данного participant
-        if not participant.finished_at:
-            participant.finished_at = timezone.now()
-            participant.save()
-
-        #проверяем для mode=multiplayer, завершена ли для всех сессия, а для mode=solo завершаем сессию
-        if session.mode == "multiplayer":
-            #проверяем, завершена ли GameSession в целом для всех GameParticipant если mode=multiplayer
-            session = _check_and_make_complete(session)
-        else:
-            session.status = "completed"
-            session.save()
-
-        url = reverse("gameplay:result", kwargs={"pk": session.pk})
-        return redirect(url)
-
-    current_question = questions_without_answers[0]
-
-    current_answer, _ = GameAnswer.objects.get_or_create(
-        participant=participant,
-        question=current_question
-    )
-    context = {
-        "current_question": current_question,
-        "current_answer": current_answer,
-        "current_session": session,
-    }
-
-    return render(request, "gameplay/play.html", context=context)
-
+@login_required
 def result(request: HttpRequest, pk: int):
     session = get_object_or_404(
         GameSession.objects.select_related(
             "quiz",
-            "created_by"
+            "created_by",
+            "room"
         ).prefetch_related(
             "participants",
             "participants__user",
             "quiz__questions",
             "quiz__questions__options",
             "participants__participants_answers__question",
-            "participants__participants_answers__chosen_option"
+            "participants__participants_answers__chosen_option",
+            "room__host"
         ),
         pk=pk)
+
+    #хоста пропускаем даже если он не участник (может смотреть результаты)
+    is_host = session.room.host == request.user
 
     # Получаем всех участников из кэша (без дополнительного запроса)
     participants = session.participants.all()
@@ -242,11 +482,11 @@ def result(request: HttpRequest, pk: int):
     # Находим нужного. Останавливаемся на первом найденном за счет next
     curr_participant = next((p for p in participants if p.user_id == request.user.id), None)
 
-    if curr_participant is None:
+    if curr_participant is None and not is_host:
         raise PermissionDenied
 
     context = {
         "curr_participant": curr_participant,
-        "session": session
+        "session": session,
     }
     return render(request, "gameplay/result.html", context=context)

@@ -2,7 +2,27 @@ from typing import List
 
 from django import forms
 
-from quizzes.models import Category
+from quizzes.models import Category, QuizSeries
+
+LEVEL_CHOICES = [
+    ('common', 'Без уровня'),
+    ('junior', 'Junior'),
+    ('middle', 'Middle'),
+    ('pro', 'Pro'),
+]
+
+AUDIENCE_CHOICES = [
+    ('common', 'Без классификатора'),
+    ('children', 'Дети'),
+    ('teens', 'Подростки'),
+    ('middle_ages', 'Средние года'),
+    ('elderly', 'Пожилые'),
+]
+
+STYLE_CHOICES = [
+    ('serious', 'Серьезный стиль'),
+    ('humorous', 'Шутливый стиль'),
+]
 
 def get_all_categories() -> List[tuple]:
 
@@ -18,35 +38,29 @@ def get_all_categories() -> List[tuple]:
 
 class GenerationRequestForm(forms.Form):
 
-    LEVEL_CHOICES = [
-        ('common', 'Без уровня'),
-        ('junior', 'Junior'),
-        ('middle', 'Middle'),
-        ('pro', 'Pro'),
-    ]
+    #поля при создании квиза
+    title = forms.CharField(label="Наименование квиза", max_length=50)
+    category = forms.ChoiceField(label="Категория квиза", choices=get_all_categories)
+    description = forms.CharField(label="Описание квиза", max_length=100)
+    quiz_status = forms.ChoiceField(label="Уровень доступности квиза", choices=QuizSeries.STATUS_CHOICES)
 
-    AUDIENCE_CHOICES = [
-        ('common', 'Без классификатора'),
-        ('children', 'Дети'),
-        ('teens', 'Подростки'),
-        ('middle_ages', 'Средние года'),
-        ('elderly', 'Пожилые'),
-    ]
+    #общие поля квиз/раунд
+    subject = forms.CharField(label="Тема раунда", max_length=50)
+    questions = forms.IntegerField(label="Количество вопросов в раунде", min_value=1)
+    level = forms.ChoiceField(label="Уровень сложности вопросов", choices=LEVEL_CHOICES)
+    audience = forms.ChoiceField(label="Целевая аудитория раунда", choices=AUDIENCE_CHOICES)
+    style = forms.ChoiceField(label="Стиль вопросов раунда", choices=STYLE_CHOICES)
+    time_limit_seconds = forms.IntegerField(label="Отведенное время на ответ (в секундах)")
 
-    STYLE_CHOICES = [
-        ('serious', 'Серьезный стиль'),
-        ('humorous', 'Шутливый стиль'),
-    ]
+class GenerationRequestFormWithSeries_id(forms.Form):
 
-
-
-    title = forms.CharField(max_length=50)
-    subject = forms.CharField(label="Тема викторины", max_length=50)
-    category = forms.ChoiceField(label="Категория", choices=get_all_categories)
-    questions = forms.IntegerField(label="Количество вопросов", min_value=1)
-    level = forms.ChoiceField(label="Уровень сложности", choices=LEVEL_CHOICES)
-    audience = forms.ChoiceField(label="Целевая аудитория", choices=AUDIENCE_CHOICES)
-    style = forms.ChoiceField(label="Стиль вопросов", choices=STYLE_CHOICES)
+    # общие поля квиз/раунд
+    subject = forms.CharField(label="Тема раунда", max_length=50)
+    questions = forms.IntegerField(label="Количество вопросов в раунде", min_value=1)
+    level = forms.ChoiceField(label="Уровень сложности вопросов", choices=LEVEL_CHOICES)
+    audience = forms.ChoiceField(label="Целевая аудитория раунда", choices=AUDIENCE_CHOICES)
+    style = forms.ChoiceField(label="Стиль вопросов раунда", choices=STYLE_CHOICES)
+    time_limit_seconds = forms.IntegerField(label="Отведенное время на ответ (в секундах)")
 
 class QuestionForm(forms.Form):
     """

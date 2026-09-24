@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Round confirm delete
+{% endblock %}
+
+{% block body %}
+    <h1>Ты уверен, что хочешь удалить раунд № {{ object.round_order }}?</h1>
+    <div>
+        <a href="{% url 'quizzes:quizzes_details' pk=object.series_id %}">
+            Вернуться обратно к квизу
+        </a>
+    </div>
+    <div>
+        <form method="post">
+            {% csrf_token  %}
+            {{ form.as_p }}
+            <button type="submit">Удалить</button>
+        </form>
+    </div>
+
+{% endblock %}

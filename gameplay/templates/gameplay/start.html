@@ -1,13 +1,14 @@
-{% extends 'gameplay/base.html' %}
+{% extends 'base.html' %}
 
 {% block title %}
     INDEX START
 {% endblock %}
 
 {% block body %}
-    <h1>{{ quiz.title }}</h1>
-    <p>{{ questions_count }} вопросов</p>
-    <p>У тебя будет {{ quiz.time_limit_seconds }} секунд на каждый вопрос</p>
+    <h1>{{ series.title }}</h1>
+    <p>Описание квиза: {{ series.description }}</p>
+    <p>Квиз содержит {{ rounds_count }} раундов. Каждый раунд имеет свои уровень сложность, количество вопросов, отведенное время на ответ.</p>
+    <p>Если готов - жми НАЧАТЬ. Желаем удачи!</p>
     <form method="post">
         {%  csrf_token %}
         <div>
