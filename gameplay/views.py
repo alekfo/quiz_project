@@ -474,7 +474,7 @@ def result(request: HttpRequest, pk: int):
         pk=pk)
 
     #хоста пропускаем даже если он не участник (может смотреть результаты)
-    is_host = session.room.host == request.user
+    is_host = session.room.host == request.user if session.room else False
 
     # Получаем всех участников из кэша (без дополнительного запроса)
     participants = session.participants.all()

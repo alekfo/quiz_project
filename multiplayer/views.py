@@ -403,8 +403,9 @@ def room_close(request: HttpRequest, code: str):
             room.status = "finished"
             room.save(update_fields=["status"])
             if room.current_series_run:
-                room.current_series_run.status = "completed"
-                room.current_series_run.save(update_fields=["status"])
+                room.current_series_run.status = "abandoned"
+                room.current_series_run.finished_at = timezone.now()
+                room.current_series_run.save(update_fields=["status", "finished_at"])
             messages.success(request, "Комната успешно закрыта")
             return redirect("multiplayer:room_detail", code=code)
 
