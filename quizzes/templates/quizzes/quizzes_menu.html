@@ -10,6 +10,9 @@
         <div class="main-menu-list">
             <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
             <a href="{% url 'multiplayer:room_list' %}">Мультиплеер</a>
+            <a href="{% url 'users:users_list' %}">Пользователи</a>
+            <a href="{% url 'users:about_me' %}">Мой профиль</a>
+            <a href="{% url 'users:settings' %}">Настройки</a>
         </div>
         <div>
             {% if rooms %}

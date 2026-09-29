@@ -71,9 +71,11 @@
 - [x] `play()`/`_update_gameAnswer`/`GameSession`/`GameParticipant`/`GameAnswer`/WS-consumers (`RoomConsumer`/`GameSessionConsumer`) — не изменены, как и планировалось
 
 ### Этап 5 — Социальные функции (3-4 недели)
-- [ ] Подписки между пользователями
+- [~] Подписки между пользователями — бэкенд реализован 2026-09-29 (`social.Follow`, `social/views.py::follow`/`unfollow`, страницы `users:users_list`/`user_detail`/`about_me`), **вживую не протестировано**
 - [ ] Лента новых викторин от подписок
-- [ ] Лайки и комментарии
+- [~] Лайки — бэкенд реализован 2026-09-29 (`social.QuizSeriesLike` — лайк на серию, не на раунд; `create_like`/`delete_like`), кнопки в UI пока нет, **не протестировано**
+- [ ] Комментарии
+- [ ] **Фронт подписки и лайков — на HTMX**: POST через `hx-post`, вьюха возвращает partial с кнопкой в новом состоянии (подписан/не подписан, лайк/счётчик), HTMX подменяет его на месте — без перезагрузки страницы и редиректа. Сейчас follow/unfollow — обычная форма + редирект, like/unlike — временный `JsonResponse`
 - [ ] Челленджи — вызов друга на конкретную викторину
 - [ ] Уведомления
 
@@ -205,8 +207,8 @@ quizapp/
 - **RoomPlayer** — комната (FK `Room`, `related_name="room_players"`), пользователь (FK `User`), `is_ready` (bool, `default=False`, переключается через `room_confirm_ready` — **одностороннее** подтверждение, `False → True`, без обратного действия игроком; сбрасывается в `False` только сменой `current_quiz` хостом), `joined_at`. `UniqueConstraint(room, user)`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
 
 ### social/
-- **Follow** — подписки между пользователями
-- **QuizLike** — лайки на викторины
+- **Follow** — подписки между пользователями: `follower`/`following` (FK `User`, `related_name="following"`/`"followers"`), `created_at`; `UniqueConstraint(follower, following)`, `CheckConstraint` запрета самоподписки (`cant_follow_self`)
+- **QuizSeriesLike** (в исходном плане — `QuizLike`) — лайки на `QuizSeries` (то, что в UI «квиз»), не на раунд `Quiz`: `series` (`related_name="likes"`), `user` (`related_name="series_likes"`), `created_at`; `UniqueConstraint(series, user)`. Лайкать можно только видимые пользователю серии (`public` или свои)
 - **Invite** — приглашение в комнату по ссылке
 
 ---

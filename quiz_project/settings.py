@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'users.apps.UsersConfig',
     'gameplay.apps.GameplayConfig',
     'multiplayer.apps.MultiplayerConfig',
+    'social.apps.SocialConfig',
 
 ]
 

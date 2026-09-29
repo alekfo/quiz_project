@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    About me
+{% endblock %}
+
+{% block body %}
+  <p>Мой никнейм: {{ user.username }}</p>
+  <p>Мое имя: {{ user.first_name|default:"—" }}</p>
+  <p>Моя фамилия: {{ user.last_name|default:"—" }}</p>
+  <p>Моя почта: {{ user.email|default:"—" }}</p>
+  <a href="{% url 'quizzes:menu' %}" class="btn">🏠 Вернуться в меню</a>
+{% endblock %}
