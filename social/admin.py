@@ -1,3 +1,18 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import QuizSeriesLike, Follow
+
+@admin.register(QuizSeriesLike)
+class QuizSeriesLikeAdmin(admin.ModelAdmin):
+
+    list_display = "pk", "series", "user", "created_at"
+    list_select_related = ("series", "user")
+    ordering = ("pk",)
+
+@admin.register(Follow)
+class FollowAdmin(admin.ModelAdmin):
+
+    list_display = "pk", "follower", "following", "created_at"
+    list_select_related = ("follower", "following")
+    ordering = ("pk",)
+

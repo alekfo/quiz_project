@@ -297,9 +297,17 @@ def _play_multiplayer(request: HttpRequest, session: GameSession, participant: G
 def start(request: HttpRequest, pk: int):
     """
     Стартовая вьюха для соло прохождения
+
+    Серия ищется через visible_to(request.user): сыграть можно любую публичную серию
+    или свою приватную. pk серии приходит прямо из URL, поэтому без этого фильтра
+    чужую приватную серию можно было бы запустить, просто подставив её pk (IDOR) -
+    и через SeriesRun/GameSession увидеть все её вопросы.
     """
     series = get_object_or_404(
-        QuizSeries.objects.prefetch_related("rounds", "runs__game_sessions").annotate(rounds_count=Count("rounds")),
+        QuizSeries.objects
+        .visible_to(request.user)
+        .prefetch_related("rounds", "runs__game_sessions")
+        .annotate(rounds_count=Count("rounds")),
         pk=pk
     )
 

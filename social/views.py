@@ -47,9 +47,15 @@ def unfollow(request: HttpRequest, user_id: int):
 @login_required
 @require_POST
 def create_like(request: HttpRequest, series_id: int):
+    """
+    Лайк ставится только на серию, которую пользователь вправе видеть (visible_to):
+    публичную или свою. series_id приходит из URL - без фильтра можно было бы лайкнуть
+    чужую приватную серию и перебором id выяснять, какие приватные серии существуют
+    (404 против редиректа).
+    """
     current_user = request.user
     target_series = get_object_or_404(
-        QuizSeries.objects.filter(Q(status="public") | Q(user=current_user)),
+        QuizSeries.objects.visible_to(current_user),
         pk=series_id,
     )
 
@@ -57,14 +63,21 @@ def create_like(request: HttpRequest, series_id: int):
     if created:
         logger.info(f"Пользователь с id = {current_user.pk} успешно лайкнул квиз с id = {target_series.pk}")
 
-    return JsonResponse({"result": "success"})
+    return redirect("quizzes:quizzes_preview", pk=series_id)
 
 @login_required
 @require_POST
 def delete_like(request: HttpRequest, series_id: int):
+    """
+    visible_to - для симметрии с create_like: снять лайк можно только с серии,
+    которую пользователь видит. Известное следствие: если автор сделал серию
+    приватной после лайка, снять этот лайк уже нельзя (404). Для удаления своего
+    лайка проверка видимости по сути не нужна (удаляется только свой лайк, ответ
+    одинаковый) - её стоит убрать, когда появится список "мои лайки".
+    """
     current_user = request.user
     target_series = get_object_or_404(
-        QuizSeries.objects.filter(Q(status="public") | Q(user=current_user)),
+        QuizSeries.objects.visible_to(current_user),
         pk=series_id,
     )
 
@@ -73,4 +86,4 @@ def delete_like(request: HttpRequest, series_id: int):
     if deleted_count != 0:
         logger.info(f"Лайк от пользователя с id = {current_user.pk} на квиз с id = {target_series.pk} успешно снят")
 
-    return JsonResponse({"result": "success"})
+    return redirect("quizzes:quizzes_preview", pk=series_id)

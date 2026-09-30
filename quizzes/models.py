@@ -9,6 +9,18 @@ class Category(models.Model):
     def __str__(self):
         return self.title
 
+
+class QuizSeriesQuerySet(models.QuerySet):
+    def visible_to(self, user):
+        """
+        Создаем новый метод на QS
+        Серии, которые пользователь вправе видеть: все публичные + свои (любого статуса).
+        Единственное место, где задано правило видимости QuizSeries.
+        """
+        if not user.is_authenticated:
+            return self.filter(status="public")
+        return self.filter(models.Q(status="public") | models.Q(user=user))
+
 class QuizSeries(models.Model):
     """
     Контейнер верхнего уровня - то, что пользователь в UI и называет "квиз":
@@ -17,6 +29,7 @@ class QuizSeries(models.Model):
     все Question/AnswerOption по-прежнему привязаны к конкретному Quiz (раунду),
     не к серии напрямую.
     """
+
     STATUS_CHOICES = [
         ('private', 'Приватный квиз'),
         ('public', 'Публичный квиз'),
@@ -28,6 +41,8 @@ class QuizSeries(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='private')
+
+    objects = QuizSeriesQuerySet.as_manager()
 
     def __str__(self):
         return self.title

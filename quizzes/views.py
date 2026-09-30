@@ -8,10 +8,12 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse, reverse_lazy
 from django.db import transaction
 from django.contrib import messages
+from django.db.models import Q
 
 from .models import Quiz, Question, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId
 from multiplayer.models import Room, RoomPlayer
+from social.models import QuizSeriesLike
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,6 @@ class QuizDetailView(LoginRequiredMixin, DetailView):
     вместе с их вопросами и вариантами ответов - без этого шаблон, перебирающий
     раунды/вопросы, бил бы в БД по отдельному запросу на каждый уровень вложенности.
     """
-    queryset = QuizSeries.objects.select_related("user").prefetch_related("rounds__questions__options")
 
     def get_context_data(self, **kwargs):
         """
@@ -46,29 +47,41 @@ class QuizDetailView(LoginRequiredMixin, DetailView):
         context.setdefault("nums_of_rounds", len(self.object.rounds.all()))
         return context
 
+    def get_queryset(self):
+        return (
+            QuizSeries.objects
+            .select_related("user")
+            .prefetch_related("rounds__questions__options")
+            .filter(user=self.request.user)
+        )
+
 class QuizPreviewView(LoginRequiredMixin, DetailView):
     """
     Превью серии (QuizSeries) перед стартом игры - тоже про серию целиком, не про
-    один раунд, поэтому queryset и prefetch такие же, как в QuizDetailView.
+    один раунд. В отличие от QuizDetailView (только автор), превью открыто всем,
+    кто вправе видеть серию - отсюда можно лайкнуть и запустить чужую публичную серию.
     """
     template_name = "quizzes/quizseries_preview.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.setdefault("nums_of_rounds", len(self.object.rounds.all()))
+        context.setdefault("nums_of_likes", self.object.likes.count())
+        context.setdefault("already_liked", self.object.likes.filter(user=self.request.user).exists())
         return context
 
     def get_queryset(self):
         """
-        get_queryset(), а не queryset-атрибут класса - тут нужен self.request.user,
-        а он существует только на инстансе вьюхи (на уровне тела класса self не
-        определён). filter(user=...) - чтобы нельзя было открыть превью чужой серии
-        по подобранному pk.
+        visible_to(user) - превью доступно не только автору, но и другим пользователям
+        (чтобы лайкнуть/сыграть чужой квиз), но только для публичных серий + своих.
+        Без этого фильтра по подобранному pk в URL открывалось бы превью чужой
+        приватной серии (IDOR). Не заменяй на filter(user=...) - это правило
+        "только владелец", оно для QuizDetailView/редактирования, а не для превью.
         """
         return (
             QuizSeries.objects
-            .prefetch_related("rounds__questions__options")
-            .filter(user=self.request.user)
+            .visible_to(self.request.user)
+            .prefetch_related("rounds")
         )
 
 class QuizListView(LoginRequiredMixin, ListView):
