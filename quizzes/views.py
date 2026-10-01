@@ -13,7 +13,7 @@ from django.db.models import Q
 from .models import Quiz, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId
 from multiplayer.models import Room
-from social.services import get_like_context
+from social.services import get_like_context, get_save_context
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,7 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context["nums_of_rounds"] = self.object.rounds.count()
         context.update(get_like_context(self.request.user, self.object))
+        context.update(get_save_context(self.request.user, self.object))
         return context
 
     def get_queryset(self):
@@ -91,9 +92,13 @@ class QuizListView(LoginRequiredMixin, ListView):
         возможен только через метод, не через атрибут класса."""
         return (
             QuizSeries.objects
-            .prefetch_related("rounds__questions__options")
             .filter(user=self.request.user)
         )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["saved_series"] = QuizSeries.objects.saved_by_user(self.request.user).select_related("user")
+        return context
 
 class QuizCreateView(LoginRequiredMixin, CreateView):
     """

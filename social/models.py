@@ -30,3 +30,15 @@ class Follow(models.Model):
             models.UniqueConstraint(fields=["follower", "following"], name="unique_follow"),
             models.CheckConstraint(condition=~models.Q(follower=models.F("following")), name="cant_follow_self"),
         ]
+
+class SavedQuizSeries(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='saved_series')
+    series = models.ForeignKey(QuizSeries, on_delete=models.CASCADE, related_name='saved_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "series"], name="unique_saved_series"),
+        ]
+

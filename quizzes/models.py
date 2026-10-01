@@ -1,6 +1,8 @@
 from django.db import models
 
 from django.conf import settings
+from django.db.models import OuterRef, Exists
+from django.apps import apps
 
 class Category(models.Model):
     """Категория квиза (история, наука, спорт...) - плоский справочник, без иерархии."""
@@ -11,15 +13,42 @@ class Category(models.Model):
 
 
 class QuizSeriesQuerySet(models.QuerySet):
+    """
+    В этом классе мы создаем новые методы на QuerySet,
+    условно говоря, это заготовленные методы для упрощенной
+    в дальнейшем фильтрации
+    """
+
     def visible_to(self, user):
         """
-        Создаем новый метод на QS
         Серии, которые пользователь вправе видеть: все публичные + свои (любого статуса).
-        Единственное место, где задано правило видимости QuizSeries.
         """
         if not user.is_authenticated:
             return self.filter(status="public")
         return self.filter(models.Q(status="public") | models.Q(user=user))
+
+    def saved_by_user(self, user):
+        """
+        Серии, которые сохранены пользователем и
+        сейчас в статусе "public"
+        """
+        if not user.is_authenticated:
+            return self.none()
+        SavedQuizSeries = apps.get_model("social", "SavedQuizSeries") #чтобы избежать циклического импорта
+        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk"))
+        return self.filter(models.Q(status="public") & Exists(saved))
+
+    def available_to(self, user):
+        """
+        Серии, которые сохранены пользователем и
+        сейчас в статусе "public" + СВОИ (для мультиплеера)
+        """
+        if not user.is_authenticated:
+            return self.none()
+        SavedQuizSeries = apps.get_model("social", "SavedQuizSeries")  # чтобы избежать циклического импорта
+        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk"))
+        return self.filter(models.Q(user=user) | (models.Q(status="public") & Exists(saved)))
+
 
 class QuizSeries(models.Model):
     """
@@ -43,6 +72,9 @@ class QuizSeries(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='private')
 
     objects = QuizSeriesQuerySet.as_manager()
+
+    class Meta:
+        ordering = ['-created_at']
 
     def __str__(self):
         return self.title

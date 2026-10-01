@@ -9,6 +9,7 @@
     <p><b>Название: {{ series.title }}</b></p>
     <p><b>Количество раундов: {{ nums_of_rounds }}</b></p>
     {% include "social/_like_button.html" %}
+    {% include "social/_save_button.html" %}
     {% if object.user_id == request.user.id %}
         <a class="update-link" href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
             Детальная информация

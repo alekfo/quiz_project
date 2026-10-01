@@ -8,7 +8,7 @@
     <h1>Рады приветствовать вас в QUIZ_PROJECT</h1>
     {% if user.is_authenticated %}
         <div class="main-menu-list">
-            <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
+            <a href="{% url 'quizzes:quizzes_list' %}">Квизы</a>
             <a href="{% url 'multiplayer:room_list' %}">Мультиплеер</a>
             <a href="{% url 'users:users_list' %}">Пользователи</a>
             <a href="{% url 'users:about_me' %}">Мой профиль</a>

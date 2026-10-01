@@ -8,9 +8,9 @@ from django.views.decorators.http import require_POST
 from django.http import HttpRequest
 from django.shortcuts import render
 
-from .models import QuizSeriesLike, Follow
+from .models import QuizSeriesLike, Follow, SavedQuizSeries
 from quizzes.models import QuizSeries
-from .services import get_like_context, get_follow_context
+from .services import get_like_context, get_follow_context, get_save_context
 
 logger = logging.getLogger(__name__)
 
@@ -98,4 +98,42 @@ def delete_like(request: HttpRequest, series_id: int):
 
     if _is_htmx(request):
         return render(request, "social/_like_button.html", get_like_context(current_user, target_series))
+    return redirect("quizzes:quizzes_preview", pk=series_id)
+
+@login_required
+@require_POST
+def save_series(request: HttpRequest, series_id: int):
+    current_user = request.user
+    target_series = get_object_or_404(
+        QuizSeries.objects.visible_to(current_user).select_related("user"),
+        pk=series_id,
+    )
+
+    if target_series.user_id == current_user.id:
+        raise PermissionDenied
+
+    saved_series, created = SavedQuizSeries.objects.get_or_create(user=current_user, series=target_series)
+    if created:
+        logger.info(f"Пользователь с id = {current_user.pk} успешно добавил к себе квиз с id = {target_series.pk}")
+
+    if _is_htmx(request):
+        return render(request, "social/_save_button.html", get_save_context(current_user, target_series))
+    return redirect("quizzes:quizzes_preview", pk=series_id)
+
+@login_required
+@require_POST
+def unsave_series(request: HttpRequest, series_id: int):
+    current_user = request.user
+    target_series = get_object_or_404(
+        QuizSeries.objects.visible_to(current_user),
+        pk=series_id,
+    )
+
+    deleted_count, _ = SavedQuizSeries.objects.filter(user=current_user, series=target_series).delete()
+
+    if deleted_count != 0:
+        logger.info(f"Пользователь с id = {current_user.pk} удалил у себя квиз с id = {target_series.pk}")
+
+    if _is_htmx(request):
+        return render(request, "social/_save_button.html", get_save_context(current_user, target_series))
     return redirect("quizzes:quizzes_preview", pk=series_id)

@@ -13,3 +13,10 @@ def get_like_context(cur_user, series) -> dict:
         "nums_of_likes": series.likes.count(),
         "already_liked": series.likes.filter(user=cur_user).exists(),
     }
+
+def get_save_context(cur_user, series) -> dict:
+    return {
+        "series": series,
+        "already_saved": series.saved_by.filter(user=cur_user).exists(),
+        "is_my_series": series.user_id == cur_user.id,
+    }

@@ -14,6 +14,7 @@ from django.views.generic import TemplateView, ListView, DetailView
 
 from .forms import RegisterForm
 from social.services import get_follow_context
+from quizzes.models import QuizSeries
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +183,7 @@ class UserDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         #берем контекст из social.services.get_follow_context
         context.update(get_follow_context(self.request.user, self.object))
+        context["public_series"] = QuizSeries.objects.filter(user=self.object, status="public")
         return context
 
 class SettingsPageView(LoginRequiredMixin, TemplateView):

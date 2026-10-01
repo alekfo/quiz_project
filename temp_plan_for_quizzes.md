@@ -75,10 +75,10 @@
 - `social/urls.py`: `series/<int:series_id>/save` и `series/<int:series_id>/unsave`.
 - `save_series`: `@login_required` + `@require_POST`; серия — через `get_object_or_404(visible_to(user), pk=...)`;
   своя серия (`series.user_id == user.id`) → `PermissionDenied`; `get_or_create`.
-- `unsave_series`: **без проверки видимости** — `SavedQuizSeries.objects.filter(user=..., series_id=...).delete()`.
-  Иначе повторится проблема `delete_like`: серия стала приватной → 404 → убрать у себя нельзя.
-  Для HTMX-ответа серия всё равно нужна (перерисовать кнопку) — если она уже не видна, вернуть пустой блок
-  или обычный редирект на список.
+- `unsave_series`: серия — через `visible_to(user)`, симметрично `save_series` и `delete_like`
+  (решение пользователя, изменено по ходу реализации). Следствие: сохранённую серию, ставшую приватной,
+  убрать у себя нельзя (404) — строка остаётся в БД, но нигде не показывается из-за фильтра при чтении
+  и снова появится, если автор вернёт публичность.
 - `social/services.py`: `get_save_context(cur_user, series)` → `series`, `already_saved`, `is_my_series`.
 - Ответ — по HTMX-паттерну из `quiz_project_plan.md`: `_is_htmx` → partial `social/_save_button.html`, иначе redirect на превью.
 - Partial `_save_button.html` — обёртка `.save-block`, кнопка не рендерится, если `is_my_series`.
