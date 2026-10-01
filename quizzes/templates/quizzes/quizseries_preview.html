@@ -5,22 +5,10 @@
 {% endblock %}
 
 {% block body %}
-    <p><b>Номер квиза: {{ object.pk }}</b></p>
-    <p><b>Название: {{ object.title }}</b></p>
+    <p><b>Номер квиза: {{ series.pk }}</b></p>
+    <p><b>Название: {{ series.title }}</b></p>
     <p><b>Количество раундов: {{ nums_of_rounds }}</b></p>
-    <p><b>Лайки: {{ nums_of_likes }}</b></p>
-    {% if already_liked %}
-        <p>✅ Вы лайкнули</p>
-        <form method="post" action="{% url 'social:delete_like' series_id=object.pk %}">
-            {% csrf_token %}
-            <button class="btn" type="submit">Убрать лайк</button>
-        </form>
-    {% else %}
-        <form method="post" action="{% url 'social:create_like' series_id=object.pk %}">
-            {% csrf_token %}
-            <button class="btn" type="submit">Лайкнуть</button>
-        </form>
-    {% endif %}
+    {% include "social/_like_button.html" %}
     {% if object.user_id == request.user.id %}
         <a class="update-link" href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
             Детальная информация

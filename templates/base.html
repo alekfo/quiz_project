@@ -75,5 +75,10 @@
           }
         }, 15000);
     </script>
+    <script>
+      document.body.addEventListener("htmx:responseError", function (evt) {
+          alert("Не удалось выполнить действие (" + evt.detail.xhr.status + "). Обновите страницу.");
+      });
+    </script>
 </body>
 </html>

@@ -71,11 +71,11 @@
 - [x] `play()`/`_update_gameAnswer`/`GameSession`/`GameParticipant`/`GameAnswer`/WS-consumers (`RoomConsumer`/`GameSessionConsumer`) — не изменены, как и планировалось
 
 ### Этап 5 — Социальные функции (3-4 недели)
-- [~] Подписки между пользователями — бэкенд реализован 2026-09-29 (`social.Follow`, `social/views.py::follow`/`unfollow`, страницы `users:users_list`/`user_detail`/`about_me`), **вживую не протестировано**
+- [x] Подписки между пользователями — бэкенд реализован 2026-09-29 (`social.Follow`, `social/views.py::follow`/`unfollow`, страницы `users:users_list`/`user_detail`/`about_me`), проверено вживую 2026-09-30, кнопка переведена на HTMX 2026-10-01
 - [ ] Лента новых викторин от подписок
-- [~] Лайки — бэкенд реализован 2026-09-29 (`social.QuizSeriesLike` — лайк на серию, не на раунд; `create_like`/`delete_like`), кнопки в UI пока нет, **не протестировано**
+- [~] Лайки — бэкенд реализован 2026-09-29 (`social.QuizSeriesLike` — лайк на серию, не на раунд; `create_like`/`delete_like`), кнопка и счётчик на превью серии (`quizseries_preview.html`) — 2026-09-30, на HTMX — 2026-10-01; проверено вживую на серии `/quizzes/2/preview`. **Остаток**: сценарий «второй пользователь лайкает чужую публичную серию / получает 404 на чужую приватную» отдельно не прогонялся; кнопка лайка есть только на превью (в списках серий/профиле — нет)
 - [ ] Комментарии
-- [ ] **Фронт подписки и лайков — на HTMX**: POST через `hx-post`, вьюха возвращает partial с кнопкой в новом состоянии (подписан/не подписан, лайк/счётчик), HTMX подменяет его на месте — без перезагрузки страницы и редиректа. Сейчас follow/unfollow — обычная форма + редирект, like/unlike — временный `JsonResponse`
+- [x] **Фронт подписки и лайков — на HTMX** (реализовано и проверено вживую 2026-10-01): POST через `hx-post` на `<form>`, вьюха при заголовке `HX-Request` возвращает partial (`social/_follow_button.html` / `_like_button.html`) с кнопкой в новом состоянии, HTMX подменяет блок на месте (`hx-target="closest .…-block"`, `hx-swap="outerHTML"`). Fallback без JS сохранён — та же форма с `action` + редирект. Контекст partial и полной страницы — из одного места (`social/services.py`). Редирект на логин при HTMX-запросе — `quiz_project/middleware.py::HtmxLoginRedirectMiddleware` (`204` + `HX-Redirect`), действует на весь проект — см. «Социальный сценарий» ниже
 - [ ] Челленджи — вызов друга на конкретную викторину
 - [ ] Уведомления
 
@@ -112,6 +112,7 @@ quizapp/
 │   ├── urls.py                     # главный роутер
 │   ├── asgi.py                     # для Channels
 │   ├── wsgi.py
+│   ├── middleware.py               # HtmxLoginRedirectMiddleware — готово, 2026-10-01
 │   └── celery.py                   # конфиг Celery
 │
 ├── users/                          # пользователи
@@ -153,8 +154,9 @@ quizapp/
 ├── social/                         # социальные функции
 │   ├── models.py
 │   ├── views.py
+│   ├── services.py                 # get_follow_context / get_like_context — контекст для страницы и HTMX-partial
 │   ├── urls.py
-│   └── templates/social/
+│   └── templates/social/           # только partial'ы: _follow_button.html, _like_button.html
 │
 ├── notifications/                  # уведомления
 │   ├── models.py
@@ -577,6 +579,23 @@ WS-инфраструктура не меняется — `RoomConsumer`/`GameSe
     → Вызов друга на викторину
     → Сравнение результатов
 ```
+
+#### HTMX-паттерн для кнопок-действий (реализовано 2026-10-01 на подписке и лайках)
+
+Образец для следующих кнопок такого рода (комментарии, челленджи, лайк в списках):
+
+```
+<form method="post" action="URL"          ← fallback без JS: обычный POST → redirect
+      hx-post="URL"                       ← с HTMX: XHR с заголовком HX-Request: true
+      hx-target="closest .X-block" hx-swap="outerHTML" hx-disabled-elt="find button">
+    {% csrf_token %}                      ← токен уходит обычным полем формы
+```
+
+- Partial целиком обёрнут в `.X-block` и подключается на страницу через `{% include %}`; вьюха отдаёт тот же partial через `render(request, ...)` (с `request` — иначе в новой форме не будет CSRF-токена).
+- Контекст partial собирается функцией в `<app>/services.py` и используется и страницей, и HTMX-вьюхой — чтобы два места не разъезжались.
+- Вьюха: `if HX-Request → render(partial)`, иначе `redirect(...)`.
+- Истёкшая сессия: `HtmxLoginRedirectMiddleware` превращает `302` на `LOGIN_URL` в `204` + `HX-Redirect` (иначе HTMX вставит страницу логина внутрь блока); `next` — из `HX-Current-URL`. Само действие после логина не повторяется.
+- Ошибки 4xx/5xx — глобальный обработчик `htmx:responseError` в `templates/base.html`.
 
 ---
 

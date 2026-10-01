@@ -13,7 +13,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView, ListView, DetailView
 
 from .forms import RegisterForm
-from social.models import Follow
+from social.services import get_follow_context
 
 logger = logging.getLogger(__name__)
 
@@ -176,15 +176,12 @@ class UserDetailView(LoginRequiredMixin, DetailView):
 
     model = get_user_model()
     template_name = 'users/user_detail.html'
-    context_object_name = 'user_obj'
+    context_object_name = 'target_user'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Проверяем, подписан ли текущий пользователь на целевого пользователя
-        already_followed = Follow.objects.filter(follower=self.request.user, following=self.object).exists()
-        is_it_me = self.object == self.request.user
-        context['followed'] = already_followed
-        context['is_it_me'] = is_it_me
+        #берем контекст из social.services.get_follow_context
+        context.update(get_follow_context(self.request.user, self.object))
         return context
 
 class SettingsPageView(LoginRequiredMixin, TemplateView):

@@ -62,6 +62,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'quiz_project.middleware.HtmxLoginRedirectMiddleware',
 ]
 
 ROOT_URLCONF = 'quiz_project.urls'

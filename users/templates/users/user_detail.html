@@ -5,21 +5,10 @@
 {% endblock %}
 
 {% block body %}
-  <h2>📋 Информация о пользователе</h2>
-  <p>Никнейм пользователя: {{ user_obj.username }}</p>
-  <p>Имя пользователя: {{ user_obj.first_name|default:"—" }}</p>
-  <p>Фамилия пользователя: {{ user_obj.last_name|default:"—" }}</p>
-  {% if followed %}
-    <p>✅ Вы подписаны</p>
-    <form method="post" action="{% url 'social:unfollow' user_id=user_obj.pk %}">
-        {% csrf_token %}
-        <button class="btn" type="submit">Отписаться</button>
-    </form>
-  {% elif not is_it_me %}
-    <form method="post" action="{% url 'social:follow' user_id=user_obj.pk %}">
-        {% csrf_token %}
-        <button class="btn" type="submit">Подписаться</button>
-    </form>
-  {% endif %}
-  <a href="{% url 'quizzes:menu' %}" class="btn">🏠 Вернуться в меню</a>
+    <h2>📋 Информация о пользователе</h2>
+    <p>Никнейм пользователя: {{ target_user.username }}</p>
+    <p>Имя пользователя: {{ target_user.first_name|default:"—" }}</p>
+    <p>Фамилия пользователя: {{ target_user.last_name|default:"—" }}</p>
+    {% include "social/_follow_button.html" %}
+    <a href="{% url 'quizzes:menu' %}" class="btn">🏠 Вернуться в меню</a>
 {% endblock %}

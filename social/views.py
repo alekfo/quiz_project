@@ -5,13 +5,17 @@ from django.core.exceptions import PermissionDenied
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.views.decorators.http import require_POST
-from django.http import HttpRequest, JsonResponse
-from django.db.models import Q
+from django.http import HttpRequest
+from django.shortcuts import render
 
 from .models import QuizSeriesLike, Follow
 from quizzes.models import QuizSeries
+from .services import get_like_context, get_follow_context
 
 logger = logging.getLogger(__name__)
+
+def _is_htmx(request: HttpRequest) -> bool:
+    return request.headers.get("HX-Request") == "true"
 
 @login_required
 @require_POST
@@ -28,6 +32,8 @@ def follow(request: HttpRequest, user_id: int):
     if created:
         logger.info(f"Пользователь с id = {current_user.pk} успешно подписался на пользователя с id = {target_user.pk}")
 
+    if _is_htmx(request):
+        return render(request, "social/_follow_button.html", get_follow_context(current_user, target_user))
     return redirect("users:user_detail", pk=user_id)
 
 @login_required
@@ -42,6 +48,8 @@ def unfollow(request: HttpRequest, user_id: int):
     if deleted_count != 0:
         logger.info(f"Подписка пользователя с id = {current_user.pk} на пользователя с id = {target_user.pk} успешно отменена")
 
+    if _is_htmx(request):
+        return render(request, "social/_follow_button.html", get_follow_context(current_user, target_user))
     return redirect("users:user_detail", pk=user_id)
 
 @login_required
@@ -63,6 +71,8 @@ def create_like(request: HttpRequest, series_id: int):
     if created:
         logger.info(f"Пользователь с id = {current_user.pk} успешно лайкнул квиз с id = {target_series.pk}")
 
+    if _is_htmx(request):
+        return render(request, "social/_like_button.html", get_like_context(current_user, target_series))
     return redirect("quizzes:quizzes_preview", pk=series_id)
 
 @login_required
@@ -86,4 +96,6 @@ def delete_like(request: HttpRequest, series_id: int):
     if deleted_count != 0:
         logger.info(f"Лайк от пользователя с id = {current_user.pk} на квиз с id = {target_series.pk} успешно снят")
 
+    if _is_htmx(request):
+        return render(request, "social/_like_button.html", get_like_context(current_user, target_series))
     return redirect("quizzes:quizzes_preview", pk=series_id)

@@ -10,10 +10,10 @@ from django.db import transaction
 from django.contrib import messages
 from django.db.models import Q
 
-from .models import Quiz, Question, AnswerOption, QuizSeries
+from .models import Quiz, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId
-from multiplayer.models import Room, RoomPlayer
-from social.models import QuizSeriesLike
+from multiplayer.models import Room
+from social.services import get_like_context
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +65,8 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.setdefault("nums_of_rounds", len(self.object.rounds.all()))
-        context.setdefault("nums_of_likes", self.object.likes.count())
-        context.setdefault("already_liked", self.object.likes.filter(user=self.request.user).exists())
+        context["nums_of_rounds"] = self.object.rounds.count()
+        context.update(get_like_context(self.request.user, self.object))
         return context
 
     def get_queryset(self):
