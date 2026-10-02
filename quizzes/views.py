@@ -9,6 +9,7 @@ from django.urls import reverse, reverse_lazy
 from django.db import transaction
 from django.contrib import messages
 from django.db.models import Q
+from django.db.models import Count
 
 from .models import Quiz, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId, QuizSeriesUpdateForm
@@ -25,6 +26,14 @@ def menu(request: HttpRequest):
             room_players__user=request.user,
             status__in=["waiting", "in_progress"]
         ).prefetch_related("room_players__user")
+    series = (QuizSeries.objects
+                  .showcase_series(request.user)
+                  .select_related("category", "user")
+                  .annotate(like_count=Count("likes", distinct=True))
+                  .annotate(rounds_count=Count("rounds", distinct=True))
+                  .filter(rounds_count__gt=0)
+                  .order_by("-like_count", "-created_at")[:12])
+    context["showcase_series"] = series
 
     return render(request, "quizzes/quizzes_menu.html", context=context)
 

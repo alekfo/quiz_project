@@ -1,9 +1,12 @@
+from datetime import timedelta
+
 from django.contrib.auth.models import AnonymousUser
 from django.urls import reverse
+from django.utils import timezone
 
 from ai_generator.models import GenerationRequest
 from quiz_project.testing import BaseTestCase, make_category, make_round, make_series, make_user
-from social.models import SavedQuizSeries
+from social.models import QuizSeriesLike, SavedQuizSeries
 
 from .models import AnswerOption, Question, Quiz, QuizSeries
 from .services import create_quiz_from_any_data
@@ -125,6 +128,79 @@ class LoginRequiredTests(BaseTestCase):
     def test_root_redirects_to_menu(self):
         response = self.client.get("/")
         self.assertRedirects(response, reverse("quizzes:menu"), fetch_redirect_response=False)
+
+
+class MenuShowcaseTests(BaseTestCase):
+    """Витрина на главной: чужие публичные серии, которые пользователь ещё не сохранил."""
+
+    def setUp(self):
+        super().setUp()
+        self.author = make_user("author")
+        self.reader = make_user("reader")
+        self.url = reverse("quizzes:menu")
+
+    def showcase(self, user=None) -> list:
+        if user is not None:
+            self.client.force_login(user)
+        return list(self.client.get(self.url).context["showcase_series"])
+
+    def test_shows_only_foreign_public_unsaved_series_with_rounds(self):
+        shown = make_series(self.author, status="public", title="показывается")
+        make_series(self.author, status="private", title="приватная")
+        make_series(self.author, status="public", rounds=0, title="без раундов")
+        make_series(self.reader, status="public", title="своя")
+        saved = make_series(self.author, status="public", title="уже сохранена")
+        SavedQuizSeries.objects.create(user=self.reader, series=saved)
+
+        self.assertEqual(self.showcase(self.reader), [shown])
+
+    def test_series_saved_by_another_user_is_still_shown(self):
+        series = make_series(self.author, status="public")
+        SavedQuizSeries.objects.create(user=make_user("other"), series=series)
+        self.assertEqual(self.showcase(self.reader), [series])
+
+    def test_anonymous_sees_all_public_series_with_rounds(self):
+        first = make_series(self.author, status="public", title="A")
+        second = make_series(self.reader, status="public", title="B")
+        make_series(self.author, status="private", title="приватная")
+        make_series(self.author, status="public", rounds=0, title="без раундов")
+        self.assertCountEqual(self.showcase(), [first, second])
+
+    def test_counters_are_not_multiplied_by_joins(self):
+        """Два Count по разным связям без distinct=True дали бы 3*2=6 в обоих счётчиках."""
+        series = make_series(self.author, status="public", rounds=3)
+        for name in ("u1", "u2"):
+            QuizSeriesLike.objects.create(series=series, user=make_user(name))
+        [shown] = self.showcase(self.reader)
+        self.assertEqual((shown.rounds_count, shown.like_count), (3, 2))
+
+    def test_ordered_by_likes_then_newest(self):
+        old = make_series(self.author, status="public", title="старая")
+        liked = make_series(self.author, status="public", title="с лайком")
+        new = make_series(self.author, status="public", title="новая")
+        QuizSeriesLike.objects.create(series=liked, user=make_user("fan"))
+        # created_at задаём явно: в тесте серии создаются почти одновременно
+        now = timezone.now()
+        QuizSeries.objects.filter(pk=old.pk).update(created_at=now - timedelta(days=2))
+        QuizSeries.objects.filter(pk=liked.pk).update(created_at=now - timedelta(days=3))
+        QuizSeries.objects.filter(pk=new.pk).update(created_at=now - timedelta(days=1))
+
+        self.assertEqual(self.showcase(self.reader), [liked, new, old])
+
+    def test_limited_to_twelve_series(self):
+        for i in range(14):
+            make_series(self.author, status="public", title=f"Квиз {i}")
+        self.assertEqual(len(self.showcase(self.reader)), 12)
+
+    def test_page_renders_cards_with_links_to_preview(self):
+        series = make_series(self.author, status="public", title="Космос")
+        for client_user in (None, self.reader):
+            with self.subTest(user=client_user):
+                if client_user:
+                    self.client.force_login(client_user)
+                response = self.client.get(self.url)
+                self.assertContains(response, "Космос")
+                self.assertContains(response, reverse("quizzes:quizzes_preview", kwargs={"pk": series.pk}))
 
 
 class SeriesReadAccessTests(BaseTestCase):
