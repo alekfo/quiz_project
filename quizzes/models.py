@@ -49,6 +49,16 @@ class QuizSeriesQuerySet(models.QuerySet):
         saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk"))
         return self.filter(models.Q(user=user) | (models.Q(status="public") & Exists(saved)))
 
+    def showcase_series(self, user):
+        """
+        Серии, которые доступны на странице quizzes_menu:
+        не мои + я не добавлял еще к себе + публичные
+        """
+        if not user.is_authenticated:
+            return self.filter(status="public")
+        SavedQuizSeries = apps.get_model("social", "SavedQuizSeries")
+        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk"))
+        return self.filter(models.Q(status="public") & (~Exists(saved))).exclude(user=user)
 
 class QuizSeries(models.Model):
     """
