@@ -6,11 +6,16 @@
 
 {% block body %}
     <p><b>Номер квиза: {{ series.pk }}</b></p>
-    <p><b>Название: {{ series.title }}</b></p>
+    <p><b>Название квиза: {{ series.title }}</b></p>
+    <p><b>Описание квиза: {{ series.description }}</b></p>
+    <p><b>Категория квиза: {{ series.category }}</b></p>
     <p><b>Количество раундов: {{ nums_of_rounds }}</b></p>
     {% include "social/_like_button.html" %}
     {% include "social/_save_button.html" %}
     {% if object.user_id == request.user.id %}
+        <a class="update-link" href="{% url 'quizzes:quiz_update_main_info' pk=object.pk%}">
+            Обновить общую информацию
+        </a>
         <a class="update-link" href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
             Детальная информация
         </a>

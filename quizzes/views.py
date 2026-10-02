@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.db.models import Q
 
 from .models import Quiz, AnswerOption, QuizSeries
-from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId
+from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId, QuizSeriesUpdateForm
 from multiplayer.models import Room
 from social.services import get_like_context, get_save_context
 
@@ -81,6 +81,7 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
         return (
             QuizSeries.objects
             .visible_to(self.request.user)
+            .select_related("category")
             .prefetch_related("rounds")
         )
 
@@ -247,6 +248,10 @@ class QuizDeleteView(LoginRequiredMixin, DeleteView):
     model = QuizSeries
     template_name = "quizzes/quiz_confirm_delete.html"
 
+    def get_queryset(self):
+        """Без этого self.get_object() искал бы QuizSeries по pk среди ВСЕХ пользователей"""
+        return QuizSeries.objects.filter(user=self.request.user)
+
     def get_success_url(self):
         logger.info("Пользователь %s успешно удалил квиз №%s", self.request.user.username, self.object.pk)
         messages.success(self.request, "Квиз успешно удален")
@@ -258,10 +263,37 @@ class RoundDeleteView(LoginRequiredMixin, DeleteView):
     model = Quiz
     template_name = "quizzes/round_confirm_delete.html"
 
+    def get_queryset(self):
+        """Без этого self.get_object() искал бы Quiz по pk среди ВСЕХ пользователей"""
+        return Quiz.objects.filter(user=self.request.user)
+
     def get_success_url(self):
         logger.info("Пользователь %s успешно удалил раунд №%s", self.request.user.username, self.object.pk)
         messages.success(self.request, "Раунд успешно удален")
         return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.series_id})
+
+class QuizSeriesUpdateView(LoginRequiredMixin, UpdateView):
+    """
+    Редактирование общей информации квиза (на модели QuizSeries)
+    """
+    model = QuizSeries
+    form_class = QuizSeriesUpdateForm
+    template_name = "quizzes/quizseries_update.html"
+
+    def get_queryset(self):
+        """Без этого self.get_object() искал бы QuizSeries по pk среди ВСЕХ пользователей -
+        чужой pk в URL позволил бы отредактировать чужой QuizSeries (IDOR). filter(user=...)
+        сужает выборку до своих же, чужой pk даёт закономерный 404."""
+        return QuizSeries.objects.filter(user=self.request.user)
+
+    def get_success_url(self):
+        """
+        Редиректим на страницу превью
+        """
+        logger.info("Квиз №%s обновлен пользователем user=%s", self.object.pk, self.request.user.username)
+        messages.success(self.request, "Информация о квизе обновлена")
+        return reverse("quizzes:quizzes_preview", kwargs={"pk": self.object.pk})
+
 
 class RoundUpdateView(LoginRequiredMixin, UpdateView):
     """Редактирование одного раунда (Quiz). series/round_order не входят

@@ -89,3 +89,18 @@ class QuizForm(QuizFormWithSeriesId):
 
     field_order = ["title", "category", "description", "status",
                    "subject", "level", "style", "audience", "time_limit_seconds"]
+
+class QuizSeriesUpdateForm(forms.ModelForm):
+    class Meta:
+        model = QuizSeries
+        fields = ["title", "description", "category", "status"]
+        labels = {
+            "title": "Название квиза",
+            "description": "Описание квиза",
+            "category": "Категория квиза",
+            "status": "Уровень доступности квиза",
+
+        }
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 10, "cols": 30})
+        }
