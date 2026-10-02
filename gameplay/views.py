@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction, IntegrityError
 from django.utils import timezone
 from django.conf import settings
+from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import F, Q
 from django.contrib.auth.decorators import login_required
@@ -311,6 +312,11 @@ def start(request: HttpRequest, pk: int):
         pk=pk
     )
 
+    if not series.rounds.all():
+        messages.error(request, "Невозможно начать квиз без раундов. Обратитесь к автору квиза.")
+        url = reverse("quizzes:quizzes_preview", kwargs={"pk": series.pk})
+        return redirect(url)
+
     if request.method == "POST":
         user = request.user
         #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
@@ -368,6 +374,17 @@ def solo_room(request: HttpRequest, pk: int):
         if series_run.status in ["completed", "abandoned"] or series_run.created_by_id != request.user.id:
             raise PermissionDenied
         curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
+
+        if curr_quiz is None:
+            #текущий раунд удалён - прогон прерываем ("abandoned", как при смене серии/закрытии комнаты),
+            #иначе он навсегда остался бы in_progress и start() каждый раз возвращал бы в эту же комнату
+            series_run.status = "abandoned"
+            series_run.finished_at = timezone.now()
+            series_run.save(update_fields=["status", "finished_at"])
+            messages.error(request, "Похоже раунд был удален. Прохождение прервано, квиз можно начать заново")
+            url = reverse("quizzes:quizzes_preview", kwargs={"pk": series_run.series.pk})
+            return redirect(url)
+
         user = request.user
         # проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
         try:
