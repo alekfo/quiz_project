@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Users detail
+{% endblock %}
+
+{% block body %}
+    <h2>📋 Информация о пользователе</h2>
+    <p>Никнейм пользователя: {{ target_user.username }}</p>
+    <p>Имя пользователя: {{ target_user.first_name|default:"—" }}</p>
+    <p>Фамилия пользователя: {{ target_user.last_name|default:"—" }}</p>
+    {% if not is_it_me %}
+        <h2>📋 Доступные квизы пользователя:</h2>
+        {% for ps in public_series %}
+            <div class="quiz-list">
+                <a href="{% url 'quizzes:quizzes_preview' pk=ps.pk %}">{{ ps.title }}</a>
+            </div>
+        {% empty %}
+            <p>У пользователя нет публичных квизов</p>
+        {% endfor %}
+    {% endif%}
+    {% include "social/_follow_button.html" %}
+    <a href="{% url 'quizzes:menu' %}" class="btn">🏠 Вернуться в меню</a>
+{% endblock %}

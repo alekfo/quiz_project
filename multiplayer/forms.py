@@ -18,11 +18,16 @@ class RoomSeriesForm(forms.ModelForm):
         model = Room
         fields = ["current_series"]
 
-    # переопределяем получение всех QuizSeries текущего пользователя или все публичные, иначе для хоста в комнате будут и чужие приватные QuizSeries тоже
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user, **kwargs):
+        """
+        По умолчанию ModelForm строит choices для FK current_series из ВСЕХ QuizSeries,
+        т.е. хосту в выпадающем списке показались бы и чужие приватные серии.
+        available_to(user) сужает список до «свои + сохранённые к себе публичные». Это же ограничение действует и при валидации:
+        ModelChoiceField отклонит pk, которого нет в queryset, даже если его
+        подставить в POST вручную.
+        """
         super().__init__(*args, **kwargs)
-        if user is not None:
-            self.fields["current_series"].queryset = QuizSeries.objects.filter(Q(user=user) | Q(status="public"))
+        self.fields["current_series"].queryset = QuizSeries.objects.available_to(user)
 
 class RoomPlayerReadyForm(forms.ModelForm):
     class Meta:

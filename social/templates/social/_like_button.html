@@ -1,0 +1,23 @@
+<div class="like-block">
+    <p>Лайки: {{ nums_of_likes }}</p>
+    {% if already_liked %}
+        <p>✅ Вы лайкнули</p>
+        <form method="post" action="{% url 'social:delete_like' series_id=series.pk %}"
+                hx-post="{% url 'social:delete_like' series_id=series.pk %}"
+                hx-target="closest .like-block"
+                hx-swap="outerHTML"
+                hx-disabled-elt="find button">
+            {% csrf_token %}
+            <button class="btn" type="submit">Убрать лайк</button>
+        </form>
+    {% else %}
+        <form method="post" action="{% url 'social:create_like' series_id=series.pk %}"
+                hx-post="{% url 'social:create_like' series_id=series.pk %}"
+                hx-target="closest .like-block"
+                hx-swap="outerHTML"
+                hx-disabled-elt="find button">
+            {% csrf_token %}
+            <button class="btn" type="submit">Лайкнуть</button>
+        </form>
+    {% endif %}
+</div>

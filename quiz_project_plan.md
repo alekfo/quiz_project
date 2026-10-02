@@ -29,8 +29,8 @@
 ### Этап 2 — Ручное создание + публикация (2-3 недели)
 - [x] Конструктор викторин вручную (`QuizForm` + `QuestionFormSet` на одной странице, динамическое добавление/удаление вопросов через JS)
 - [x] Превью викторины перед началом игры (`quiz_preview.html`)
-- [ ] Публичные / приватные викторины — поле `Quiz.status` (default `private`) есть, но осознанного UI-переключателя/каталога публичных викторин ещё нет
-- [ ] Каталог викторин с фильтрами по категориям — сейчас список (`QuizListView`) показывает только свои квизы, публичного каталога нет
+- [~] Публичные / приватные викторины — статус живёт на `QuizSeries.status` (default `private`), задаётся при создании и **с 2026-10-02 меняется автором в UI** (`QuizSeriesUpdateView`, `/quizzes/quiz/<pk>/update/` — название, описание, категория, статус). Каталога публичных викторин ещё нет
+- [ ] Каталог викторин с фильтрами по категориям — список (`QuizListView`) показывает свои квизы и сохранённые к себе (секция «Добавленные», 2026-10-01); чужую публичную серию сейчас можно найти только через профиль автора, публичного каталога нет
 - [ ] Страница профиля с историей игр
 
 ### Этап 3 — Мультиплеер (3-4 недели)
@@ -71,9 +71,13 @@
 - [x] `play()`/`_update_gameAnswer`/`GameSession`/`GameParticipant`/`GameAnswer`/WS-consumers (`RoomConsumer`/`GameSessionConsumer`) — не изменены, как и планировалось
 
 ### Этап 5 — Социальные функции (3-4 недели)
-- [ ] Подписки между пользователями
+- [x] Подписки между пользователями — бэкенд реализован 2026-09-29 (`social.Follow`, `social/views.py::follow`/`unfollow`, страницы `users:users_list`/`user_detail`/`about_me`), проверено вживую 2026-09-30, кнопка переведена на HTMX 2026-10-01
 - [ ] Лента новых викторин от подписок
-- [ ] Лайки и комментарии
+- [~] Лайки — бэкенд реализован 2026-09-29 (`social.QuizSeriesLike` — лайк на серию, не на раунд; `create_like`/`delete_like`), кнопка и счётчик на превью серии (`quizseries_preview.html`) — 2026-09-30, на HTMX — 2026-10-01; проверено вживую на серии `/quizzes/2/preview`. **Остаток**: сценарий «второй пользователь лайкает чужую публичную серию / получает 404 на чужую приватную» отдельно не прогонялся; кнопка лайка есть только на превью (в списках серий/профиле — нет)
+- [x] **«Сохранить квиз к себе»** — реализовано 2026-10-01 (коммит `5e149e0`), проверено вживую 2026-10-02: `social.SavedQuizSeries` (ссылка на чужую публичную серию, не копия), `save_series`/`unsave_series` с кнопкой на превью серии (HTMX-паттерн), секция «Добавленные» в списке квизов, публичные серии автора на его профиле, хост в комнате выбирает серию из своей библиотеки (`available_to` — свои + сохранённые публичные). Подробности — «Сохранить квиз к себе» в разделе «Социальный сценарий» ниже
+- [ ] Каталог публичных серий — сейчас чужую серию можно найти только через профиль автора
+- [ ] Комментарии
+- [x] **Фронт подписки и лайков — на HTMX** (реализовано и проверено вживую 2026-10-01): POST через `hx-post` на `<form>`, вьюха при заголовке `HX-Request` возвращает partial (`social/_follow_button.html` / `_like_button.html`) с кнопкой в новом состоянии, HTMX подменяет блок на месте (`hx-target="closest .…-block"`, `hx-swap="outerHTML"`). Fallback без JS сохранён — та же форма с `action` + редирект. Контекст partial и полной страницы — из одного места (`social/services.py`). Редирект на логин при HTMX-запросе — `quiz_project/middleware.py::HtmxLoginRedirectMiddleware` (`204` + `HX-Redirect`), действует на весь проект — см. «Социальный сценарий» ниже
 - [ ] Челленджи — вызов друга на конкретную викторину
 - [ ] Уведомления
 
@@ -110,6 +114,7 @@ quizapp/
 │   ├── urls.py                     # главный роутер
 │   ├── asgi.py                     # для Channels
 │   ├── wsgi.py
+│   ├── middleware.py               # HtmxLoginRedirectMiddleware — готово, 2026-10-01
 │   └── celery.py                   # конфиг Celery
 │
 ├── users/                          # пользователи
@@ -151,8 +156,9 @@ quizapp/
 ├── social/                         # социальные функции
 │   ├── models.py
 │   ├── views.py
+│   ├── services.py                 # get_follow_context / get_like_context / get_save_context — контекст для страницы и HTMX-partial
 │   ├── urls.py
-│   └── templates/social/
+│   └── templates/social/           # только partial'ы: _follow_button.html, _like_button.html, _save_button.html
 │
 ├── notifications/                  # уведомления
 │   ├── models.py
@@ -182,31 +188,37 @@ quizapp/
 
 ### quizzes/
 - **Category** — название темы (история, наука, спорт, кино...)
-- **Quiz** — теперь это РАУНД (может как входить в `QuizSeries`, так и оставаться самостоятельным при `series=None` — старое поведение не сломано): название, описание, автор, тип (`ai` / `by_user`), категория (FK, `on_delete=PROTECT`), приватный/публичный раунд (`status`, default `private`, лейблы «Приватный/Публичный раунд» — переименованы в сессии от 2026-09-12, раньше «Приватная/Публичная викторина»), `time_limit_seconds` (лимит времени на вопрос в секундах, задаётся автором при создании квиза, единый для всех вопросов — решение зафиксировано в разделе «Соло прохождение»: игрок это значение не выбирает, чтобы в будущем мультиплеере у всех участников партии было одинаковое время). **Реализовано 2026-09-12**: `series` (FK `QuizSeries`, `null=True, blank=True, on_delete=CASCADE, related_name='rounds'`) и `round_order` (`PositiveIntegerField`, `default=0`, простая нумерация — `series.rounds.count()` в момент создания раунда, без отдельного счётчика на `QuizSeries`)
+- **Quiz** — по сути РАУНД внутри `QuizSeries` (историческое имя класса не переименовано, см. докстринг в `quizzes/models.py`): `user` (автор, FK, `on_delete=CASCADE`, `related_name='quizzes'`), `series` (FK `QuizSeries`, `null=True, blank=True, on_delete=CASCADE, related_name='rounds'` — поле nullable, но оба флоу создания, ручной и AI, всегда привязывают раунд к серии), `round_order` (`PositiveIntegerField`, `default=0` — `series.rounds.count()` в момент создания раунда, без отдельного счётчика на `QuizSeries`; после удаления раунда из середины остаются дыры, поэтому «следующий раунд» ищется фильтром `round_order__gt`, а не арифметикой), `type` (`ai` / `by_user`), `subject` (тема раунда — она же `__str__`), `level`, `style`, `audience`, `time_limit_seconds` (лимит времени на вопрос в секундах, `default=50`, задаётся автором, единый для всех вопросов раунда — игрок это значение не выбирает, чтобы в мультиплеере у всех участников было одинаковое время), `created_at`. **Названия, описания, категории и статуса у `Quiz` нет** — с 2026-09-12/13 это поля `QuizSeries`
 - **Question** — текст вопроса, порядок (`order`), интересный факт (`fact`, генерируется AI вместе с вопросом — отклонение от исходного плана: изначально это поле числилось за `AnswerOption` как «объяснение ответа», но Claude возвращает факт на уровне вопроса целиком, а не привязанным к конкретному варианту ответа, поэтому поле перенесено на `Question`)
 - **AnswerOption** — варианты ответа, `is_correct`, `order`
-- **QuizSeries** *(реализовано 2026-09-12)* — контейнер, объединяющий несколько `Quiz` пользователя в упорядоченный набор раундов: `title`, `user` (FK, `on_delete=CASCADE`), `created_at`, `status` (`private`/`public`, default `private` — независимое поле от `Quiz.status`, оба уровня приватности решили не объединять). `Quiz`/`Question`/`AnswerOption` не менялись — раунд это `Quiz` с проставленным `series`. Уже зарегистрирована в админке (`QuizSeriesAdmin`, inline `QuizInline`)
+- **QuizSeries** *(реализовано 2026-09-12)* — то, что пользователь в UI называет «квиз»: контейнер с упорядоченным набором раундов (`Quiz`, `related_name='rounds'`). Поля: `title` (`max_length=50`), `user` (FK, `on_delete=CASCADE`, `related_name='quiz_series'`), `description` (`max_length=255`, `blank=True`), `category` (FK `Category`, `on_delete=PROTECT`), `status` (`private`/`public`, default `private` — единственный уровень приватности, у раунда своего статуса нет), `created_at`; `Meta.ordering = ['-created_at']`. Сама вопросов не содержит — `Question`/`AnswerOption` привязаны к раунду. Общая информация редактируется автором через `QuizSeriesUpdateView` + `QuizSeriesUpdateForm` (2026-10-02). Менеджер — `QuizSeriesQuerySet.as_manager()` с тремя методами доступа: `visible_to(user)` (публичные + свои), `saved_by_user(user)` (сохранённые пользователем и сейчас публичные), `available_to(user)` (свои + сохранённые публичные) — см. «Сохранить квиз к себе» ниже. Зарегистрирована в админке (`QuizSeriesAdmin`, inline `QuizInline`)
 
 ### ai_generator/
 - **GenerationRequest** — параметры (тема, кол-во вопросов, категория, сложность, стиль, аудитория), статус задачи, результат (`JSONField`)
 
 ### gameplay/
-- **GameSession** — викторина (FK `Quiz`, `related_name="game_sessions"`), режим (`solo` / `multiplayer`), статус (`in_progress` / `completed` / `abandoned`, default `in_progress`), `started_at` (`auto_now_add`), `finished_at` (nullable), `created_by` (FK `User`, `on_delete=PROTECT`). `Meta.constraints` — частичный `UniqueConstraint(quiz, created_by, condition=status="in_progress")`, гарантирует на уровне БД, что у одного пользователя не может быть двух одновременных активных сессий на один квиз (закрывает TOCTOU-гонку, которая раньше решалась бы отдельной проверкой в коде). **Запланировано для Этапа 3**: поле `current_question` (FK `Question`, `null=True`) — используется только при `mode="multiplayer"`, единый «текущий вопрос» для всех участников партии; при `mode="solo"` остаётся `null`, текущий вопрос по-прежнему вычисляется индивидуально по истории `GameAnswer` участника (см. «Соло прохождение»)
+- **GameSession** — викторина (FK `Quiz`, `related_name="game_sessions"`), режим (`solo` / `multiplayer`), статус (`in_progress` / `completed` / `abandoned`, default `in_progress`), `started_at` (`auto_now_add`), `finished_at` (nullable), `created_by` (FK `User`, `on_delete=PROTECT`). `Meta.constraints` — частичный `UniqueConstraint(quiz, created_by, condition=status="in_progress")`, гарантирует на уровне БД, что у одного пользователя не может быть двух одновременных активных сессий на один квиз (закрывает TOCTOU-гонку, которая раньше решалась бы отдельной проверкой в коде). Поле `current_question` (FK `Question`, `null=True`, `on_delete=SET_NULL`; реализовано в Этапе 3) — используется только при `mode="multiplayer"`, единый «текущий вопрос» для всех участников партии; при `mode="solo"` остаётся `null`, текущий вопрос по-прежнему вычисляется индивидуально по истории `GameAnswer` участника (см. «Соло прохождение»)
 - **GameParticipant** — сессия (FK `GameSession`, `related_name="participants"`), пользователь (FK `User`), `score` (default 0, инкрементируется атомарно через `F('score') + 1)`, не read-modify-write), `joined_at` (`auto_now_add`), `finished_at` (nullable — проставляется этому конкретному участнику, когда у него не осталось неотвеченных вопросов; для мультиплеера сессия в целом завершается только когда `finished_at` проставлен у всех участников). `UniqueConstraint(session, user)`
-- **GameAnswer** — участник (FK `GameParticipant`, `related_name="participants_answers"`), вопрос (FK `Question`, `related_name="participants_answers"`), выбранный вариант (FK `AnswerOption`, `null=True`, `on_delete=SET_NULL` — намеренно не `CASCADE`: при редактировании квиза автор пересоздаёт все `AnswerOption` вопроса заново, `CASCADE` физически стирал бы историю уже сыгранных партий), `is_correct` (bool, `default=False`), `is_skipped` (bool, `default=False`), `shown_at` (`auto_now_add`, момент показа вопроса — точка отсчёта для серверной проверки таймера), `answered_at` (nullable, момент фактического ответа). `UniqueConstraint(participant, question)`. Строка создаётся уже в момент **показа** вопроса (`get_or_create`, не только при ответе) и служит единственным источником истины о прогрессе — отдельного поля-указателя «текущий вопрос участника» нет (в отличие от планируемого `GameSession.current_question`, который будет общим на всю партию, а не персональным)
+- **GameAnswer** — участник (FK `GameParticipant`, `related_name="participants_answers"`), вопрос (FK `Question`, `related_name="participants_answers"`), выбранный вариант (FK `AnswerOption`, `null=True`, `on_delete=SET_NULL` — намеренно не `CASCADE`: при редактировании квиза автор пересоздаёт все `AnswerOption` вопроса заново, `CASCADE` физически стирал бы историю уже сыгранных партий), `is_correct` (bool, `default=False`), `is_skipped` (bool, `default=False`), `shown_at` (`auto_now_add`, момент показа вопроса — точка отсчёта для серверной проверки таймера), `answered_at` (nullable, момент фактического ответа). `UniqueConstraint(participant, question)`. Строка создаётся уже в момент **показа** вопроса (`get_or_create`, не только при ответе) и служит единственным источником истины о прогрессе — отдельного поля-указателя «текущий вопрос участника» нет (в отличие от `GameSession.current_question`, который общий на всю мультиплеерную партию, а не персональный)
 - **`GameSession.room`** (FK `multiplayer.Room`, `null=True, blank=True, related_name="game_sessions"`) — объявлено ещё в сессии от 2026-08-20 для истории игр комнаты (`room.game_sessions.all()`), но реально **проставляется с 2026-09-03**: `room_start()` теперь передаёт `room=room` при создании `GameSession` (раньше поле молча оставалось `None` для всех мультиплеерных сессий). Именно это поле, а не `Room.current_game_session`/`current_for_rooms`, нужно использовать, чтобы найти комнату по завершённой сессии — `current_game_session` перезаписывается каждый новый раунд и для истории/обратной ссылки не годится (используется в `result.html` для ссылки «Вернуться в комнату»)
 - **Завершение мультиплеерной `GameSession` теперь возвращает `Room.status` обратно в `"waiting"`** (2026-09-03) — раньше `Room.status` навсегда оставался `"in_progress"` после первого же раунда, из-за чего `RoomConsumer.room_update()` (см. «WS» ниже — условие редиректа смотрит только на `status == "in_progress" and current_game_session_id`, не разбирая, какое событие пришло) ложно редиректил всех участников лобби обратно в уже завершённую игру на любое следующее действие в комнате (например, сброс квиза хостом). `_check_and_make_complete` (`gameplay/views.py`) при простановке `sess.status = "completed"` теперь заодно возвращает `sess.room.status = "waiting"` — `current_game_session` при этом не зануляется, он больше не единственное условие редиректа и продолжает служить истории
-- **С 2026-09-04 завершение мультиплеерной `GameSession` дополнительно сбрасывает саму комнату к «чистому» состоянию** — `_check_and_make_complete` заодно зануляет `sess.room.current_quiz` и одним bulk-запросом (`sess.room.room_players.update(is_ready=False)`) сбрасывает готовность всех `RoomPlayer` (та же логика, что уже делают `room_set_quiz`/`room_reset_quiz` при смене квиза хостом — здесь применена и к моменту завершения партии), после чего шлёт `_notify_room(sess.room)` (импортирован из `multiplayer.views`, обёрнут в тот же `transaction.on_commit`, что и `_notify_session`) — открытое лобби (`room_detail.html`) видит полный сброс сразу, без ручной перезагрузки
-- **`GameSession.series_run`** *(реализовано 2026-09-12)* — FK на `SeriesRun` (nullable); проставляется только когда `GameSession` — один из раундов серии, обычные одиночные сессии (`series_run=None`) не меняются. Пока никем не проставляется и не читается — модель есть, orchestration-код ещё не написан (см. раздел «Раунды» ниже)
-- **SeriesRun** *(реализовано 2026-09-12, модель есть — логика продвижения раунда ещё нет)* — «одна попытка пройти всю `QuizSeries`», общая модель для solo и multiplayer (`series` FK, `mode`/`status` — те же choices, что и у `GameSession`, вынесены в `gameplay/models.py` модульными константами `MODE_CHOICES`/`STATUS_CHOICES` и переиспользуются обеими моделями, `room` FK — только для multiplayer, `created_by`, `current_round_index`, `started_at`/`finished_at`). Отношение к `GameSession` то же по смыслу, что уже есть `Room` → `GameSession` (`current_game_session`), только на уровень выше: `SeriesRun` объединяет несколько последовательных `GameSession`, каждый — отдельный раунд. Подробности и полный флоу — раздел «Раунды» ниже
+- **С 2026-09-04 завершение мультиплеерной `GameSession` дополнительно сбрасывает саму комнату к «чистому» состоянию** — `_check_and_make_complete` заодно зануляет `sess.room.current_quiz` и одним bulk-запросом (`sess.room.room_players.update(is_ready=False)`) сбрасывает готовность всех `RoomPlayer` (та же логика, что уже делают `room_set_quiz`/`room_reset_quiz` при смене квиза хостом — здесь применена и к моменту завершения партии), после чего шлёт `_notify_room(sess.room)` (импортирован из `multiplayer.views`, обёрнут в тот же `transaction.on_commit`, что и `_notify_session`) — открытое лобби (`room_detail.html`) видит полный сброс сразу, без ручной перезагрузки. **С Этапа 4 поля `Room.current_quiz` больше нет**: после раунда `_check_and_make_complete` сбрасывает `current_game_session` и готовность игроков, а после последнего раунда серии — ещё и `current_series`/`current_series_run`
+- **`GameSession.series_run`** *(реализовано 2026-09-12)* — FK на `SeriesRun` (nullable); проставляется только когда `GameSession` — один из раундов серии, обычные одиночные сессии (`series_run=None`) не меняются. `on_delete=CASCADE`, `related_name='game_sessions'`. Проставляется при создании `GameSession` раунда: в соло — `solo_room`, в мультиплеере — `room_start`; по `series_run.game_sessions` строится прогресс серии (`gameplay/services.py::get_series_progress`)
+- **SeriesRun** *(модель — 2026-09-12; продвижение раундов `_advance_series_run` — 2026-09-13…17)* — «одна попытка пройти всю `QuizSeries`», общая модель для solo и multiplayer (`series` FK, `mode`/`status` — те же choices, что и у `GameSession`, вынесены в `gameplay/models.py` модульными константами `MODE_CHOICES`/`STATUS_CHOICES` и переиспользуются обеими моделями, `room` FK — только для multiplayer, `created_by`, `current_round_index`, `started_at`/`finished_at`). Отношение к `GameSession` то же по смыслу, что уже есть `Room` → `GameSession` (`current_game_session`), только на уровень выше: `SeriesRun` объединяет несколько последовательных `GameSession`, каждый — отдельный раунд. `status`: `in_progress` / `completed` (серия доиграна, проставляется вместе с `finished_at`) / `abandoned` (прервана — хост сменил или сбросил серию, закрыл комнату); «завершён» проверяется как `status != "in_progress"`. Частичный `UniqueConstraint(series, created_by, condition=status="in_progress")` — один активный прогон серии на пользователя. Подробности и полный флоу — раздел «Раунды» ниже
 
 ### multiplayer/ *(реализовано полностью на первую итерацию — `create`/`detail`/`list`/`join`/`quit`/`set-quiz`/`reset-quiz`/`confirm-ready`/`start` работают, лобби обновляется у всех участников живьём через WebSocket (`RoomConsumer`), см. CLAUDE.md, сессии от 2026-08-20/24/25, 2026-09-01/02/03/04)*
-- **Room** — `title`, уникальный токен-приглашение (`token`), хост (FK `User`, `on_delete=SET_NULL`), `current_quiz`/`current_game_session` (FK, оба `null=True, blank=True`, меняются от раунда к раунду — `Room` персистентна, не одноразова, см. сессию от 2026-08-20). `current_quiz` выбирается хостом через `RoomQuizForm`, ограниченную его собственными квизами (`queryset=Quiz.objects.filter(user=host)`, выставляется в `__init__` формы); смена квиза сбрасывает `is_ready` всех `RoomPlayer`. Статус (`waiting` / `in_progress` / `finished`), `created_at`. **Отклонение от исходного плана**: хост при создании комнаты не становится `RoomPlayer` автоматически (создание закомментировано в `RoomCreateView`) — осознанно, хост может быть как играющим, так и чистым модератором; на `RoomDetailView` это учтено — общий блок лобби (список участников/готовности) виден при `is_host or is_player`, не только `is_player`. **Реализовано 2026-09-12**: `current_series_run` (FK на `SeriesRun`, `on_delete=SET_NULL`, nullable) — аналог `current_game_session`, но на уровень серии целиком; пока не используется ни в одной вьюхе/consumer'е, см. «Раунды» ниже
-- **RoomPlayer** — комната (FK `Room`, `related_name="room_players"`), пользователь (FK `User`), `is_ready` (bool, `default=False`, переключается через `room_confirm_ready` — **одностороннее** подтверждение, `False → True`, без обратного действия игроком; сбрасывается в `False` только сменой `current_quiz` хостом), `joined_at`. `UniqueConstraint(room, user)`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
+- **Room** — `title`, уникальный токен-приглашение (`token`), хост (`host`, FK `User`, `on_delete=SET_NULL`, `related_name="own_rooms"`), `status` (`waiting` / `in_progress` / `finished`), `created_at`. `Room` персистентна, не одноразова: три nullable-FK (`on_delete=SET_NULL`) описывают, что в ней происходит сейчас:
+  - `current_series` (FK `QuizSeries`, `related_name="rooms_selecting"`) — какая серия **выбрана**. Заменило `current_quiz` (поля `current_quiz` больше нет — с Этапа 4 в комнате выбирают серию, а не одиночный раунд). Выбирает хост через `RoomSeriesForm`, queryset — `QuizSeries.objects.available_to(host)` (свои + сохранённые к себе публичные, с 2026-10-01; до этого — `visible_to`); это же ограничение действует при валидации POST. Смена или сброс серии сбрасывает `is_ready` всех `RoomPlayer` и переводит идущий прогон в `abandoned`.
+  - `current_series_run` (FK `SeriesRun`, `related_name="current_for_rooms"`) — какой прогон серии **идёт**. Создаётся только в `room_start` при старте первого раунда; обнуляется после последнего раунда серии, при смене/сбросе серии и при закрытии комнаты.
+  - `current_game_session` (FK `GameSession`, `related_name="current_for_rooms"`) — идущий раунд; сбрасывается при его завершении.
+  - `status="finished"` — комнату закрыл хост (`room_close`, 2026-09-24): нельзя, пока идёт раунд; незавершённый прогон становится `abandoned`; интерфейс комнаты схлопывается до статуса и истории игр.
+  - **Отклонение от исходного плана**: хост при создании комнаты не становится `RoomPlayer` автоматически — осознанно, хост может быть как играющим, так и чистым модератором. Блок лобби виден при `is_host or is_player`; при старте раунда хост-не-игрок остаётся в лобби, а не уходит в `gameplay:play` (2026-09-18)
+- **RoomPlayer** — комната (FK `Room`, `related_name="room_players"`), пользователь (FK `User`), `is_ready` (bool, `default=False`, переключается через `room_confirm_ready` — **одностороннее** подтверждение, `False → True`, без обратного действия игроком; сбрасывается в `False` сменой или сбросом серии хостом и завершением каждого раунда — перед следующим раундом готовность подтверждается заново), `joined_at`. `UniqueConstraint(room, user)`. Счёт **не** хранится здесь: как только хост стартует игру, на каждого `RoomPlayer` создаётся `GameParticipant` той же `GameSession` (та же модель, что и в соло) — `GameParticipant.score` остаётся единственным источником счёта, не дублируется
 
 ### social/
-- **Follow** — подписки между пользователями
-- **QuizLike** — лайки на викторины
+- **Follow** — подписки между пользователями: `follower`/`following` (FK `User`, `related_name="following"`/`"followers"`), `created_at`; `UniqueConstraint(follower, following)`, `CheckConstraint` запрета самоподписки (`cant_follow_self`)
+- **QuizSeriesLike** (в исходном плане — `QuizLike`) — лайки на `QuizSeries` (то, что в UI «квиз»), не на раунд `Quiz`: `series` (`related_name="likes"`), `user` (`related_name="series_likes"`), `created_at`; `UniqueConstraint(series, user)`. Лайкать можно только видимые пользователю серии (`public` или свои)
+- **SavedQuizSeries** *(реализовано 2026-10-01)* — «сохранить чужой публичный квиз к себе»: `user` (`related_name="saved_series"`), `series` → `QuizSeries` (`related_name="saved_by"`), `created_at`; `UniqueConstraint(user, series)`, `Meta.ordering = ["-created_at"]`. Ссылка, не копия. Свою серию сохранить нельзя (проверка во вьюхе — на уровне БД это не выразить)
 - **Invite** — приглашение в комнату по ссылке
 
 ---
@@ -251,6 +263,8 @@ quizapp/
     → превью викторины (quiz_preview.html)
     → публикация (переключение Quiz.status)
 ```
+
+**Фактически (2026-10-02)**: статус, название, описание и категория — поля `QuizSeries`, а не `Quiz`. Автор меняет их на отдельной странице «Обновить общую информацию» (`QuizSeriesUpdateView`, ссылка с превью серии); раунды редактируются отдельно (`RoundUpdateView`). Детали, редактирование и удаление серии/раунда доступны только автору (`filter(user=...)`, чужой `pk` → 404).
 
 ### Соло прохождение
 
@@ -551,6 +565,7 @@ class Room(models.Model):
 | `POST` | `/quizzes/<pk>/delete/` | Удаляет серию целиком, каскадом раунды (`QuizDeleteView` → `quiz_delete`, `model=QuizSeries`) | готово |
 | `GET`/`POST` | `/quizzes/round/<pk>/delete/` | Удаляет один раунд, серию не трогает (`RoundDeleteView` → `round_delete`) | готово |
 | `GET`/`POST` | `/quizzes/round/<pk>/update/` | Редактирует один раунд (`RoundUpdateView` → `round_update`) | готово |
+| `GET`/`POST` | `/quizzes/quiz/<pk>/update/` | Редактирует общую информацию серии — название, описание, категория, статус (`QuizSeriesUpdateView` → `quiz_update_main_info`), только автор | готово (2026-10-02), проверено вживую |
 | `GET`/`POST` | `/ai_generator/` | Генерация нового раунда + новой серии (`index`) | готово |
 | `GET`/`POST` | `/ai_generator/series/<series_id>` | Генерация раунда в существующую серию (`index_for_series`) | готово |
 | `POST` | `/multiplayer/rooms/<code>/set-quiz` | Хост выбирает `QuizSeries` вместо одиночного `Quiz` (`room_select_series`/`RoomSeriesForm`, заменили `room_set_quiz`/`RoomQuizForm`) — URL-путь/имя маршрута остались старые (`set-quiz`/`room_set_quiz`), переименование в `set-series`/`room_select_series` на уровне `urls.py` не сделано (Шаг 10 `temp_plan_multiplayer.md`) | готово (2026-09-15/16), не подтверждено сквозным тестом |
@@ -575,6 +590,52 @@ WS-инфраструктура не меняется — `RoomConsumer`/`GameSe
     → Вызов друга на викторину
     → Сравнение результатов
 ```
+
+#### HTMX-паттерн для кнопок-действий (реализовано 2026-10-01 на подписке и лайках)
+
+Образец для следующих кнопок такого рода (комментарии, челленджи, лайк в списках):
+
+```
+<form method="post" action="URL"          ← fallback без JS: обычный POST → redirect
+      hx-post="URL"                       ← с HTMX: XHR с заголовком HX-Request: true
+      hx-target="closest .X-block" hx-swap="outerHTML" hx-disabled-elt="find button">
+    {% csrf_token %}                      ← токен уходит обычным полем формы
+```
+
+- Partial целиком обёрнут в `.X-block` и подключается на страницу через `{% include %}`; вьюха отдаёт тот же partial через `render(request, ...)` (с `request` — иначе в новой форме не будет CSRF-токена).
+- Контекст partial собирается функцией в `<app>/services.py` и используется и страницей, и HTMX-вьюхой — чтобы два места не разъезжались.
+- Вьюха: `if HX-Request → render(partial)`, иначе `redirect(...)`.
+- Истёкшая сессия: `HtmxLoginRedirectMiddleware` превращает `302` на `LOGIN_URL` в `204` + `HX-Redirect` (иначе HTMX вставит страницу логина внутрь блока); `next` — из `HX-Current-URL`. Само действие после логина не повторяется.
+- Ошибки 4xx/5xx — глобальный обработчик `htmx:responseError` в `templates/base.html`.
+
+#### Сохранить квиз к себе (реализовано 2026-10-01, проверено вживую 2026-10-02)
+
+```
+Профиль автора → список его публичных серий → превью серии
+    → «Сохранить к себе» (HTMX-кнопка рядом с лайком) → SavedQuizSeries
+    → серия появляется в «Квизы» → секция «Добавленные» (с автором)
+    → и в выборе серии, когда пользователь — хост комнаты
+```
+
+Три правила доступа к `QuizSeries` — не путать:
+
+| Правило | Смысл | Где используется |
+|---|---|---|
+| `filter(user=user)` | я автор | детали, редактирование (серии и раундов), удаление, секция «Мои квизы» |
+| `visible_to(user)` | могу увидеть: публичные + свои | превью, соло-запуск, лайк, сохранение к себе |
+| `available_to(user)` | моя библиотека: свои + сохранённые публичные | выбор серии в комнате (`RoomSeriesForm`) |
+
+Принятые решения:
+
+- **Сохранение — ссылка, не копия**: автор изменил или удалил раунды — у сохранившего тоже изменилось. Клонирование («забрать копию навсегда») не делалось.
+- **Автор сделал серию приватной → строки `SavedQuizSeries` не удаляются**, а отфильтровываются при чтении: серия пропадает из «Добавленных» и из выбора в комнате, вернули `public` — появляется снова. Причина — нет единой точки, где ловить смену статуса (вьюха, админка, `.update()`), а удаление необратимо.
+- **`unsave_series` и `delete_like` ищут серию через `visible_to`** — на серии, ставшей приватной, сохранение не убрать и лайк не снять (404); строки остаются в БД и скрыты фильтром.
+- **Серия в комнате стала недоступна хосту** (автор закрыл её или хост убрал у себя) — комнату не трогаем, раунды доигрываются; правило проверяется только в момент выбора серии.
+- **Соло-запуск остаётся на `visible_to`** — любую публичную серию можно сыграть с превью, не сохраняя.
+- **Кнопка — только на превью серии**; на профиле автора и в списке квизов её нет. На своём профиле список своих серий не показывается.
+- **Дубликаты строк**: `saved_by_user`/`available_to` используют `Exists`-подзапрос, а не JOIN по `saved_by__user` — с `OR` и `LEFT JOIN` своя серия, сохранённая N людьми, вернулась бы N раз. Модель берётся через `apps.get_model("social", "SavedQuizSeries")` внутри метода — единственное место, где `quizzes` знает о `social` (осознанное отступление от «quizzes — чистое хранилище»).
+
+Не сделано: каталог публичных серий, счётчик «сохранили N раз», кнопка «Убрать» прямо в списке, пагинация списков серий на профиле и в «Добавленных».
 
 ---
 

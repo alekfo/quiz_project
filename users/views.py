@@ -9,8 +9,12 @@ from django.contrib.auth import login, get_user_model
 from django.core.mail import send_mail
 from django.core import signing
 from django.conf import settings
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView, ListView, DetailView
 
 from .forms import RegisterForm
+from social.services import get_follow_context
+from quizzes.models import QuizSeries
 
 logger = logging.getLogger(__name__)
 
@@ -153,3 +157,36 @@ def public_offer(request: HttpRequest):
 def feedback(request: HttpRequest):
     """Страница для обратной связи"""
     return render(request, 'users/feedback.html')
+
+class AboutMeView(LoginRequiredMixin, TemplateView):
+    """Посмотреть инфу о текущем пользователе"""
+
+    template_name = "users/about_me.html"
+
+class UsersListView(LoginRequiredMixin, ListView):
+    """Посмотреть список всех пользователей"""
+
+    model = get_user_model()
+    template_name = 'users/users_list.html'
+    context_object_name = 'users'
+    ordering = ['username']
+
+
+class UserDetailView(LoginRequiredMixin, DetailView):
+    """Посмотреть детальную инфу о любом пользователе"""
+
+    model = get_user_model()
+    template_name = 'users/user_detail.html'
+    context_object_name = 'target_user'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        #берем контекст из social.services.get_follow_context
+        context.update(get_follow_context(self.request.user, self.object))
+        context["public_series"] = QuizSeries.objects.filter(user=self.object, status="public")
+        return context
+
+class SettingsPageView(LoginRequiredMixin, TemplateView):
+    """Страница настроек аккаунта: email, подтверждение, смена пароля, информация о подписке и пр."""
+
+    template_name = "users/settings.html"

@@ -8,10 +8,12 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse, reverse_lazy
 from django.db import transaction
 from django.contrib import messages
+from django.db.models import Q
 
-from .models import Quiz, Question, AnswerOption, QuizSeries
-from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId
-from multiplayer.models import Room, RoomPlayer
+from .models import Quiz, AnswerOption, QuizSeries
+from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId, QuizSeriesUpdateForm
+from multiplayer.models import Room
+from social.services import get_like_context, get_save_context
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,6 @@ class QuizDetailView(LoginRequiredMixin, DetailView):
     вместе с их вопросами и вариантами ответов - без этого шаблон, перебирающий
     раунды/вопросы, бил бы в БД по отдельному запросу на каждый уровень вложенности.
     """
-    queryset = QuizSeries.objects.select_related("user").prefetch_related("rounds__questions__options")
 
     def get_context_data(self, **kwargs):
         """
@@ -46,29 +47,42 @@ class QuizDetailView(LoginRequiredMixin, DetailView):
         context.setdefault("nums_of_rounds", len(self.object.rounds.all()))
         return context
 
+    def get_queryset(self):
+        return (
+            QuizSeries.objects
+            .select_related("user")
+            .prefetch_related("rounds__questions__options")
+            .filter(user=self.request.user)
+        )
+
 class QuizPreviewView(LoginRequiredMixin, DetailView):
     """
     Превью серии (QuizSeries) перед стартом игры - тоже про серию целиком, не про
-    один раунд, поэтому queryset и prefetch такие же, как в QuizDetailView.
+    один раунд. В отличие от QuizDetailView (только автор), превью открыто всем,
+    кто вправе видеть серию - отсюда можно лайкнуть и запустить чужую публичную серию.
     """
     template_name = "quizzes/quizseries_preview.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.setdefault("nums_of_rounds", len(self.object.rounds.all()))
+        context["nums_of_rounds"] = self.object.rounds.count()
+        context.update(get_like_context(self.request.user, self.object))
+        context.update(get_save_context(self.request.user, self.object))
         return context
 
     def get_queryset(self):
         """
-        get_queryset(), а не queryset-атрибут класса - тут нужен self.request.user,
-        а он существует только на инстансе вьюхи (на уровне тела класса self не
-        определён). filter(user=...) - чтобы нельзя было открыть превью чужой серии
-        по подобранному pk.
+        visible_to(user) - превью доступно не только автору, но и другим пользователям
+        (чтобы лайкнуть/сыграть чужой квиз), но только для публичных серий + своих.
+        Без этого фильтра по подобранному pk в URL открывалось бы превью чужой
+        приватной серии (IDOR). Не заменяй на filter(user=...) - это правило
+        "только владелец", оно для QuizDetailView/редактирования, а не для превью.
         """
         return (
             QuizSeries.objects
-            .prefetch_related("rounds__questions__options")
-            .filter(user=self.request.user)
+            .visible_to(self.request.user)
+            .select_related("category")
+            .prefetch_related("rounds")
         )
 
 class QuizListView(LoginRequiredMixin, ListView):
@@ -79,9 +93,13 @@ class QuizListView(LoginRequiredMixin, ListView):
         возможен только через метод, не через атрибут класса."""
         return (
             QuizSeries.objects
-            .prefetch_related("rounds__questions__options")
             .filter(user=self.request.user)
         )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["saved_series"] = QuizSeries.objects.saved_by_user(self.request.user).select_related("user")
+        return context
 
 class QuizCreateView(LoginRequiredMixin, CreateView):
     """
@@ -230,6 +248,10 @@ class QuizDeleteView(LoginRequiredMixin, DeleteView):
     model = QuizSeries
     template_name = "quizzes/quiz_confirm_delete.html"
 
+    def get_queryset(self):
+        """Без этого self.get_object() искал бы QuizSeries по pk среди ВСЕХ пользователей"""
+        return QuizSeries.objects.filter(user=self.request.user)
+
     def get_success_url(self):
         logger.info("Пользователь %s успешно удалил квиз №%s", self.request.user.username, self.object.pk)
         messages.success(self.request, "Квиз успешно удален")
@@ -241,10 +263,37 @@ class RoundDeleteView(LoginRequiredMixin, DeleteView):
     model = Quiz
     template_name = "quizzes/round_confirm_delete.html"
 
+    def get_queryset(self):
+        """Без этого self.get_object() искал бы Quiz по pk среди ВСЕХ пользователей"""
+        return Quiz.objects.filter(user=self.request.user)
+
     def get_success_url(self):
         logger.info("Пользователь %s успешно удалил раунд №%s", self.request.user.username, self.object.pk)
         messages.success(self.request, "Раунд успешно удален")
         return reverse("quizzes:quizzes_details", kwargs={"pk": self.object.series_id})
+
+class QuizSeriesUpdateView(LoginRequiredMixin, UpdateView):
+    """
+    Редактирование общей информации квиза (на модели QuizSeries)
+    """
+    model = QuizSeries
+    form_class = QuizSeriesUpdateForm
+    template_name = "quizzes/quizseries_update.html"
+
+    def get_queryset(self):
+        """Без этого self.get_object() искал бы QuizSeries по pk среди ВСЕХ пользователей -
+        чужой pk в URL позволил бы отредактировать чужой QuizSeries (IDOR). filter(user=...)
+        сужает выборку до своих же, чужой pk даёт закономерный 404."""
+        return QuizSeries.objects.filter(user=self.request.user)
+
+    def get_success_url(self):
+        """
+        Редиректим на страницу превью
+        """
+        logger.info("Квиз №%s обновлен пользователем user=%s", self.object.pk, self.request.user.username)
+        messages.success(self.request, "Информация о квизе обновлена")
+        return reverse("quizzes:quizzes_preview", kwargs={"pk": self.object.pk})
+
 
 class RoundUpdateView(LoginRequiredMixin, UpdateView):
     """Редактирование одного раунда (Quiz). series/round_order не входят
