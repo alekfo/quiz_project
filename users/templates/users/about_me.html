@@ -1,13 +1,39 @@
 {% extends 'base.html' %}
 
 {% block title %}
-    About me
+    Мой профиль — QuizCrowd
 {% endblock %}
 
 {% block body %}
-  <p>Мой никнейм: {{ user.username }}</p>
-  <p>Мое имя: {{ user.first_name|default:"—" }}</p>
-  <p>Моя фамилия: {{ user.last_name|default:"—" }}</p>
-  <p>Моя почта: {{ user.email|default:"—" }}</p>
-  <a href="{% url 'quizzes:menu' %}" class="btn">🏠 Вернуться в меню</a>
+    <h1>Мой профиль</h1>
+    <section class="card profile-card">
+        {% include "users/_avatar.html" with avatar_user=user size="lg" %}
+        <div class="profile-info">
+            <h2 class="profile-name">{{ user.username }}</h2>
+            <dl class="profile-fields">
+                <div>
+                    <dt>Имя</dt>
+                    <dd>{{ user.first_name|default:"—" }}</dd>
+                </div>
+                <div>
+                    <dt>Фамилия</dt>
+                    <dd>{{ user.last_name|default:"—" }}</dd>
+                </div>
+                <div>
+                    <dt>Почта</dt>
+                    <dd>
+                        {{ user.email|default:"—" }}
+                        {% if user.email %}
+                            {% if user.email_confirmed %}
+                                <span class="tag tag-success">подтверждена</span>
+                            {% else %}
+                                <span class="tag tag-warning">не подтверждена</span>
+                            {% endif %}
+                        {% endif %}
+                    </dd>
+                </div>
+            </dl>
+            <a href="{% url 'users:profile_update' %}" class="btn btn-primary">Редактировать профиль</a>
+        </div>
+    </section>
 {% endblock %}

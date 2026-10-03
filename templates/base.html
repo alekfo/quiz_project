@@ -83,7 +83,7 @@
                         </svg>
                         <span class="nav-label">Пользователи</span>
                     </a>
-                    <a class="nav-item{% if name == 'about_me' %} is-active{% endif %}"
+                    <a class="nav-item{% if name == 'about_me' or name == 'profile_update' %} is-active{% endif %}"
                        href="{% url 'users:about_me' %}">
                         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
                             <circle cx="12" cy="8" r="4"/>

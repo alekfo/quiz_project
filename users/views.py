@@ -4,15 +4,16 @@ from django.http import HttpRequest, HttpResponse
 from django.core.cache import cache
 from django.contrib import messages
 from django.shortcuts import render, redirect
+from django.urls import reverse
 from django.contrib.auth import views as auth_views
 from django.contrib.auth import login, get_user_model
 from django.core.mail import send_mail
 from django.core import signing
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import TemplateView, ListView, DetailView
+from django.views.generic import TemplateView, ListView, DetailView, UpdateView
 
-from .forms import RegisterForm
+from .forms import RegisterForm, ProfileUpdateForm
 from social.services import get_follow_context
 from quizzes.models import QuizSeries
 
@@ -190,3 +191,37 @@ class SettingsPageView(LoginRequiredMixin, TemplateView):
     """Страница настроек аккаунта: email, подтверждение, смена пароля, информация о подписке и пр."""
 
     template_name = "users/settings.html"
+
+class ProfileUpdateView(LoginRequiredMixin, UpdateView):
+    """Редактирование собственного профиля (имя, фамилия, аватар).
+
+    Без pk/slug в URL: get_object() всегда возвращает текущего пользователя,
+    так что чужой профиль подстановкой pk в адрес не открыть и не изменить.
+    """
+
+    form_class = ProfileUpdateForm
+    template_name = 'users/user_update_form.html'
+
+    def get_object(self, queryset=None):
+        return self.request.user
+
+    def post(self, request, *args, **kwargs):
+        # Запоминаем старое имя файла ДО is_valid(): ModelForm._post_clean()
+        # мутирует instance (= self.object) уже внутри form.is_valid(), которая
+        # выполняется раньше form_valid() - там self.object.avatar уже новый.
+        user = self.get_object()
+        self._old_avatar_name = user.avatar.name if user.avatar else None
+        return super().post(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        # Старый файл аватара ImageField сам не удаляет при замене/очистке -
+        # без этого в media/users/<pk>/avatar/ копились бы все версии навечно.
+        response = super().form_valid(form)
+        if self._old_avatar_name and self.object.avatar.name != self._old_avatar_name:
+            self.object.avatar.storage.delete(self._old_avatar_name)
+        logger.info('Профиль обновлён: username="%s"', self.request.user.username)
+        messages.success(self.request, "Профиль обновлён")
+        return response
+
+    def get_success_url(self):
+        return reverse("users:about_me")
