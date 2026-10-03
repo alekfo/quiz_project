@@ -1,10 +1,16 @@
+import os
+import shutil
+import tempfile
 import time
+from io import BytesIO
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core import mail, signing
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
+from PIL import Image
 
 from quiz_project.testing import PASSWORD, BaseTestCase, make_series, make_user
 from social.models import Follow
@@ -13,6 +19,15 @@ from .forms import RegisterForm
 from .views import _LOGIN_RATE_LIMIT, _REGISTER_RATE_LIMIT
 
 User = get_user_model()
+
+
+def make_uploaded_image(name: str = "avatar.png", size=(300, 300), color=(10, 20, 30),
+                        fmt: str = "PNG") -> SimpleUploadedFile:
+    buffer = BytesIO()
+    Image.new("RGB", size, color).save(buffer, format=fmt)
+    buffer.seek(0)
+    content_type = "image/png" if fmt == "PNG" else f"image/{fmt.lower()}"
+    return SimpleUploadedFile(name, buffer.read(), content_type=content_type)
 
 
 def register_data(**kwargs) -> dict:
@@ -280,3 +295,111 @@ class UserPagesTests(BaseTestCase):
         self.client.force_login(self.me)
         response = self.client.get(reverse("users:user_detail", kwargs={"pk": 999_999}))
         self.assertEqual(response.status_code, 404)
+
+
+class ProfileUpdateViewTests(BaseTestCase):
+    """URL без pk - get_object() всегда возвращает request.user, подделать нечем."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._media_root = tempfile.mkdtemp(prefix="quiz_test_media_")
+        cls.addClassCleanup(shutil.rmtree, cls._media_root, ignore_errors=True)
+        cls._media_override = override_settings(MEDIA_ROOT=cls._media_root)
+        cls._media_override.enable()
+        cls.addClassCleanup(cls._media_override.disable)
+
+    def setUp(self):
+        super().setUp()
+        self.me = make_user("me")
+        self.client.force_login(self.me)
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertLoginRequired(self.client.get(reverse("users:profile_update")))
+
+    def test_get_renders_own_data(self):
+        self.me.first_name = "Имя"
+        self.me.save(update_fields=["first_name"])
+        response = self.client.get(reverse("users:profile_update"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["form"].instance, self.me)
+
+    def test_updates_names(self):
+        response = self.client.post(reverse("users:profile_update"),
+                                     {"first_name": "Новое", "last_name": "Имя"})
+        self.assertRedirects(response, reverse("users:about_me"))
+        self.me.refresh_from_db()
+        self.assertEqual(self.me.first_name, "Новое")
+        self.assertEqual(self.me.last_name, "Имя")
+
+    def test_uploaded_avatar_is_resized_and_reencoded(self):
+        upload = make_uploaded_image(size=(2000, 2000))
+        self.client.post(reverse("users:profile_update"),
+                          {"first_name": "", "last_name": "", "avatar": upload})
+        self.me.refresh_from_db()
+        self.assertTrue(self.me.avatar.name.endswith(".jpg"))
+        with Image.open(self.me.avatar.path) as image:
+            self.assertEqual(image.format, "JPEG")
+            self.assertLessEqual(max(image.size), 512)
+
+    def test_replacing_avatar_deletes_old_file(self):
+        self.client.post(reverse("users:profile_update"),
+                          {"first_name": "", "last_name": "", "avatar": make_uploaded_image("a.png")})
+        self.me.refresh_from_db()
+        old_path = self.me.avatar.path
+        self.assertTrue(old_path and os.path.exists(old_path))
+
+        self.client.post(reverse("users:profile_update"),
+                          {"first_name": "", "last_name": "", "avatar": make_uploaded_image("b.png")})
+        self.me.refresh_from_db()
+        self.assertNotEqual(self.me.avatar.path, old_path)
+        self.assertFalse(os.path.exists(old_path))
+
+    def test_submit_without_touching_avatar_keeps_it(self):
+        self.client.post(reverse("users:profile_update"),
+                          {"first_name": "", "last_name": "", "avatar": make_uploaded_image()})
+        self.me.refresh_from_db()
+        avatar_name = self.me.avatar.name
+
+        self.client.post(reverse("users:profile_update"), {"first_name": "Другое", "last_name": ""})
+        self.me.refresh_from_db()
+        self.assertEqual(self.me.avatar.name, avatar_name)
+        self.assertEqual(self.me.first_name, "Другое")
+
+    def test_clear_checkbox_removes_avatar_and_deletes_file(self):
+        self.client.post(reverse("users:profile_update"),
+                          {"first_name": "", "last_name": "", "avatar": make_uploaded_image()})
+        self.me.refresh_from_db()
+        old_path = self.me.avatar.path
+
+        self.client.post(reverse("users:profile_update"),
+                          {"first_name": "", "last_name": "", "avatar-clear": "on"})
+        self.me.refresh_from_db()
+        self.assertFalse(self.me.avatar)
+        self.assertFalse(os.path.exists(old_path))
+
+    def test_oversized_avatar_is_rejected_without_changes(self):
+        # Случайный шум - валидный PNG, который почти не сжимается (сплошной цвет
+        # сжался бы до пары килобайт и не превысил лимит даже на большом разрешении).
+        buffer = BytesIO()
+        Image.frombytes("RGB", (1700, 1700), os.urandom(1700 * 1700 * 3)).save(
+            buffer, format="PNG", compress_level=0
+        )
+        buffer.seek(0)
+        huge = SimpleUploadedFile("huge.png", buffer.read(), content_type="image/png")
+
+        response = self.client.post(reverse("users:profile_update"),
+                                     {"first_name": "", "last_name": "", "avatar": huge})
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(response.context["form"], "avatar", "Файл слишком большой: максимум 5 МБ.")
+        self.me.refresh_from_db()
+        self.assertFalse(self.me.avatar)
+
+    def test_another_users_profile_is_not_affected(self):
+        other = make_user("other")
+        self.client.post(reverse("users:profile_update"),
+                          {"first_name": "Моё", "last_name": "", "avatar": make_uploaded_image()})
+        other.refresh_from_db()
+        self.assertEqual(other.first_name, "")
+        self.assertFalse(other.avatar)

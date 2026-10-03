@@ -3,12 +3,10 @@ import logging
 from django.shortcuts import render
 from django.http import HttpResponse, HttpRequest, HttpResponseRedirect
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
-from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse
 from django.db import transaction
 from django.contrib import messages
-from django.db.models import Q
 from django.db.models import Count
 
 from .models import Quiz, AnswerOption, QuizSeries

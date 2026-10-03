@@ -14,6 +14,7 @@ urlpatterns = [
     path('public-offer/', views.public_offer, name='public_offer'),
     path('feedback/', views.feedback, name='feedback'),
     path("about_me/", views.AboutMeView.as_view(), name="about_me"),
+    path("update/", views.ProfileUpdateView.as_view(), name="profile_update"),
     path("", views.UsersListView.as_view(), name="users_list"),
     path("<int:pk>/", views.UserDetailView.as_view(), name="user_detail"),
     path('settings/', views.SettingsPageView.as_view(), name='settings'),

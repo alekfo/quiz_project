@@ -47,7 +47,8 @@
 | Радиусы | `--radius-sm`, `--radius-md`, `--radius-full` | 8px, 14px, 999px |
 | Тени | `--shadow-sm`, `--shadow-md` | — |
 | Шрифт | `--font-family`; `--font-sm` … `--font-2xl` | системный стек; 0.875, 1, 1.25, 1.5, 2rem |
-| Размеры | `--tap-size`, `--header-height`, `--rail-width`, `--content-width`, `--field-width`, `--toast-width` | 44px, 64px, 64px, 1100px, 480px, 380px |
+| Размеры | `--tap-size`, `--header-height`, `--rail-width`, `--content-width`, `--field-width`, `--toast-width`, `--card-width` | 44px, 64px, 64px, 1100px, 480px, 380px, 640px (одиночная карточка-страница: профиль, форма) |
+| Аватар | `--avatar-sm`, `--avatar-md`, `--avatar-lg` | 32px, 48px, 96px |
 
 Контраст всех пар «текст / фон» из таблицы посчитан: не ниже 4.8:1.
 
@@ -110,6 +111,19 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
   другие ссылки внутри карточки должны иметь `position: relative; z-index: 1`, иначе по ним не кликнуть.
   Использовать эту же карточку в списках квизов (шаг 3).
 - **Блок приветствия** — `.hero` + `.hero-text` + `.hero-actions` (ряд кнопок с переносом).
+
+Готово (2026-10-03):
+
+- **Аватар** — partial `users/_avatar.html`: `{% include "users/_avatar.html" with avatar_user=<пользователь> size="lg" %}`
+  (`size` — `sm` / `lg`, без него средний). Круг `.avatar` + `.avatar-sm` / `.avatar-lg`; если картинки нет —
+  первая буква ника на фоне акцента. Картинка декоративная (`alt=""`): рядом всегда должен стоять ник текстом.
+  Использовать этот же partial в шапке, списке пользователей, чужом профиле и лобби.
+- **Метка-состояние** — `.tag` + `.tag-success` / `.tag-warning` (фон — цвет состояния, текст белый).
+- **Поле формы при ручной раскладке** — `.form-field` (подпись, `{{ form.field }}`, `{{ form.field.errors }}`, `.helptext`)
+  и ряд кнопок `.form-actions`. Нужны там, где `{{ form.as_p }}` не подходит.
+- **Выбор файла** — `input[type="file"]` оформлен по тегу: без рамки поля, кнопка браузера выглядит как `.btn`.
+- **Карточка профиля** — `.card.profile-card` (аватар + `.profile-info`: `.profile-name`, список `dl.profile-fields`);
+  на телефоне аватар сверху по центру, от 640px — слева.
 
 ### Организация CSS
 
@@ -204,6 +218,17 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 - `.toggle-btn` + `data-target="<id блока>"` + `hidden` у целевого блока
   (`#link-container`, `#series-history-container`).
 
+### Профиль — `users/about_me.html`, `users/user_update_form.html`
+
+- `about_me.html` работает только с `user` из context processor (вьюха — `TemplateView` без своего контекста).
+- Форма редактирования — `enctype="multipart/form-data"` обязателен, иначе файл аватара не дойдёт до вьюхи.
+- Поле аватара рендерится как `{{ form.avatar }}` (виджет `ClearableFileInput`) внутри `.avatar-field`:
+  вместе с выбором файла виджет выводит чекбокс очистки `avatar-clear` — без него аватар не удалить.
+  Служебный текст виджета («Currently: …», «Change:») скрыт в CSS нулевым размером шрифта у `.avatar-field`.
+- `static/js/avatar-preview.js` (подключён в конце `{% block body %}` с `defer`) — предпросмотр выбранного файла.
+  Ищет `.avatar-edit`, внутри него `.avatar` (с `data-initial` из partial), `input[type="file"]` и чекбокс.
+  При выборе файла снимает отметку очистки: Django отклоняет форму, если пришло и то и другое.
+
 ### Регистрация — `users/register.html`
 
 - `#submit-btn`, чекбокс `privacy_policy`.
@@ -237,6 +262,7 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
    сервиса и «Попробовать»), блок «Вы участник комнаты», витрина публичных квизов карточками.
 3. **Списки и превью**: `quizseries_list.html`, `quizseries_preview.html`, `quizseries_detail.html`,
    `users_list.html`, `user_detail.html`, `about_me.html`, `room_list.html`, partial'ы `social/`.
+   Сделано 2026-10-03 (вне очереди, вместе с бэкендом аватара): `about_me.html` и `user_update_form.html`.
 4. **Формы**: `login.html`, `register.html`, `quiz_form.html`, `ai_generator_index.html`, `temp_ai_quiz.html`,
    `room_form.html`, страницы подтверждения удаления, `feedback.html`, `settings.html`.
 5. **Лобби**: `room_detail.html`, `_room_status.html`, `_series_progress.html`, `solo_room.html`, `room_close.html`.
