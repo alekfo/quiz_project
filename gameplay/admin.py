@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import GameSession, GameParticipant, GameAnswer
+from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
 
 
 @admin.register(GameSession)
@@ -19,4 +19,10 @@ class GameParticipantAdmin(admin.ModelAdmin):
 class GameAnswerAdmin(admin.ModelAdmin):
 
     list_display = "pk", "participant", "question", "chosen_option", "is_correct", "is_skipped", "shown_at", "answered_at"
+    ordering = ("-pk",)
+
+@admin.register(SeriesRun)
+class SeriesRunAdmin(admin.ModelAdmin):
+
+    list_display = "pk", "series", "mode", "room", "created_by", "status", "current_round_index", "started_at", "finished_at"
     ordering = ("-pk",)

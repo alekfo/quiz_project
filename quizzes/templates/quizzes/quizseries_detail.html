@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Quizzes #{{ object.pk }} detail
+{% endblock %}
+
+{% block body %}
+    <div class="quizseries-detail-main-container">
+        <div>
+            <h1>Вот твой квиз (#<strong>{{ object.pk }})</strong></h1>
+            <p>Название квиза: {{ object.title }}</p>
+            <p>Описание квиза: {{ object.description }}</p>
+            <p>Категория квиза: {{ object.category }}</p>
+            <p>Приватность квиза: {{ object.status }}</p>
+            <p>Количество раундов: {{ nums_of_rounds }}</p>
+        </div>
+        <div>
+            {% for round in object.rounds.all %}
+                <h2>Раунд № {{ forloop.counter }}:</h2>
+                <p><b>Источник: {{ round.get_type_display }}</b></p>
+                <p><b>Тема: {{ round.subject }}</b></p>
+                <p><b>Уровень сложности: {{ round.get_level_display }}</b></p>
+                <p><b>Стиль вопросов: {{ round.get_style_display }}</b></p>
+                <p><b>Аудитория: {{ round.get_audience_display }}</b></p>
+                <p><b>Время на вопрос: {{ round.time_limit_seconds }}</b></p>
+                <ul>
+                    <p>Вопросы:</p>
+                    {% for question in round.questions.all%}
+                        <li>Вопрос № {{ forloop.counter }}: {{ question.text }}</li>
+                        <li>
+                            <ul>
+                                {% for answer in question.options.all%}
+                                    <li>Вариант ответа #{{ answer.order }}: {{ answer.text }}</li>
+                                    <li>Верный/неверный: {{ answer.is_correct }}</li>
+                                {% endfor %}
+                            </ul>
+                        </li>
+                        <li>Факт: {{ question.fact }}</li>
+                    {% endfor %}
+                </ul>
+                <a class="update-link" href="{% url 'quizzes:round_update' pk=round.pk%}">
+                    Обновить раунд
+                </a>
+                <a class="delete-link" href="{% url 'quizzes:round_delete' pk=round.pk%}">
+                    Удалить раунд
+                </a>
+            {% endfor %}
+        </div>
+        <div class="footer-buttons">
+            <a class="" href="{% url 'ai_generator:index_for_series' series_id=object.pk %}">
+                Добавить новый раунд с помощью AI
+            </a>
+            <a class="" href="{% url 'quizzes:quizzes_create_for_series' series_id=object.pk %}">
+                Добавить новый раунд вручную
+            </a>
+            <a class="delete-link" href="{% url 'quizzes:quiz_delete' pk=object.pk%}">
+                Удалить квиз
+            </a>
+            <a href="{% url 'quizzes:quizzes_list' %}">
+                Мои квизы
+            </a>
+        </div>
+    </div>
+
+{% endblock %}

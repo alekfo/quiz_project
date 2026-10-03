@@ -1,17 +1,67 @@
-{% extends 'quizzes/base.html' %}
+{% extends 'base.html' %}
 
 {% block title %}
-    INDEX
+    QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>Рады приветствовать вас в QUIZ_PROJECT</h1>
-    {% if user.is_authenticated %}
-        <a href="{% url 'quizzes:quizzes_list' %}">Мои квизы</a>
-        <a href="{% url 'quizzes:quizzes_create' %}">Создать квиз</a>
-        <a href="{% url 'ai_generator:index' %}">Сгенерировать квиз с помощью AI</a>
-    {% else %}
-        QUIZ_PROJECT - это сервис для генерирации, хранения и публикации викторин. Тут вы можете делиться с друзьями созданными викторинами.
-        <a href="{% url 'users:register' %}">Попробовать</a>
+    <section class="hero">
+        {% if user.is_authenticated %}
+            <h1>Привет, {{ user.username }}!</h1>
+            <p class="hero-text">Создайте свой квиз или сыграйте в один из тех, что уже придумали другие.</p>
+            <div class="hero-actions">
+                <a class="btn btn-primary" href="{% url 'quizzes:quizzes_create' %}">Создать квиз</a>
+                <a class="btn" href="{% url 'ai_generator:index' %}">Создать с AI</a>
+            </div>
+        {% else %}
+            <h1>Квизы, которые придумываете вы</h1>
+            <p class="hero-text">
+                QuizCrowd — сервис для создания, хранения и публикации викторин.
+                Генерируйте вопросы с помощью AI, играйте в одиночку или вместе с друзьями.
+            </p>
+            <div class="hero-actions">
+                <a class="btn btn-primary" href="{% url 'users:register' %}">Попробовать</a>
+                <a class="btn" href="{% url 'users:login' %}">Войти</a>
+            </div>
+        {% endif %}
+    </section>
+
+    {% if rooms %}
+        <section class="menu-section">
+            <h2>Вы участник комнаты</h2>
+            <div class="hero-actions">
+                {% for room in rooms %}
+                    <a class="btn" href="{% url 'multiplayer:room_detail' code=room.token %}">{{ room.title }}</a>
+                {% endfor %}
+            </div>
+        </section>
     {% endif %}
+
+    <section class="menu-section">
+        <h2>Популярные квизы</h2>
+        {% if showcase_series %}
+            <ul class="quiz-grid">
+                {% for series in showcase_series %}
+                    <li class="card quiz-card">
+                        <span class="tag">{{ series.category }}</span>
+                        <h3 class="quiz-card-title">
+                            <a class="quiz-card-link" href="{% url 'quizzes:quizzes_preview' pk=series.pk %}">{{ series.title }}</a>
+                        </h3>
+                        {% if series.description %}
+                            <p class="quiz-card-description">{{ series.description }}</p>
+                        {% endif %}
+                        <p class="quiz-card-author">
+                            Автор: <a href="{% url 'users:user_detail' pk=series.user_id %}">{{ series.user.username }}</a>
+                        </p>
+                        <p class="quiz-card-meta">
+                            <span>Раундов: {{ series.rounds_count }}</span>
+                            <span aria-label="Лайков: {{ series.like_count }}">♥ {{ series.like_count }}</span>
+                        </p>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-state">Новых публичных квизов пока нет — загляните позже или создайте свой.</p>
+        {% endif %}
+    </section>
 {% endblock %}

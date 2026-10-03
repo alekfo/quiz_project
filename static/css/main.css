@@ -1,27 +1,1021 @@
-.messages {
-    margin: 30px;
+/* ===== 1. TOKENS ===== */
+/* Все цвета, отступы, радиусы, тени и размеры шрифта - только здесь.
+   В правилах ниже - только var(--...). Значения и роли описаны в FRONTEND.md. */
+
+:root {
+    color-scheme: light dark;
+
+    /* цвета - по роли */
+    --color-bg: #f5f3ff;
+    --color-surface: #ffffff;
+    --color-text: #1b1730;
+    --color-text-muted: #5e5a72;
+    --color-border: #dcd7ee;
+    --color-accent: #6c3df4;
+    --color-accent-hover: #5a2bd9;
+    --color-accent-soft: #ede7ff;
+    --color-on-accent: #ffffff;
+    --color-success: #15803d;
+    --color-error: #c62828;
+    --color-error-text: #c62828;   /* ошибка как цвет текста на фоне страницы */
+    --color-warning: #b45309;
+    --color-info: #2563eb;
+    --color-on-status: #ffffff;
+    --color-overlay-shadow: rgba(27, 23, 48, 0.16);
+
+    /* отступы - шаг 4px */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+
+    /* радиусы */
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-full: 999px;
+
+    /* тени */
+    --shadow-sm: 0 1px 3px var(--color-overlay-shadow);
+    --shadow-md: 0 6px 20px var(--color-overlay-shadow);
+
+    /* типографика */
+    --font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-sm: 0.875rem;
+    --font-md: 1rem;
+    --font-lg: 1.25rem;
+    --font-xl: 1.5rem;
+    --font-2xl: 2rem;
+    --line-height: 1.5;
+
+    /* размеры */
+    --tap-size: 44px;          /* минимальная высота области нажатия */
+    --header-height: 64px;
+    --rail-width: 64px;        /* ширина левой панели разделов */
+    --content-width: 1100px;
+    --field-width: 480px;
+    --toast-width: 380px;
+    --card-width: 640px;       /* одиночная карточка-страница: профиль, форма */
+    --avatar-sm: 32px;
+    --avatar-md: 48px;
+    --avatar-lg: 96px;
+
+    --transition-fast: 0.15s ease;
 }
 
-.messages li.error {
-    background-color: red;
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-bg: #13111c;
+        --color-surface: #1d1a2b;
+        --color-text: #ece9f8;
+        --color-text-muted: #a7a2be;
+        --color-border: #343048;
+        --color-accent: #a58bff;
+        --color-accent-hover: #bba7ff;
+        --color-accent-soft: #2a2444;
+        --color-on-accent: #17122b;
+        --color-error-text: #ff8a80;
+        --color-overlay-shadow: rgba(0, 0, 0, 0.5);
+    }
+}
+
+/* ===== 2. RESET / BASE ===== */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-family);
+    font-size: var(--font-md);
+    line-height: var(--line-height);
+    color: var(--color-text);
+    background: var(--color-bg);
+}
+
+h1, h2, h3 {
+    margin: 0 0 var(--space-4);
+    line-height: 1.2;
+}
+
+h1 {
+    font-size: var(--font-xl);
+}
+
+h2 {
+    font-size: var(--font-lg);
+}
+
+h3 {
+    font-size: var(--font-md);
+}
+
+p {
+    margin: 0 0 var(--space-4);
+}
+
+a {
+    color: var(--color-accent);
+}
+
+a:hover {
+    color: var(--color-accent-hover);
+}
+
+:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+/* hidden - рабочий механизм показа/скрытия из JS: не даём display:flex его перебить */
+[hidden] {
+    display: none !important;
+}
+
+/* --- поля форм: чтобы form.as_p выглядел прилично на любой странице --- */
+
+label {
+    font-weight: 600;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="file"]),
+select,
+textarea {
+    display: block;
+    width: 100%;
+    max-width: var(--field-width);
+    min-height: var(--tap-size);
+    margin-top: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline-offset: 0;
+    border-color: var(--color-accent);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--color-accent);
+    vertical-align: middle;
+}
+
+/* выбор файла: без рамки поля, кнопка браузера оформлена как .btn */
+input[type="file"] {
+    display: block;
+    max-width: 100%;
+    font-family: inherit;
+    font-size: var(--font-md);
+    color: var(--color-text-muted);
+}
+
+input[type="file"]::file-selector-button {
+    min-height: var(--tap-size);
+    margin-right: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    font: inherit;
+    font-weight: 600;
+    color: var(--color-text);
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast),
+                color var(--transition-fast);
+}
+
+input[type="file"]::file-selector-button:hover {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    background-color: var(--color-accent-soft);
+}
+
+.errorlist {
+    margin: 0 0 var(--space-2);
+    padding: 0;
+    list-style: none;
+    color: var(--color-error-text);
+    font-weight: 600;
+}
+
+.helptext {
+    display: block;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+@media (min-width: 640px) {
+    h1 {
+        font-size: var(--font-2xl);
+    }
+
+    h2 {
+        font-size: var(--font-xl);
+    }
+
+    h3 {
+        font-size: var(--font-lg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ===== 3. LAYOUT ===== */
+
+.container {
+    max-width: var(--content-width);
+    margin-left: auto;
+    margin-right: auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- шапка --- */
+
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.container-header-messages {
+    display: flex;
+    flex-direction: column;
+}
+
+/* .header-main - общий "ряд с разнесёнными краями": используется и в шапке, и в room_detail.html */
+.header-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.site-header .header-main {
+    min-height: var(--header-height);
+    padding: var(--space-2) var(--space-4);
+}
+
+.header-left,
+.header-auth-right-section,
+.header-not-auth-right-section {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.header-auth-right-section,
+.header-not-auth-right-section {
+    min-width: 0;
+}
+
+.logo {
+    font-size: var(--font-lg);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+    text-decoration: none;
+}
+
+.logo:hover {
+    color: var(--color-text);
+}
+
+.logo span {
+    color: var(--color-accent);
+}
+
+/* на узком экране имя прячем - профиль есть в списке разделов */
+/* .site-header в селекторе - чтобы перебить display у .btn, объявленный ниже по файлу */
+.site-header .header-user {
+    display: none;
+    max-width: 18ch;
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: calc(var(--tap-size) - 2px);   /* блок вместо flex - иначе не работает многоточие */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* --- разделы: на телефоне список под шапкой, с 640px - узкая панель слева --- */
+
+.layout {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.site-nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+}
+
+/* без JS список разделов виден всегда; с JS (класс .js ставит base.js) - только по бургеру */
+.js .site-nav:not(.is-open) {
+    display: none;
+}
+
+.nav-toggle {
+    display: none;
+}
+
+.js .nav-toggle {
+    display: inline-flex;
+}
+
+.nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--tap-size);
+    padding: var(--space-2) var(--space-3);
+    color: var(--color-text);
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.nav-item:hover {
+    color: var(--color-accent);
+    background: var(--color-accent-soft);
+}
+
+.nav-item.is-active {
+    color: var(--color-on-accent);
+    background: var(--color-accent);
+}
+
+.nav-icon,
+.btn-icon {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+main {
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-5) var(--space-4);
+}
+
+footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2) var(--space-4);
+    margin-top: var(--space-7);
+    padding: var(--space-4);
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+    border-top: 1px solid var(--color-border);
+}
+
+footer a {
+    color: var(--color-text-muted);
+}
+
+@media (min-width: 480px) {
+    .site-header .header-user {
+        display: inline-block;
+    }
+}
+
+@media (min-width: 640px) {
+    .layout {
+        flex-direction: row;
+    }
+
+    .site-nav,
+    .js .site-nav:not(.is-open) {
+        display: flex;
+        position: sticky;
+        top: var(--header-height);
+        align-self: flex-start;
+        flex: none;
+        width: var(--rail-width);
+        padding: var(--space-4) var(--space-2);
+        border-bottom: none;
+    }
+
+    .nav-toggle,
+    .js .nav-toggle {
+        display: none;
+    }
+
+    .nav-item {
+        justify-content: center;
+        padding: var(--space-2);
+    }
+
+    /* название раздела выезжает справа от иконки, контент не сдвигается */
+    .nav-label {
+        position: absolute;
+        left: calc(100% + var(--space-2));
+        top: 50%;
+        z-index: 50;
+        padding: var(--space-1) var(--space-3);
+        color: var(--color-on-accent);
+        background: var(--color-accent);
+        border-radius: var(--radius-sm);
+        box-shadow: var(--shadow-md);
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        transform: translate(calc(-1 * var(--space-2)), -50%);
+        transition: opacity var(--transition-fast), transform var(--transition-fast), visibility var(--transition-fast);
+    }
+
+    .nav-item:hover .nav-label,
+    .nav-item:focus-visible .nav-label {
+        opacity: 1;
+        visibility: visible;
+        transform: translate(0, -50%);
+    }
+
+    main {
+        padding: var(--space-6) var(--space-5);
+    }
+}
+
+/* ===== 4. COMPONENTS ===== */
+
+/* --- кнопка: .btn + модификаторы .btn-primary / .btn-danger / .btn-ghost --- */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--tap-size);
+    padding: var(--space-2) var(--space-4);
+    font: inherit;      /* иначе <button> унаследует системный шрифт, а <a> - шрифт страницы, будут визуально разными */
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--color-text);
+    background-color: var(--color-surface);
+    text-decoration: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast),
+                color var(--transition-fast), transform var(--transition-fast);
+}
+
+.btn:hover {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    background-color: var(--color-accent-soft);
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary {
+    color: var(--color-on-accent);
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+}
+
+.btn-primary:hover {
+    color: var(--color-on-accent);
+    background-color: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+}
+
+.btn-danger {
+    color: var(--color-on-status);
+    background-color: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.btn-danger:hover {
+    color: var(--color-on-status);
+    background-color: var(--color-error);
+    border-color: var(--color-error);
+    filter: brightness(0.9);
+}
+
+.btn-ghost {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+.btn-ghost:hover {
+    border-color: transparent;
+}
+
+/* --- карточка --- */
+
+.card {
+    padding: var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+
+/* --- метка (категория и т.п.) --- */
+
+.tag {
+    display: inline-block;
+    padding: var(--space-1) var(--space-3);
+    color: var(--color-accent);
+    background: var(--color-accent-soft);
+    border-radius: var(--radius-full);
+    font-size: var(--font-sm);
+    font-weight: 600;
+}
+
+/* метка-состояние: фон - цвет состояния */
+.tag-success {
+    color: var(--color-on-status);
+    background: var(--color-success);
+}
+
+.tag-warning {
+    color: var(--color-on-status);
+    background: var(--color-warning);
+}
+
+/* --- аватар: картинка или первая буква ника (users/_avatar.html) --- */
+
+.avatar {
+    --avatar-size: var(--avatar-md);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: var(--avatar-size);
+    height: var(--avatar-size);
+    font-size: calc(var(--avatar-size) * 0.45);
+    font-weight: 800;
+    line-height: 1;
+    color: var(--color-on-accent);
+    background: var(--color-accent);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    user-select: none;
+}
+
+.avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatar-sm {
+    --avatar-size: var(--avatar-sm);
+}
+
+.avatar-lg {
+    --avatar-size: var(--avatar-lg);
+}
+
+/* --- поле формы при ручной раскладке (подпись, поле, ошибка) и ряд кнопок формы --- */
+
+.form-field {
+    margin-bottom: var(--space-5);
+}
+
+.form-field .errorlist {
+    margin: var(--space-2) 0 0;
+}
+
+.form-field .helptext {
+    margin-top: var(--space-2);
+}
+
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+/* --- пустое состояние списка --- */
+
+.empty-state {
+    color: var(--color-text-muted);
+}
+
+/* --- flash-сообщения: тосты в правом нижнем углу, исчезают через 15 секунд --- */
+/* Исчезновение - CSS-анимацией на каждом <li>, поэтому работает и для сообщений,
+   добавленных из JS (кнопка копирования ссылки в лобби, ошибки HTMX). */
+
+.messages {
+    position: fixed;
+    right: var(--space-4);
+    bottom: var(--space-4);
+    left: var(--space-4);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    pointer-events: none;
+}
+
+.messages li {
+    padding: var(--space-3) var(--space-4);
+    font-weight: 600;
+    color: var(--color-on-status);
+    background: var(--color-info);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    pointer-events: auto;
+    animation: toast-in 0.25s ease-out, toast-out 0.5s ease-in 14.5s forwards;
 }
 
 .messages li.success {
-    background-color: green;
+    background: var(--color-success);
 }
 
-.formset_errors {
-    background-color: red;
+.messages li.error {
+    background: var(--color-error);
 }
 
-.delete_link {
-    color: red;
+.messages li.warning {
+    background: var(--color-warning);
 }
 
-.update_link {
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(var(--space-3)); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toast-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@media (min-width: 640px) {
+    .messages {
+        left: auto;
+        width: var(--toast-width);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .messages li {
+        animation: toast-out 0.5s ease-in 14.5s forwards;
+    }
+}
+
+.formset-errors {
+    color: var(--color-error-text);
+    font-weight: 600;
+}
+
+/* ===== 5. USERS ===== */
+
+/* --- мой профиль (about_me.html) --- */
+
+.profile-card,
+.profile-form {
+    max-width: var(--card-width);
+    padding: var(--space-5);
+}
+
+.profile-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-5);
+}
+
+.profile-info {
+    width: 100%;
+    min-width: 0;
+}
+
+.profile-name {
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.profile-fields {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-5);
+}
+
+.profile-fields dt {
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.profile-fields dd {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+    margin: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 640px) {
+    .profile-card {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .profile-name {
+        text-align: left;
+    }
+}
+
+/* --- редактирование профиля (user_update_form.html) --- */
+
+.avatar-edit {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-2);
+}
+
+/* Виджет ClearableFileInput выводит служебный текст ("Currently: <ссылка на файл>", "Change:")
+   голыми текстовыми узлами. Прячем их нулевым размером шрифта, размер возвращаем нужным элементам:
+   остаются выбор файла и чекбокс очистки с подписью. */
+.avatar-field {
+    display: flex;
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    align-items: center;
+    min-width: min(100%, 240px);
+    font-size: 0;
+}
+
+.avatar-field a,
+.avatar-field br {
+    display: none;
+}
+
+.avatar-field input[type="file"] {
+    order: 1;
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+.avatar-field input[type="checkbox"] {
+    order: 2;
+    margin: var(--space-3) var(--space-2) 0 0;
+}
+
+.avatar-field label {
+    order: 2;
+    margin-top: var(--space-3);
+    font-size: var(--font-md);
+    font-weight: 400;
+}
+
+/* ===== 6. QUIZZES ===== */
+
+/* --- главная (quizzes_menu.html): приветствие + витрина публичных квизов --- */
+
+.hero,
+.menu-section {
+    margin-bottom: var(--space-6);
+}
+
+.hero-text {
+    max-width: 60ch;
+    color: var(--color-text-muted);
+    font-size: var(--font-lg);
+}
+
+.hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.quiz-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.quiz-card {
+    position: relative;      /* точка отсчёта для растянутой ссылки .quiz-card-link::after */
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+                transform var(--transition-fast);
+}
+
+.quiz-card:hover,
+.quiz-card:focus-within {
+    border-color: var(--color-accent);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.quiz-card-title {
+    margin: 0;
+    font-size: var(--font-lg);
+    overflow-wrap: anywhere;
+}
+
+.quiz-card-link {
+    color: var(--color-text);
+    text-decoration: none;
+}
+
+/* вся карточка - область нажатия ссылки на превью */
+.quiz-card-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-md);
+}
+
+.quiz-card-link:focus-visible {
+    outline: none;
+}
+
+.quiz-card-link:focus-visible::after {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+.quiz-card-description {
+    display: -webkit-box;
+    margin: 0;
+    color: var(--color-text-muted);
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.quiz-card-author {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+/* ссылка на автора лежит поверх растянутой ссылки карточки */
+.quiz-card-author a {
+    position: relative;
+    z-index: 1;
+}
+
+.quiz-card-meta {
+    display: flex;
+    gap: var(--space-4);
+    margin: auto 0 0;        /* прижимает строку к низу карточки при разной высоте соседей */
+    padding-top: var(--space-2);
+    font-size: var(--font-sm);
+    font-weight: 600;
+}
+
+@media (min-width: 640px) {
+    .quiz-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1024px) {
+    .quiz-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.delete-link {
+    color: var(--color-error-text);
+}
+
+.update-link {
     color: yellow;
 }
 
 .question-form p:has(input[name$="-DELETE"]) {
     display: none;
+}
+
+.quiz-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.quizseries-detail-main-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.footer-buttons {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ===== 7. GAMEPLAY ===== */
+.session-section {
+    display: flex;
+    justify-content: space-between;
+}
+
+.question-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.solo-room-main {
+    display: flex;
+    flex-direction: column;
+}
+
+.solo-room-completed-rounds {
+    display: flex;
+    flex-direction: column;
+}
+
+.spinner {
+    display: inline-block;
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ===== 8. AI_GENERATOR ===== */
+
+/* ===== 9. MULTIPLAYER ===== */
+.room-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.player-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.host-buttons {
+    display: flex;
+}
+
+.series-history {
+    display: flex;
+    align-items: center;   /* выравнивает по центру по вертикали */
+    gap: 10px;
+}
+
+.series-history p {
+    margin: 0;
 }

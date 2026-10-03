@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}
+   Update QuizInfo
+{% endblock %}
+
+{% block body %}
+    <h1>Обновите информацию:</h1>
+    <div>
+        <form method="POST">
+            {% csrf_token  %}
+            {{ form.as_p }}
+            <button type="submit">Обновить информацию</button>
+        </form>
+    </div>
+
+    <div>
+        <a href="{% url 'quizzes:quizzes_preview' pk=object.pk%}">
+            Отмена
+        </a>
+    </div>
+{% endblock %}

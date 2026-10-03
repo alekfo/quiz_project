@@ -1,5 +1,6 @@
 import json
 import logging
+
 import requests
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -9,9 +10,9 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
 from .models import GenerationRequest
-from .forms import GenerationRequestForm, QuestionFormSet
+from .forms import GenerationRequestFormWithSeries_id, GenerationRequestForm, QuestionFormSet
 from .prompts import generate_quiz_questions
-from quizzes.models import Category
+from quizzes.models import QuizSeries, Category
 from quizzes.services import create_quiz_from_any_data
 
 logger = logging.getLogger(__name__)
@@ -52,13 +53,42 @@ def _questions_to_initial(questions: list[dict]) -> list[dict]:
     return initial
 
 @login_required
-def index(request: HttpRequest) -> HttpResponse:
+def index(request: HttpRequest, series_id=None) -> HttpResponse:
+    """
+    Одна вьюха на два сценария (аналогично quizzes.views.QuizCreateView) - сама
+    генерация через Claude не отличается, разница только в том, куда пойдёт
+    результат:
+      - URL 'ai_generator:index'            (series_id=None) -> сгенерированный
+        квиз позже станет раундом новой QuizSeries
+      - URL 'ai_generator:index_for_series' (series_id=<pk>) -> раундом уже
+        существующей серии
+    series_id тут ни на что не влияет напрямую (сама генерация запроса к Claude
+    не знает про серии) - он просто прокидывается насквозь в context ниже,
+    чтобы temp_ai_quiz.html положил его в hidden-поле и он долетел до save(),
+    где уже и происходит реальная привязка к QuizSeries.
+    """
+    if series_id:
+        form_class = GenerationRequestFormWithSeries_id
+    else:
+        form_class = GenerationRequestForm
     if request.method == "POST":
-        form = GenerationRequestForm(request.POST)
+        form = form_class(request.POST)
         if form.is_valid():
+            if series_id:
+                series = QuizSeries.objects.get(pk=series_id, user=request.user)
+                title = series.title
+                category = series.category_id
+                description = series.description
+                quiz_status = series.status
+            else:
+                title = form.cleaned_data.get("title", "")
+                category = form.cleaned_data.get("category", "")
+                description = form.cleaned_data.get("description", "")
+                quiz_status = form.cleaned_data.get("quiz_status", "private")
 
             instruction_data = {
-                "quiz_title": form.cleaned_data.get("title", ""),
+                "quiz_title": title,
+                "quiz_category": Category.objects.get(pk=category).title,
                 "quiz_subject": form.cleaned_data.get("subject", ""),
                 "quiz_questions": form.cleaned_data.get("questions"),
                 "quiz_level": form.cleaned_data.get("level", ""),
@@ -73,16 +103,19 @@ def index(request: HttpRequest) -> HttpResponse:
                 return render(request, "ai_generator/ai_generator_index.html", {"form": form})
 
             gen_request = GenerationRequest.objects.create(
-                user = request.user,
-                title = instruction_data.get("quiz_title", ""),
-                subject = instruction_data.get("quiz_subject", ""),
-                category_id=form.cleaned_data['category'],
-                questions = instruction_data.get("quiz_questions", 0),
-                level = instruction_data.get("quiz_level", ""),
-                audience = instruction_data.get("quiz_audience", ""),
-                style = instruction_data.get("question_style", ""),
-                result = res,
-                status = "completed"
+                user=request.user,
+                title=title,
+                description=description,
+                subject=instruction_data.get("quiz_subject", ""),
+                category_id=category,
+                questions=instruction_data.get("quiz_questions", 0),
+                level=instruction_data.get("quiz_level", ""),
+                audience=instruction_data.get("quiz_audience", ""),
+                style=instruction_data.get("question_style", ""),
+                result=res,
+                time_limit_seconds=form.cleaned_data.get("time_limit_seconds", 50),
+                status="completed",
+                quiz_status=quiz_status
             )
             logger.info("Новый запрос к Claude API от пользователя %s "
                            "успешно прошел и добавлен в базу: GenerationRequest №%s", request.user.username, gen_request.pk)
@@ -100,28 +133,41 @@ def index(request: HttpRequest) -> HttpResponse:
             context = {
                 "res": res,               # сырые данные для "шапки" (тема, уровень и т.д.)
                 "formset": formset,        # редактируемые пользователем вопросы
-                "gen_request": gen_request,  # нужен gen_request.id - именно по нему
-                                              # save() потом найдёт эту же генерацию в БД
+                "gen_request": gen_request,  # нужен gen_request.id - именно по нему save() потом найдёт эту же генерацию в БД
+                "series_id": series_id,
             }
             return render(request, "ai_generator/temp_ai_quiz.html", context=context)
+    else:
+        form = form_class()
 
     context = {
-        "form": GenerationRequestForm(),
+        "form": form,
     }
 
     return render(request, "ai_generator/ai_generator_index.html", context=context)
 
 @login_required
 def save(request: HttpRequest) -> HttpResponse:
-
+    """
+    Последний шаг генерации - тут formset с правками пользователя реально
+    превращается в Quiz/Question/AnswerOption (через create_quiz_from_any_data,
+    см. quizzes/services.py - там же и лежит вся логика "новая серия или
+    существующая" по этому же series_id).
+    series_id тут - сырая строка из request.POST (или None) и HE объект модели -
+    используется только как значение для reverse()/create_quiz_from_any_data,
+    трогать через .series/.series_id тут нечего, это не инстанс Quiz/QuizSeries.
+    """
     if request.method == "POST":
-        # generation_request_id пришёл скрытым input'ом из temp_ai_quiz.html
+        # generation_request_id и series_id (если есть) пришёл скрытым input'ом из temp_ai_quiz.html
         # (мы положили его туда в index()). По этому id находим ту самую
         # GenerationRequest - в ней уже лежат subject/level/audience/style/title,
         # которые пользователь на этой странице не редактирует, поэтому их не
         # нужно было тащить отдельными hidden-полями через форму.
+        generation_request_id = request.POST.get("generation_request_id")
+        series_id = request.POST.get("series_id", None)
+
         gen_request = get_object_or_404(
-            GenerationRequest, id=request.POST.get("generation_request_id"), user=request.user
+            GenerationRequest, id=generation_request_id, user=request.user
         )
 
         # Тут formset строится уже ИЗ request.POST - это "bound"-формы,
@@ -153,10 +199,22 @@ def save(request: HttpRequest) -> HttpResponse:
                     "correct_index": int(f.cleaned_data["correct_index"]),
                 })
 
-            quiz = create_quiz_from_any_data(gen_request, questions_data)
-
-            url = reverse("quizzes:quizzes_preview", kwargs={"pk": quiz.pk})
-            logger.info("Пользователь %s сохранил квиз №%s в базу", request.user.username, quiz.pk)
+            quiz = create_quiz_from_any_data(gen_request, questions_data, series_id)
+            # Редирект зависит от того, с чем мы имели дело - тем же способом,
+            # что и в quizzes.views.QuizCreateView.get_success_url: если это
+            # был новый раунд в уже существующей серии - возвращаемся на страницу
+            # серии (quizzes_details), если только что создали серию с нуля -
+            # ведём на превью нового квиза (quizzes_preview).
+            if series_id:
+                url = reverse("quizzes:quizzes_details", kwargs={"pk": series_id})
+                success_info = "Новый раунд успешно создан"
+                logger.info("Пользователь %s добавил раунд №%s в квиз №%s", request.user.username, quiz.pk, quiz.series)
+            else:
+                url = reverse("quizzes:quizzes_preview", kwargs={"pk": quiz.series_id})
+                success_info = "Новый квиз успешно создан"
+                logger.info("Пользователь %s сохранил серию №%s и квиз №%s в базу", request.user.username, quiz.series,
+                            quiz.pk)
+            messages.success(request, success_info)
             return redirect(url)
 
     return redirect(reverse("ai_generator:index"))

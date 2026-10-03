@@ -1,0 +1,24 @@
+<div class="follow-block">
+  {% if not is_it_me %}
+    {% if followed %}
+      <p>✅ Вы подписаны</p>
+      <form method="post" action="{% url 'social:unfollow' user_id=target_user.pk %}"
+            hx-post="{% url 'social:unfollow' user_id=target_user.pk %}"
+            hx-target="closest .follow-block"
+            hx-swap="outerHTML"
+            hx-disabled-elt="find button">
+          {% csrf_token %}
+          <button class="btn" type="submit">Отписаться</button>
+      </form>
+    {% else %}
+      <form method="post" action="{% url 'social:follow' user_id=target_user.pk %}"
+            hx-post="{% url 'social:follow' user_id=target_user.pk %}"
+            hx-target="closest .follow-block"
+            hx-swap="outerHTML"
+            hx-disabled-elt="find button">
+          {% csrf_token %}
+          <button class="btn" type="submit">Подписаться</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>

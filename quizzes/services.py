@@ -1,23 +1,45 @@
-from typing import List, Any
+from typing import List
 
 from django.db import transaction
 
-from .models import Quiz, Question, AnswerOption, Category
+from .models import Quiz, Question, AnswerOption, Category, QuizSeries
 from ai_generator.models import GenerationRequest
 
 
 @transaction.atomic
-def create_quiz_from_any_data(gen_request: GenerationRequest, questions_data: List[dict]) -> Quiz:
+def create_quiz_from_any_data(gen_request: GenerationRequest, questions_data: List[dict], series_id=None) -> Quiz:
+    """
+    Создаёт один раунд (Quiz) из результата AI-генерации и подвешивает его на
+    QuizSeries - ровно та же двухветочная логика, что и в QuizCreateView.forms_valid
+    (quizzes/views.py), только на стороне ai_generator: series_id пришёл ->
+    раунд добавляется в существующую серию (владение проверяется прямо в
+    .get(pk=series_id, user=...) - чужой series_id даст DoesNotExist, а не тихо
+    привяжет раунд не туда); series_id нет -> под этот раунд создаётся новая
+    QuizSeries с тем же title, что у сгенерированного квиза.
+    round_order=series.rounds.count() - номер раунда по порядку прямо на
+    создании, отдельного счётчика на QuizSeries не заводили.
+    """
+    if series_id:
+        series = QuizSeries.objects.get(pk=series_id, user=gen_request.user)
+    else:
+        series = QuizSeries.objects.create(
+            title=gen_request.title,
+            user=gen_request.user,
+            category_id=gen_request.category_id,
+            description=gen_request.description,
+            status=gen_request.quiz_status
+        )
 
     quiz = Quiz.objects.create(
         user=gen_request.user,
-        title=gen_request.title,
+        series=series,
         type="ai",
-        category=gen_request.category,
         subject=gen_request.subject,
         level=gen_request.level,
         style=gen_request.style,
-        audience=gen_request.audience
+        audience=gen_request.audience,
+        time_limit_seconds=gen_request.time_limit_seconds,
+        round_order=series.rounds.count()
     )
     for i_index, i_question in enumerate(questions_data):
         question = Question.objects.create(
