@@ -77,7 +77,7 @@ def _update_total_score(sess: GameSession, req: HttpRequest) -> GameParticipant:
 
     participant = get_object_or_404(GameParticipant, session=sess, user=req.user)
     #меняем значение score прямо в БД (на вермя выполнения update другие транзакции не доступны)
-    GameParticipant.objects.filter(pk=participant.pk).update(score=F('score') + 1)
+    GameParticipant.objects.filter(pk=participant.pk).update(score=F('score') + sess.quiz.points_per_correct)
     #нужно синхронизировать participant с БД, т.к мы меняли score в обход него
     participant.refresh_from_db(fields=["score"])
     return participant

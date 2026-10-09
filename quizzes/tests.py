@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from ai_generator.models import GenerationRequest
+from gameplay.models import SeriesRun
 from quiz_project.testing import BaseTestCase, make_category, make_round, make_series, make_user
 from social.models import QuizSeriesLike, SavedQuizSeries
 
@@ -44,6 +45,7 @@ def round_data(**kwargs) -> dict:
         "style": "serious",
         "audience": "common",
         "time_limit_seconds": "30",
+        "points_per_correct": "3",
     }
     data.update(kwargs)
     return data
@@ -203,6 +205,91 @@ class MenuShowcaseTests(BaseTestCase):
                 self.assertContains(response, reverse("quizzes:quizzes_preview", kwargs={"pk": series.pk}))
 
 
+class SeriesInProgressTests(BaseTestCase):
+    """Признак "у пользователя есть незавершённый прогон серии": аннотация in_progress
+    (with_in_progress) в карточках и флаг has_run_in_progress на превью."""
+
+    def setUp(self):
+        super().setUp()
+        self.author = make_user("author")
+        self.reader = make_user("reader")
+        self.series = make_series(self.author, status="public", title="public")
+
+    def make_run(self, user, status="in_progress") -> SeriesRun:
+        return SeriesRun.objects.create(series=self.series, mode="solo", created_by=user, status=status)
+
+    def in_progress_for(self, user) -> bool:
+        return QuizSeries.objects.with_in_progress(user).get(pk=self.series.pk).in_progress
+
+    def test_true_only_for_own_unfinished_run(self):
+        self.assertIs(self.in_progress_for(self.reader), False)
+        self.make_run(self.reader)
+        self.assertIs(self.in_progress_for(self.reader), True)
+        # чужой прогон на меня не влияет
+        self.assertIs(self.in_progress_for(self.author), False)
+
+    def test_finished_runs_do_not_count(self):
+        for status in ("completed", "abandoned"):
+            with self.subTest(status=status):
+                self.make_run(self.reader, status=status)
+                self.assertIs(self.in_progress_for(self.reader), False)
+
+    def test_anonymous_gets_false_without_error(self):
+        self.make_run(self.reader)
+        self.assertIs(self.in_progress_for(AnonymousUser()), False)
+
+    def test_several_finished_runs_do_not_duplicate_series(self):
+        """Exists, а не JOIN: серия с несколькими прогонами остаётся одной строкой."""
+        self.make_run(self.reader, status="completed")
+        self.make_run(self.reader, status="abandoned")
+        self.make_run(self.reader)
+        found = QuizSeries.objects.with_in_progress(self.reader).filter(pk=self.series.pk)
+        self.assertEqual(len(found), 1)
+
+    def test_menu_marks_started_series_and_works_for_anonymous(self):
+        self.make_run(self.reader)
+        url = reverse("quizzes:menu")
+        [shown] = self.client.get(url).context["showcase_series"]
+        self.assertIs(shown.in_progress, False)
+
+        self.client.force_login(self.reader)
+        response = self.client.get(url)
+        [shown] = response.context["showcase_series"]
+        self.assertIs(shown.in_progress, True)
+        self.assertContains(response, "Идёт игра")
+
+    def test_list_marks_own_and_saved_series(self):
+        own = make_series(self.reader, title="own")
+        SeriesRun.objects.create(series=own, mode="solo", created_by=self.reader)
+        SavedQuizSeries.objects.create(user=self.reader, series=self.series)
+        self.client.force_login(self.reader)
+        response = self.client.get(reverse("quizzes:quizzes_list"))
+        [own_shown] = response.context["object_list"]
+        [saved_shown] = response.context["saved_series"]
+        self.assertIs(own_shown.in_progress, True)
+        self.assertIs(saved_shown.in_progress, False)
+
+    def test_preview_flag_and_button_label(self):
+        url = reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk})
+        self.client.force_login(self.reader)
+        response = self.client.get(url)
+        self.assertIs(response.context["has_run_in_progress"], False)
+        self.assertContains(response, "Играть")
+        self.assertNotContains(response, "Продолжить")
+
+        self.make_run(self.reader)
+        response = self.client.get(url)
+        self.assertIs(response.context["has_run_in_progress"], True)
+        self.assertContains(response, "Продолжить")
+
+    def test_preview_flag_ignores_finished_and_foreign_runs(self):
+        self.make_run(self.reader, status="completed")
+        self.make_run(self.author)
+        self.client.force_login(self.reader)
+        response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
+        self.assertIs(response.context["has_run_in_progress"], False)
+
+
 class SeriesReadAccessTests(BaseTestCase):
     """Список/превью/детали: кто какую серию видит."""
 
@@ -352,8 +439,9 @@ class QuizCreateViewTests(BaseTestCase):
                          ("Мой квиз", self.user, "public", self.category))
 
         quiz = Quiz.objects.get()
-        self.assertEqual((quiz.series, quiz.user, quiz.type, quiz.round_order, quiz.time_limit_seconds),
-                         (series, self.user, "by_user", 0, 30))
+        self.assertEqual((quiz.series, quiz.user, quiz.type, quiz.round_order, quiz.time_limit_seconds,
+                          quiz.points_per_correct),
+                         (series, self.user, "by_user", 0, 30, 3))
         self.assertEqual(quiz.questions.count(), 2)
         self.assertEqual(AnswerOption.objects.count(), 8)
 
@@ -400,6 +488,27 @@ class QuizCreateViewTests(BaseTestCase):
         self.assertFalse(QuizSeries.objects.exists())
         self.assertFalse(Question.objects.exists())
 
+    def test_points_per_correct_out_of_range_is_rejected(self):
+        for points in ("0", "-5", "1000", ""):
+            with self.subTest(points=points):
+                data = self.series_data(points_per_correct=points)
+                data.update(question_formset_data([{}, {}]))
+                response = self.client.post(reverse("quizzes:quizzes_create"), data)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("points_per_correct", response.context["form"].errors)
+                self.assertFalse(Quiz.objects.exists())
+
+    def test_points_per_correct_range_is_1_to_100_inclusive(self):
+        series = make_series(self.user, rounds=0)
+        url = reverse("quizzes:quizzes_create_for_series", kwargs={"series_id": series.pk})
+        for points, accepted in (("1", True), ("100", True), ("101", False)):
+            with self.subTest(points=points):
+                data = round_data(points_per_correct=points)
+                data.update(question_formset_data([{}, {}]))
+                response = self.client.post(url, data)
+                self.assertEqual(response.status_code, 302 if accepted else 200)
+                self.assertEqual(series.rounds.filter(points_per_correct=int(points)).exists(), accepted)
+
     def test_question_marked_for_delete_is_not_saved(self):
         data = self.series_data()
         data.update(question_formset_data([{}, {}, {"DELETE": "on"}]))
@@ -440,7 +549,7 @@ class RoundUpdateViewTests(BaseTestCase):
         self.assertEqual(first_form.fields["correct_index"].initial, 0)
 
     def test_updates_round_fields_and_rebuilds_options(self):
-        data = round_data(subject="Новая тема", time_limit_seconds="15")
+        data = round_data(subject="Новая тема", time_limit_seconds="15", points_per_correct="7")
         data.update(self.existing_questions_data(text="Новый текст", option_1="Новый A", correct_index="3"))
         response = self.client.post(self.url, data)
         self.assertRedirects(
@@ -448,7 +557,8 @@ class RoundUpdateViewTests(BaseTestCase):
             fetch_redirect_response=False,
         )
         self.round.refresh_from_db()
-        self.assertEqual((self.round.subject, self.round.time_limit_seconds), ("Новая тема", 15))
+        self.assertEqual((self.round.subject, self.round.time_limit_seconds, self.round.points_per_correct),
+                         ("Новая тема", 15, 7))
         # серия и позиция раунда не меняются
         self.assertEqual((self.round.series, self.round.round_order), (self.series, 0))
 
@@ -483,7 +593,7 @@ class CreateQuizFromAnyDataTests(BaseTestCase):
         self.gen_request = GenerationRequest.objects.create(
             user=self.user, title="AI квиз", subject="Космос", category=make_category(),
             description="Описание", questions=2, level="pro", audience="teens", style="humorous",
-            quiz_status="public", time_limit_seconds=20,
+            quiz_status="public", time_limit_seconds=20, points_per_correct=4,
         )
 
     def test_creates_new_series_with_round(self):
@@ -492,8 +602,9 @@ class CreateQuizFromAnyDataTests(BaseTestCase):
         self.assertEqual((series.title, series.user, series.status, series.description),
                          ("AI квиз", self.user, "public", "Описание"))
         self.assertEqual(
-            (quiz.type, quiz.subject, quiz.level, quiz.audience, quiz.style, quiz.time_limit_seconds, quiz.round_order),
-            ("ai", "Космос", "pro", "teens", "humorous", 20, 0),
+            (quiz.type, quiz.subject, quiz.level, quiz.audience, quiz.style, quiz.time_limit_seconds,
+             quiz.points_per_correct, quiz.round_order),
+            ("ai", "Космос", "pro", "teens", "humorous", 20, 4, 0),
         )
         first, second = quiz.questions.order_by("order")
         self.assertEqual((first.text, first.fact), ("Q1", "F1"))

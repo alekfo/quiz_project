@@ -1,36 +1,115 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}
-    Quizzes list
+    Коллекция квизов — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>Мои квизы:</h1>
-    <ul>
-        <div class="quiz-list">
-            {% for quiz in object_list %}
-                <a href="{% url 'quizzes:quizzes_preview' pk=quiz.pk %}">
-                    {{ quiz.title }}
-                </a>
-            {% empty %}
-                У вас пока еще нет квизов: <a href="{% url 'ai_generator:index' %}">попробуй c помощью AI</a>
-            {% endfor %}
+    <div class="page-header">
+        <div>
+            <h1>Коллекция квизов</h1>
+            <p class="page-subtitle">Ваши квизы и те, что вы сохранили у других авторов</p>
         </div>
-    </ul>
-    <h1>Добавленные:</h1>
-    <ul>
-        <div class="quiz-list">
-            {% for ss in saved_series %}
-                <a href="{% url 'quizzes:quizzes_preview' pk=ss.pk %}">
-                    {{ ss.title }} - автор {{ ss.user.username }}
-                </a>
-            {% empty %}
-                <p>Вы пока еще не добавили квизов</p>
-            {% endfor %}
+        <div class="page-actions">
+            <a class="btn btn-primary" href="{% url 'quizzes:quizzes_create' %}">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Создать квиз
+            </a>
+            <a class="btn" href="{% url 'ai_generator:index' %}">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>
+                    <path d="M19 16v4M17 18h4"/>
+                </svg>
+                Создать с AI
+            </a>
         </div>
-    </ul>
-    <div class="quiz-list">
-        <a href="{% url 'quizzes:quizzes_create' %}">Создать новый квиз вручную</a>
-        <a href="{% url 'ai_generator:index' %}">Создать новый квиз с помощью AI</a>
     </div>
+
+    {# без JS вкладки скрыты, обе секции идут подряд со своими заголовками #}
+    <div class="tabs" role="tablist" aria-label="Коллекция квизов" data-tabs>
+        <button class="tab" type="button" role="tab" id="tab-own" aria-controls="own" aria-selected="true">
+            Мои <span class="tab-count">{{ object_list|length }}</span>
+        </button>
+        <button class="tab" type="button" role="tab" id="tab-saved" aria-controls="saved" aria-selected="false">
+            Добавленные <span class="tab-count">{{ saved_series|length }}</span>
+        </button>
+    </div>
+
+    <section class="menu-section tab-panel" id="own" role="tabpanel" aria-labelledby="tab-own">
+        <h2 class="tab-panel-title">Мои квизы</h2>
+        {% if object_list %}
+            <ul class="quiz-grid">
+                {% for quiz in object_list %}
+                    <li class="card quiz-card">
+                        <p class="quiz-card-tags">
+                            <span class="tag">Категория: {{ quiz.category }}</span>
+                            {% if quiz.status == "public" %}
+                                <span class="tag tag-success">Публичный</span>
+                            {% else %}
+                                <span class="tag tag-muted">Приватный</span>
+                            {% endif %}
+                            {% if quiz.in_progress %}
+                                <span class="tag tag-warning">Идёт игра</span>
+                            {% endif %}
+                        </p>
+                        <h3 class="quiz-card-title">
+                            <a class="quiz-card-link" href="{% url 'quizzes:quizzes_preview' pk=quiz.pk %}">{{ quiz.title }}</a>
+                        </h3>
+                        {% if quiz.description %}
+                            <p class="quiz-card-description">{{ quiz.description }}</p>
+                        {% endif %}
+                        <p class="quiz-card-meta">
+                            <span>Раундов: {{ quiz.rounds_count }}</span>
+                            <span aria-label="Лайков: {{ quiz.like_count }}">♥ {{ quiz.like_count }}</span>
+                        </p>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-state">
+                У вас пока нет квизов — создайте первый вручную или сгенерируйте вопросы с помощью AI.
+            </p>
+        {% endif %}
+    </section>
+
+    <section class="menu-section tab-panel" id="saved" role="tabpanel" aria-labelledby="tab-saved">
+        <h2 class="tab-panel-title">Добавленные</h2>
+        {% if saved_series %}
+            <ul class="quiz-grid">
+                {% for ss in saved_series %}
+                    <li class="card quiz-card">
+                        <p class="quiz-card-tags">
+                            <span class="tag">Категория: {{ ss.category }}</span>
+                            {% if ss.in_progress %}
+                                <span class="tag tag-warning">Идёт игра</span>
+                            {% endif %}
+                        </p>
+                        <h3 class="quiz-card-title">
+                            <a class="quiz-card-link" href="{% url 'quizzes:quizzes_preview' pk=ss.pk %}">{{ ss.title }}</a>
+                        </h3>
+                        {% if ss.description %}
+                            <p class="quiz-card-description">{{ ss.description }}</p>
+                        {% endif %}
+                        <p class="quiz-card-author">
+                            Автор: <a href="{% url 'users:user_detail' pk=ss.user_id %}">{{ ss.user.username }}</a>
+                        </p>
+                        <p class="quiz-card-meta">
+                            <span>Раундов: {{ ss.rounds_count }}</span>
+                            <span aria-label="Лайков: {{ ss.like_count }}">♥ {{ ss.like_count }}</span>
+                        </p>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-state">
+                Вы пока не сохранили ни одного чужого квиза. Откройте понравившийся —
+                <a href="{% url 'quizzes:menu' %}">на главной</a> или в профиле автора
+                среди <a href="{% url 'users:users_list' %}">пользователей</a> — и нажмите «Сохранить к себе».
+            </p>
+        {% endif %}
+    </section>
+
+    {# без defer: неактивная панель должна скрыться до первой отрисовки #}
+    <script src="{% static 'js/tabs.js' %}"></script>
 {% endblock %}

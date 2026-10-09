@@ -14,6 +14,8 @@ from quiz_project.testing import (
     TEST_SETTINGS, BaseTestCase, correct_option, make_round, make_series, make_user, wrong_option,
 )
 
+from quizzes.models import Quiz
+
 from .consumers import GameSessionConsumer
 from .models import GameAnswer, GameParticipant, GameSession, SeriesRun
 from .services import get_series_progress
@@ -311,6 +313,23 @@ class AnswerRulesTests(SoloTestCase):
         self.assertFalse(self.answer.is_skipped)
         self.assertIsNotNone(self.answer.answered_at)
         self.assertEqual(self.participant.score, 1)
+
+    def test_correct_answer_adds_points_of_the_round(self):
+        Quiz.objects.filter(pk=self.session.quiz_id).update(points_per_correct=5)
+        self.post(correct_option(self.question))
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.score, 5)
+        # второй верный ответ прибавляет ещё столько же, а не заменяет счёт
+        response = self.client.get(play_url(self.session))
+        self.post(correct_option(response.context["current_question"]), answer=response.context["current_answer"])
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.score, 10)
+
+    def test_wrong_answer_in_expensive_round_gives_nothing(self):
+        Quiz.objects.filter(pk=self.session.quiz_id).update(points_per_correct=5)
+        self.post(wrong_option(self.question))
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.score, 0)
 
     def test_wrong_answer_does_not_increment_score(self):
         option = wrong_option(self.question)

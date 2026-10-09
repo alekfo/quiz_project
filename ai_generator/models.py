@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 from django.conf import settings
 
@@ -49,6 +50,7 @@ class GenerationRequest(models.Model):
     status = models.CharField(choices=STATUS_CHOICES, default='pending')
     quiz_status = models.CharField(choices=QuizSeries.STATUS_CHOICES)
     time_limit_seconds = models.IntegerField(default=50)
+    points_per_correct = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(100)])
 
     def __str__(self):
         return self.title

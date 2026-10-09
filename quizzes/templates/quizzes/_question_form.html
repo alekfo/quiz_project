@@ -1,0 +1,36 @@
+{# Карточка одного вопроса формсета. Используется и для форм с сервера, и для заготовки empty_form. #}
+<div class="card question-form">
+    <div class="question-form-header">
+        {# номер подставляет CSS-счётчик: скрытые ("удалённые") вопросы в нумерацию не попадают #}
+        <h3 class="question-form-title"></h3>
+        <button type="button" class="btn btn-danger delete-question-btn">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
+            </svg>
+            Удалить
+        </button>
+    </div>
+
+    {% for hidden in question_form.hidden_fields %}{{ hidden }}{% endfor %}
+    {{ question_form.non_field_errors }}
+
+    {% include "_form_field.html" with field=question_form.text %}
+
+    <fieldset class="option-rows">
+        <legend>Варианты ответа — отметьте верный</legend>
+        {% include "quizzes/_option_row.html" with option=question_form.option_1 radio=question_form.correct_index.0 %}
+        {% include "quizzes/_option_row.html" with option=question_form.option_2 radio=question_form.correct_index.1 %}
+        {% include "quizzes/_option_row.html" with option=question_form.option_3 radio=question_form.correct_index.2 %}
+        {% include "quizzes/_option_row.html" with option=question_form.option_4 radio=question_form.correct_index.3 %}
+        {{ question_form.correct_index.errors }}
+    </fieldset>
+
+    {% include "_form_field.html" with field=question_form.fact %}
+    {% include "_form_field.html" with field=question_form.order %}
+
+    {# чекбокс формсета: с JS скрыт (его ставит кнопка "Удалить"), без JS - обычный чекбокс #}
+    <p class="question-delete-fallback">
+        {{ question_form.DELETE }}
+        <label for="{{ question_form.DELETE.id_for_label }}">Удалить этот вопрос при сохранении</label>
+    </p>
+</div>

@@ -1,30 +1,97 @@
 {% extends 'base.html' %}
 
 {% block title %}
-    Quiz #{{ object.pk }} preview
+    {{ series.title }} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <p><b>Номер квиза: {{ series.pk }}</b></p>
-    <p><b>Название квиза: {{ series.title }}</b></p>
-    <p><b>Описание квиза: {{ series.description }}</b></p>
-    <p><b>Категория квиза: {{ series.category }}</b></p>
-    <p><b>Количество раундов: {{ nums_of_rounds }}</b></p>
-    {% include "social/_like_button.html" %}
-    {% include "social/_save_button.html" %}
-    {% if object.user_id == request.user.id %}
-        <a class="update-link" href="{% url 'quizzes:quiz_update_main_info' pk=object.pk%}">
-            Обновить общую информацию
-        </a>
-        <a class="update-link" href="{% url 'quizzes:quizzes_details' pk=object.pk%}">
-            Детальная информация
-        </a>
-    {% endif %}
-    <a class="play_link" href="{% url 'gameplay:start' pk=object.pk%}">
-        PLAY
-    </a>
-    <a href="{% url 'quizzes:quizzes_list' %}">
-        Мои квизы
-    </a>
+    <a class="back-link" href="{% url 'quizzes:quizzes_list' %}">← Коллекция квизов</a>
 
+    <article class="card quiz-preview">
+        <p class="quiz-card-tags">
+            <span class="tag">Категория: {{ series.category }}</span>
+            {% if is_my_series %}
+                {% if series.status == "public" %}
+                    <span class="tag tag-success">Публичный</span>
+                {% else %}
+                    <span class="tag tag-muted">Приватный</span>
+                {% endif %}
+            {% endif %}
+            {% if has_run_in_progress %}
+                <span class="tag tag-warning">Идёт игра</span>
+            {% endif %}
+        </p>
+
+        <h1 class="quiz-preview-title">{{ series.title }}</h1>
+
+        {% if series.description %}
+            <details class="disclosure">
+                <summary class="btn">
+                    Описание
+                    <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </summary>
+                <p class="disclosure-body">{{ series.description }}</p>
+            </details>
+        {% endif %}
+
+        <p class="quiz-preview-author">
+            {% include "users/_avatar.html" with avatar_user=series.user size="sm" %}
+            <span>Автор: <a href="{% url 'users:user_detail' pk=series.user_id %}">{{ series.user.username }}</a></span>
+        </p>
+
+        <section class="quiz-preview-rounds">
+            <h2>Раундов: {{ nums_of_rounds }}</h2>
+            {% if nums_of_rounds %}
+                <ol class="round-list">
+                    {% for round in series.rounds.all|dictsort:"round_order" %}
+                        <li>{{ round.subject }}</li>
+                    {% endfor %}
+                </ol>
+            {% else %}
+                <p class="empty-state">В этом квизе пока нет раундов — играть не во что.</p>
+            {% endif %}
+        </section>
+
+        <div class="quiz-actions">
+            {% if nums_of_rounds %}
+                <a class="btn btn-primary btn-lg" href="{% url 'gameplay:start' pk=series.pk %}">
+                    <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>
+                    {% if has_run_in_progress %}Продолжить{% else %}Играть{% endif %}
+                </a>
+            {% endif %}
+            {% include "social/_like_button.html" %}
+            {% include "social/_save_button.html" %}
+        </div>
+
+        {% if has_run_in_progress and nums_of_rounds %}
+            <p class="quiz-preview-note">Вы начали этот квиз и ещё не закончили — игра продолжится с того же места.</p>
+        {% endif %}
+
+        {% if is_my_series %}
+            <section class="quiz-manage">
+                <h2>Управление квизом</h2>
+                <div class="manage-list">
+                    <a class="manage-link" href="{% url 'quizzes:quiz_update_main_info' pk=series.pk %}">
+                        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 20h4L19 9l-4-4L4 16v4z"/>
+                            <path d="M13.5 6.5l4 4"/>
+                        </svg>
+                        <span>
+                            <span class="manage-link-title">Общая информация</span>
+                            <span class="manage-link-text">Изменить название, описание, категорию и доступность</span>
+                        </span>
+                    </a>
+                    <a class="manage-link" href="{% url 'quizzes:quizzes_details' pk=series.pk %}">
+                        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>
+                        </svg>
+                        <span>
+                            <span class="manage-link-title">Раунды и вопросы</span>
+                            <span class="manage-link-text">Посмотреть всё содержимое, изменить, добавить или удалить раунды</span>
+                        </span>
+                    </a>
+                </div>
+            </section>
+        {% endif %}
+    </article>
 {% endblock %}

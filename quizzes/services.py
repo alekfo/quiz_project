@@ -39,6 +39,7 @@ def create_quiz_from_any_data(gen_request: GenerationRequest, questions_data: Li
         style=gen_request.style,
         audience=gen_request.audience,
         time_limit_seconds=gen_request.time_limit_seconds,
+        points_per_correct=gen_request.points_per_correct,
         round_order=series.rounds.count()
     )
     for i_index, i_question in enumerate(questions_data):

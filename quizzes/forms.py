@@ -59,17 +59,15 @@ class QuizFormWithSeriesId(forms.ModelForm):
 
     class Meta:
         model = Quiz
-        fields = ["subject", "level", "style", "audience", "time_limit_seconds"]
+        fields = ["subject", "level", "style", "audience", "time_limit_seconds", "points_per_correct"]
         labels = {
             "subject": "Тема раунда",
             "level": "Уровень сложности вопросов раунда",
             "style": "Стиль вопросов раунда",
             "audience": "Аудитория раунда",
-            "time_limit_seconds": "Отведенное время на ответ (в секундах)"
+            "time_limit_seconds": "Отведенное время на ответ (в секундах)",
+            "points_per_correct": "Количество очков за правильный ответ"
 
-        }
-        widgets = {
-            "description": forms.Textarea(attrs={"rows":10, "cols": 30})
         }
 
 class QuizForm(QuizFormWithSeriesId):
@@ -84,11 +82,12 @@ class QuizForm(QuizFormWithSeriesId):
           """
     title = forms.CharField(label="Название квиза", max_length=50)
     category = forms.ModelChoiceField(label="Категория квиза", queryset=Category.objects.all())
-    description = forms.CharField(label="Описание квиза", max_length=100, required=False)
+    description = forms.CharField(label="Описание квиза", max_length=255, required=False, widget=forms.Textarea(attrs={"rows": 4}))
     status = forms.ChoiceField(label="Уровень доступности квиза", choices=QuizSeries.STATUS_CHOICES)
 
     field_order = ["title", "category", "description", "status",
-                   "subject", "level", "style", "audience", "time_limit_seconds"]
+                   "subject", "level", "style", "audience", "time_limit_seconds", "points_per_correct"]
+
 
 class QuizSeriesUpdateForm(forms.ModelForm):
     class Meta:
@@ -102,5 +101,5 @@ class QuizSeriesUpdateForm(forms.ModelForm):
 
         }
         widgets = {
-            "description": forms.Textarea(attrs={"rows": 10, "cols": 30})
+            "description": forms.Textarea(attrs={"rows": 3, "cols": 30})
         }
