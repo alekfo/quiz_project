@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 from django.conf import settings
 from django.db.models import OuterRef, Exists
@@ -35,7 +36,8 @@ class QuizSeriesQuerySet(models.QuerySet):
         if not user.is_authenticated:
             return self.none()
         SavedQuizSeries = apps.get_model("social", "SavedQuizSeries") #чтобы избежать циклического импорта
-        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk"))
+
+        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk")) #OuterRef - ссылка на внешний пк основного запроса, т.к данная строка - это подзапрос
         return self.filter(models.Q(status="public") & Exists(saved))
 
     def available_to(self, user):
@@ -46,7 +48,7 @@ class QuizSeriesQuerySet(models.QuerySet):
         if not user.is_authenticated:
             return self.none()
         SavedQuizSeries = apps.get_model("social", "SavedQuizSeries")  # чтобы избежать циклического импорта
-        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk"))
+        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk")) #OuterRef - ссылка на внешний пк основного запроса, т.к данная строка - это подзапрос
         return self.filter(models.Q(user=user) | (models.Q(status="public") & Exists(saved)))
 
     def showcase_series(self, user):
@@ -57,8 +59,22 @@ class QuizSeriesQuerySet(models.QuerySet):
         if not user.is_authenticated:
             return self.filter(status="public")
         SavedQuizSeries = apps.get_model("social", "SavedQuizSeries")
-        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk"))
+        saved = SavedQuizSeries.objects.filter(user=user, series=OuterRef("pk")) #OuterRef - ссылка на внешний пк основного запроса, т.к данная строка - это подзапрос
         return self.filter(models.Q(status="public") & (~Exists(saved))).exclude(user=user)
+
+    def with_in_progress(self, user):
+        """Добавляет каждой серии поле in_progress: есть ли у user незавершённый прогон."""
+        if not user.is_authenticated:
+            # т.к для незалогиненного пользователя мы тоже показываем карточки на стартовой странице,
+            # то и поле in_progress для шаблона тоже должна быть,
+            # мы не можем просто написать in_progress=False, т.к это обычное питоновское значение и база данных не превратит его в кусок запроса,
+            # поэтому нам надо передать в in_progress особую константу, которая правильно преобразуется в SQL запрос, это константой является models.Value,
+            # мы подставляем в эту константу значение False и говорим django (output_field), какой типа этой константы (models.BooleanField()),
+            # таким образом для шаблонов любого незалогиненного пользователя на стартовой странице будет доступна переменная in_progress=False
+            return self.annotate(in_progress=models.Value(False, output_field=models.BooleanField()))
+        SeriesRun = apps.get_model("gameplay", "SeriesRun")  # чтобы избежать циклического импорта
+        runs = SeriesRun.objects.filter(series=OuterRef("pk"), created_by=user, status="in_progress") #OuterRef - ссылка на внешний пк основного запроса, т.к данная строка - это подзапрос
+        return self.annotate(in_progress=Exists(runs)) #тут мы говорим базе: «в этом конкретном запросе, кроме обычных колонок серии, посчитай и верни ещё одно значение и назови его in_progress» (типа ) SELECT id, title, ..., EXISTS(SELECT ...) AS in_progress
 
 class QuizSeries(models.Model):
     """
@@ -143,6 +159,7 @@ class Quiz(models.Model):
     style = models.CharField(max_length=20, choices=STYLE_CHOICES)
     audience = models.CharField(max_length=20, choices=AUDIENCE_CHOICES, default='common')
     time_limit_seconds = models.IntegerField(default=50)
+    points_per_correct = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(100)])
     round_order = models.PositiveIntegerField(default=0)
 
     def __str__(self):

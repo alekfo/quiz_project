@@ -121,7 +121,7 @@ class AiGeneratorViewTestCase(BaseTestCase):
     def round_params(self, **kwargs) -> dict:
         data = {
             "subject": "Чёрные дыры", "questions": "2", "level": "pro", "audience": "teens",
-            "style": "humorous", "time_limit_seconds": "25",
+            "style": "humorous", "time_limit_seconds": "25", "points_per_correct": "3",
         }
         data.update(kwargs)
         return data
@@ -172,8 +172,9 @@ class IndexViewTests(AiGeneratorViewTestCase):
         gen_request = GenerationRequest.objects.get()
         self.assertEqual(
             (gen_request.user, gen_request.title, gen_request.category, gen_request.status,
-             gen_request.quiz_status, gen_request.time_limit_seconds, gen_request.result),
-            (self.user, "AI квиз", self.category, "completed", "public", 25, FAKE_RESULT),
+             gen_request.quiz_status, gen_request.time_limit_seconds, gen_request.points_per_correct,
+             gen_request.result),
+            (self.user, "AI квиз", self.category, "completed", "public", 25, 3, FAKE_RESULT),
         )
         self.assertEqual(response.context["gen_request"], gen_request)
         self.assertIsNone(response.context["series_id"])
@@ -202,6 +203,29 @@ class IndexViewTests(AiGeneratorViewTestCase):
                 self.assertTemplateUsed(response, "ai_generator/ai_generator_index.html")
         self.assertFalse(GenerationRequest.objects.exists())
 
+    def test_points_per_correct_out_of_range_does_not_call_claude(self):
+        series = make_series(self.user)
+        series_url = reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk})
+        for points in ("0", "1000", ""):
+            # обе формы: новый квиз и раунд в существующую серию
+            for url, data in ((self.url, self.series_params(points_per_correct=points)),
+                              (series_url, self.round_params(points_per_correct=points))):
+                with self.subTest(points=points, url=url):
+                    response, generate = self.generate(data, url=url)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn("points_per_correct", response.context["form"].errors)
+                    generate.assert_not_called()
+        self.assertFalse(GenerationRequest.objects.exists())
+
+    def test_points_per_correct_range_is_1_to_100_inclusive(self):
+        for points, accepted in (("1", True), ("100", True), ("101", False)):
+            with self.subTest(points=points):
+                response, generate = self.generate(self.series_params(points_per_correct=points))
+                self.assertEqual(generate.called, accepted)
+                self.assertEqual(
+                    GenerationRequest.objects.filter(points_per_correct=int(points)).exists(), accepted,
+                )
+
     def test_invalid_form_does_not_call_claude(self):
         response, generate = self.generate(self.series_params(questions="0"))
         self.assertEqual(response.status_code, 200)
@@ -217,7 +241,8 @@ class SaveViewTests(AiGeneratorViewTestCase):
         self.gen_request = GenerationRequest.objects.create(
             user=self.user, title="AI квиз", subject="Чёрные дыры", category=self.category,
             description="Описание", questions=2, level="pro", audience="teens", style="humorous",
-            quiz_status="public", time_limit_seconds=25, result=FAKE_RESULT, status="completed",
+            quiz_status="public", time_limit_seconds=25, points_per_correct=6, result=FAKE_RESULT,
+            status="completed",
         )
 
     def formset_data(self, questions=None, **extra) -> dict:
@@ -249,8 +274,9 @@ class SaveViewTests(AiGeneratorViewTestCase):
         self.assertEqual((series.title, series.user, series.status, series.category),
                          ("AI квиз", self.user, "public", self.category))
         quiz = series.rounds.get()
-        self.assertEqual((quiz.type, quiz.subject, quiz.level, quiz.time_limit_seconds, quiz.round_order),
-                         ("ai", "Чёрные дыры", "pro", 25, 0))
+        self.assertEqual((quiz.type, quiz.subject, quiz.level, quiz.time_limit_seconds, quiz.points_per_correct,
+                          quiz.round_order),
+                         ("ai", "Чёрные дыры", "pro", 25, 6, 0))
         first, second = quiz.questions.order_by("order")
         # сохраняется то, что отредактировал пользователь, а не исходный ответ Claude
         self.assertEqual((first.text, first.fact), ("Q1 (правка)", "F1"))

@@ -114,6 +114,7 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
                 style=instruction_data.get("question_style", ""),
                 result=res,
                 time_limit_seconds=form.cleaned_data.get("time_limit_seconds", 50),
+                points_per_correct=form.cleaned_data.get("points_per_correct", 1),
                 status="completed",
                 quiz_status=quiz_status
             )

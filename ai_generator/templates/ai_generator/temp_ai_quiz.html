@@ -1,17 +1,35 @@
 {% extends 'base.html' %}
 
 {% block title %}
-    INDEX
+    Проверьте вопросы — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>Сгенерированный раунд:</h1>
-    <div>Тема: {{ res.quiz_subject }}</div>
-    <div>Уровень сложности: {{ res.quiz_level }}</div>
-    <div>Аудитория: {{ res.quiz_audience }}</div>
-    <div>Стиль вопросов: {{ res.question_style }}</div>
+    {% if series_id %}
+        {% url 'quizzes:quizzes_details' pk=series_id as back_url %}
+    {% else %}
+        {% url 'quizzes:quizzes_list' as back_url %}
+    {% endif %}
 
-    <form method="post" action="{% url 'ai_generator:save' %}">
+    <div class="page-header">
+        <div>
+            <h1>Проверьте вопросы</h1>
+            <p class="page-subtitle">
+                AI подготовил раунд «{{ gen_request.subject }}». Поправьте, что нужно, и сохраните —
+                до сохранения раунд в квиз не попадёт.
+            </p>
+        </div>
+    </div>
+
+    <p class="quiz-card-tags series-summary">
+        <span class="tag tag-muted">Сложность: {{ gen_request.get_level_display }}</span>
+        <span class="tag tag-muted">{{ gen_request.get_style_display }}</span>
+        <span class="tag tag-muted">Аудитория: {{ gen_request.get_audience_display }}</span>
+        <span class="tag tag-muted">Время на вопрос: {{ gen_request.time_limit_seconds }} с</span>
+        <span class="tag tag-muted">Очков за ответ: {{ gen_request.points_per_correct }}</span>
+    </p>
+
+    <form method="post" action="{% url 'ai_generator:save' %}" class="quiz-form">
         {% csrf_token %}
 
         {# generation_request_id - единственное, что нужно передать в save() отдельно от #}
@@ -26,22 +44,49 @@
         {# Без них Django на POST не поймёт, сколько форм разбирать из данных, и #}
         {# formset.is_valid() в save() упадёт с ошибкой "ManagementForm data is missing". #}
         {{ formset.management_form }}
+        <div class="formset-errors">
+            {{ formset.non_form_errors }}
+        </div>
 
         {# Каждая итерация qform - это QuestionForm с префиксом form-N- уже внутри: #}
         {# поле question отрендерится как <... name="form-0-question" ...> для первого #}
         {# вопроса, <... name="form-1-question" ...> для второго и т.д. Индекс N мы #}
         {# сами нигде не пишем - его подставляет formset. #}
-        {% for qform in formset %}
-            <fieldset>
-                <legend>Вопрос {{ forloop.counter }}</legend>
-                {{ qform.as_p }}
-            </fieldset>
-        {% empty %}
-            <p>Нет вопросов</p>
-        {% endfor %}
+        <div class="question-cards">
+            {% for qform in formset %}
+                <div class="card question-form">
+                    <div class="question-form-header">
+                        {# номер подставляет CSS-счётчик #}
+                        <h2 class="question-form-title"></h2>
+                    </div>
 
-        <div>
-            <button type="submit">Сохранить</button>
+                    {% for hidden in qform.hidden_fields %}{{ hidden }}{% endfor %}
+                    {{ qform.non_field_errors }}
+
+                    {% include "_form_field.html" with field=qform.question %}
+
+                    <fieldset class="option-rows">
+                        <legend>Варианты ответа — отметьте верный</legend>
+                        {% include "quizzes/_option_row.html" with option=qform.option_1 radio=qform.correct_index.0 %}
+                        {% include "quizzes/_option_row.html" with option=qform.option_2 radio=qform.correct_index.1 %}
+                        {% include "quizzes/_option_row.html" with option=qform.option_3 radio=qform.correct_index.2 %}
+                        {% include "quizzes/_option_row.html" with option=qform.option_4 radio=qform.correct_index.3 %}
+                        {{ qform.correct_index.errors }}
+                    </fieldset>
+
+                    {% include "_form_field.html" with field=qform.fact %}
+                </div>
+            {% empty %}
+                <p class="empty-state">AI не вернул ни одного вопроса — попробуйте сгенерировать ещё раз.</p>
+            {% endfor %}
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>
+                Сохранить
+            </button>
+            <a class="btn btn-ghost" href="{{ back_url }}">Не сохранять</a>
         </div>
     </form>
 {% endblock %}

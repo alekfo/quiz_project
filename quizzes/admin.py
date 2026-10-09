@@ -24,7 +24,7 @@ class QuizAdmin(admin.ModelAdmin):
         QuestionInline
     ]
 
-    list_display = "pk", "user", "series", "type", "subject", "level", "created_at", "style", "audience", "time_limit_seconds",  "round_order"
+    list_display = "pk", "user", "series", "type", "subject", "level", "created_at", "style", "audience", "time_limit_seconds", "points_per_correct", "round_order"
     ordering = ("pk",)
 
     def get_queryset(self, request):

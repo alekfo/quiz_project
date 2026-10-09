@@ -1,17 +1,91 @@
 {% extends 'base.html' %}
+{% load static %}
 
+{# Два сценария: новый квиз (у формы есть поля квиза) и новый раунд в существующем (series_id в URL) #}
 {% block title %}
-    INDEX
+    {% if form.title %}Новый квиз с AI{% else %}Новый раунд с AI{% endif %} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>Заполни поля для генерации квиза/раунда</h1>
-    <form method="post" enctype="multipart/form-data">
-        {%  csrf_token %}
-        {{ form.as_p }}
+    {% if request.resolver_match.kwargs.series_id %}
+        {% url 'quizzes:quizzes_details' pk=request.resolver_match.kwargs.series_id as back_url %}
+    {% else %}
+        {% url 'quizzes:quizzes_list' as back_url %}
+    {% endif %}
+
+    <a class="back-link" href="{{ back_url }}">
+        {% if request.resolver_match.kwargs.series_id %}← Раунды и вопросы{% else %}← Коллекция квизов{% endif %}
+    </a>
+
+    <div class="page-header">
         <div>
-            <button type="submit">Сгенерировать AI-квиз</button>
-            <button type="reset">Сбросить</button>
+            <h1>{% if form.title %}Новый квиз с AI{% else %}Новый раунд с AI{% endif %}</h1>
+            <p class="page-subtitle">
+                Опишите, о чём раунд, — вопросы придумает AI. Перед сохранением их можно будет проверить и поправить.
+            </p>
         </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="quiz-form" data-loading-overlay="generation-overlay">
+        {%  csrf_token %}
+        {{ form.non_field_errors }}
+
+        {# поля самого квиза есть только в форме нового квиза #}
+        {% if form.title %}
+            <section class="card form-section">
+                <h2>О квизе</h2>
+                {% include "_form_field.html" with field=form.title %}
+                {% include "_form_field.html" with field=form.description %}
+                <div class="form-grid">
+                    {% include "_form_field.html" with field=form.category %}
+                    {% include "_form_field.html" with field=form.quiz_status %}
+                </div>
+            </section>
+        {% endif %}
+
+        <section class="card form-section">
+            <h2>{% if form.title %}Первый раунд{% else %}Параметры раунда{% endif %}</h2>
+            {% include "_form_field.html" with field=form.subject %}
+            <div class="form-grid">
+                {% include "_form_field.html" with field=form.questions %}
+                {% include "_form_field.html" with field=form.level %}
+                {% include "_form_field.html" with field=form.style %}
+                {% include "_form_field.html" with field=form.audience %}
+                {% include "_form_field.html" with field=form.time_limit_seconds %}
+                {% include "_form_field.html" with field=form.points_per_correct %}
+            </div>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>
+                    <path d="M19 16v4M17 18h4"/>
+                </svg>
+                Сгенерировать вопросы
+            </button>
+            <button type="reset" class="btn">Сбросить</button>
+            <a class="btn btn-ghost" href="{{ back_url }}">Отмена</a>
+        </div>
+        <p class="helptext">Генерация занимает до минуты — дождитесь, пока страница обновится.</p>
     </form>
+
+    {# экран ожидания: показывается при отправке формы (static/js/loading-overlay.js), фразы идут в случайном порядке #}
+    <div class="loading-overlay" id="generation-overlay" role="status" aria-live="polite" hidden>
+        <div class="loading-ring" aria-hidden="true"></div>
+        <p class="loading-title">Генерируем вопросы</p>
+        <p class="loading-text">
+            <span>Листаем энциклопедии…</span>
+            <span>Придумываем каверзные вопросы…</span>
+            <span>Прячем верный ответ среди трёх обманок…</span>
+            <span>Проверяем факты, чтобы не опозориться…</span>
+            <span>Спорим с AI, какой ответ правильный…</span>
+            <span>Советуемся с воображаемым жюри…</span>
+            <span>Вычёркиваем слишком простые вопросы…</span>
+            <span>Ищем любопытный факт к каждому вопросу…</span>
+            <span>Точим карандаши для знатоков…</span>
+            <span>Ещё чуть-чуть — вопросы почти готовы…</span>
+        </p>
+    </div>
+    <script src="{% static 'js/loading-overlay.js' %}" defer></script>
 {% endblock %}

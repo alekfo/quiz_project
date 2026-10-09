@@ -11,6 +11,7 @@ from django.db.models import Count
 
 from .models import Quiz, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId, QuizSeriesUpdateForm
+from gameplay.models import SeriesRun
 from multiplayer.models import Room
 from social.services import get_like_context, get_save_context
 
@@ -30,6 +31,7 @@ def menu(request: HttpRequest):
                   .annotate(like_count=Count("likes", distinct=True))
                   .annotate(rounds_count=Count("rounds", distinct=True))
                   .filter(rounds_count__gt=0)
+                  .with_in_progress(request.user)
                   .order_by("-like_count", "-created_at")[:12])
     context["showcase_series"] = series
 
@@ -73,6 +75,7 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["nums_of_rounds"] = self.object.rounds.count()
+        context["has_run_in_progress"] = SeriesRun.objects.filter(series=self.object, created_by=self.request.user, status="in_progress").exists()
         context.update(get_like_context(self.request.user, self.object))
         context.update(get_save_context(self.request.user, self.object))
         return context
@@ -100,12 +103,22 @@ class QuizListView(LoginRequiredMixin, ListView):
         возможен только через метод, не через атрибут класса."""
         return (
             QuizSeries.objects
+            .select_related("category")
+            .annotate(like_count=Count("likes", distinct=True))
+            .annotate(rounds_count=Count("rounds", distinct=True))
             .filter(user=self.request.user)
+            .with_in_progress(self.request.user)
         )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["saved_series"] = QuizSeries.objects.saved_by_user(self.request.user).select_related("user")
+        context["saved_series"] = (QuizSeries.objects
+                                   .saved_by_user(self.request.user)
+                                   .with_in_progress(self.request.user)
+                                   .select_related("user", "category")
+                                   .annotate(like_count=Count("likes", distinct=True))
+                                   .annotate(rounds_count=Count("rounds", distinct=True))
+                                   )
         return context
 
 class QuizCreateView(LoginRequiredMixin, CreateView):

@@ -41,7 +41,7 @@ class GenerationRequestForm(forms.Form):
     #поля при создании квиза
     title = forms.CharField(label="Наименование квиза", max_length=50)
     category = forms.ChoiceField(label="Категория квиза", choices=get_all_categories)
-    description = forms.CharField(label="Описание квиза", max_length=100)
+    description = forms.CharField(label="Описание квиза", max_length=255, required=False, widget=forms.Textarea(attrs={"rows": 4}))
     quiz_status = forms.ChoiceField(label="Уровень доступности квиза", choices=QuizSeries.STATUS_CHOICES)
 
     #общие поля квиз/раунд
@@ -51,6 +51,7 @@ class GenerationRequestForm(forms.Form):
     audience = forms.ChoiceField(label="Целевая аудитория раунда", choices=AUDIENCE_CHOICES)
     style = forms.ChoiceField(label="Стиль вопросов раунда", choices=STYLE_CHOICES)
     time_limit_seconds = forms.IntegerField(label="Отведенное время на ответ (в секундах)")
+    points_per_correct = forms.IntegerField(label="Количество очков за правильный ответ", min_value=1, max_value=100, initial=1)
 
 class GenerationRequestFormWithSeries_id(forms.Form):
 
@@ -61,6 +62,8 @@ class GenerationRequestFormWithSeries_id(forms.Form):
     audience = forms.ChoiceField(label="Целевая аудитория раунда", choices=AUDIENCE_CHOICES)
     style = forms.ChoiceField(label="Стиль вопросов раунда", choices=STYLE_CHOICES)
     time_limit_seconds = forms.IntegerField(label="Отведенное время на ответ (в секундах)")
+    points_per_correct = forms.IntegerField(label="Количество очков за правильный ответ", min_value=1, max_value=100, initial=1)
+
 
 class QuestionForm(forms.Form):
     """

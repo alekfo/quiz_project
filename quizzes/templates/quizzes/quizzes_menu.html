@@ -10,8 +10,17 @@
             <h1>Привет, {{ user.username }}!</h1>
             <p class="hero-text">Создайте свой квиз или сыграйте в один из тех, что уже придумали другие.</p>
             <div class="hero-actions">
-                <a class="btn btn-primary" href="{% url 'quizzes:quizzes_create' %}">Создать квиз</a>
-                <a class="btn" href="{% url 'ai_generator:index' %}">Создать с AI</a>
+                <a class="btn btn-primary" href="{% url 'quizzes:quizzes_create' %}">
+                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    Создать квиз
+                </a>
+                <a class="btn" href="{% url 'ai_generator:index' %}">
+                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>
+                        <path d="M19 16v4M17 18h4"/>
+                    </svg>
+                    Создать с AI
+                </a>
             </div>
         {% else %}
             <h1>Квизы, которые придумываете вы</h1>
@@ -43,7 +52,12 @@
             <ul class="quiz-grid">
                 {% for series in showcase_series %}
                     <li class="card quiz-card">
-                        <span class="tag">{{ series.category }}</span>
+                        <p class="quiz-card-tags">
+                            <span class="tag">Категория: {{ series.category }}</span>
+                            {% if series.in_progress %}
+                                <span class="tag tag-warning">Идёт игра</span>
+                            {% endif %}
+                        </p>
                         <h3 class="quiz-card-title">
                             <a class="quiz-card-link" href="{% url 'quizzes:quizzes_preview' pk=series.pk %}">{{ series.title }}</a>
                         </h3>
