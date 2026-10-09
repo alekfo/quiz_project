@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Room #{{ object.pk }} detail
+{% endblock %}
+
+{% block body %}
+    <script>
+<!--        Скрипт для работы кнопки для разворачивания контейнера-->
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.toggle-btn');
+            if (!btn) return;
+
+            const container = document.getElementById(btn.dataset.target);
+            if (!container) return;
+
+            const isHidden = container.hasAttribute('hidden');
+            container.toggleAttribute('hidden', !isHidden);
+            btn.textContent = isHidden ? 'Скрыть' : 'Показать';
+        });
+    </script>
+    <div class="header-main">
+        <div>
+            <h1>Комната #<strong>{{ object.pk }}: {{ object.title }}</strong></h1>
+        </div>
+        <div>
+            Статус: {{object.status}}
+            {% if object.status != "finished" and is_host %}
+                <a class="btn" href="{% url 'multiplayer:room_close' code=room.token %}">Закрыть комнату</a>
+            {% endif %}
+        </div>
+    </div>
+    {% if is_host and object.status != "finished" %}
+        <p>
+            Ссылка на комнату:
+            <button type="button" class="toggle-btn" data-target="link-container">Показать</button>
+        </p>
+        <div id="link-container" hidden>
+            <span id="room-link">{{ request.scheme }}://{{ request.get_host }}{% url 'multiplayer:room_detail' code=object.token %}</span>
+            <button class="btn" type="button" id="copy-link-btn">Скопировать ссылку</button>
+            <script>
+                document.getElementById('copy-link-btn').addEventListener('click', function () {
+                    const link = document.getElementById('room-link').textContent;
+                    navigator.clipboard.writeText(link).then(function () {
+                        let messagesList = document.querySelector('.messages');
+                        if (!messagesList) {
+                            messagesList = document.createElement('ul');
+                            messagesList.className = 'messages';
+                            document.querySelector('.container-header-messages').prepend(messagesList);
+                        }
+                        const li = document.createElement('li');
+                        li.className = 'success';
+                        li.textContent = 'Ссылка скопирована';
+                        messagesList.appendChild(li);
+                        setTimeout(function () {
+                            li.remove();
+                        }, 15000);
+                    });
+                });
+            </script>
+        </div>
+    {% endif %}
+    {% if is_host or is_player %}
+            {% include "multiplayer/_room_status.html" %}
+    {% endif %}
+    {% if is_player and object.status != "finished" %}
+        <form id="confirm-ready-form" method="post" action="{% url 'multiplayer:room_confirm_ready' code=object.token %}"{% if not object.current_series or my_room_player.is_ready %} hidden{% endif %}>
+            {% csrf_token %}
+            <button class="btn" type="submit">Подтвердить готовность</button>
+        </form>
+        <p id="ready-confirmed-msg"{% if not my_room_player.is_ready %} hidden{% endif %}>✅ Готовность подтверждена</p>
+    {% endif %}
+    {% if is_host or is_player %}
+        <script>
+            (function () {
+                const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+                const socket = new WebSocket(protocol + "://" + window.location.host + "/ws/multiplayer/rooms/{{ object.token }}/");
+                socket.onmessage = function (event) {
+                    const data = JSON.parse(event.data);
+                    if (data.type === "redirect") {
+                        window.location = data.url;
+                        return;
+                    }
+                    document.getElementById("room-status").outerHTML = data.html;
+                    const confirmForm = document.getElementById("confirm-ready-form");
+                    if (confirmForm) confirmForm.hidden = !data.can_confirm;
+                    const selectForm = document.getElementById("select-series-form");
+                    if (selectForm) selectForm.hidden = data.has_selected_series;
+                    const resetForm = document.getElementById("reset-series-form");
+                    if (resetForm) resetForm.hidden = !data.has_selected_series;
+                    const startForm = document.getElementById("start-form");
+                    if (startForm) startForm.hidden = !data.can_start_round;
+                    const readyMsg = document.getElementById("ready-confirmed-msg");
+                    if (readyMsg) readyMsg.hidden = !data.is_ready;
+
+                    const startButton = document.getElementById("start-button");
+                    startButton.textContent = data.is_first_round ? "НАЧАТЬ ИГРУ" : "НАЧАТЬ СЛЕДУЮЩИЙ РАУНД"
+                };
+            })();
+        </script>
+    {% if is_host and object.status != "finished" %}
+        <div class="host-buttons">
+            <form method="post" id="select-series-form" action="{% url 'multiplayer:room_set_quiz' code=object.token %}" {% if has_selected_series %} hidden{% endif %}>
+                {% csrf_token %}
+                {{series_form.current_series}}
+                <button class="btn" type="submit">Выбрать квиз</button>
+            </form>
+            <form method="post" id="reset-series-form" action="{% url 'multiplayer:room_reset_quiz' code=object.token %}" {% if not has_selected_series %} hidden{% endif %}>
+                {% csrf_token %}
+                <button class="btn" type="submit">Сбросить квиз</button>
+            </form>
+            <form method="post"  id="start-form" action="{% url 'multiplayer:room_start' code=object.token %}" {% if not can_start_round %} hidden{% endif %}>
+                {% csrf_token %}
+                <button class="btn" id="start-button" type="submit">{% if is_first_round %}НАЧАТЬ ИГРУ{% else %}НАЧАТЬ СЛЕДУЮЩИЙ РАУНД{% endif %}</button>
+            </form>
+        </div>
+    {% endif %}
+
+    {% endif %}
+    {% if object.status != "finished" %}
+        {% if is_player %}
+          <a class="btn" href="{% url 'multiplayer:room_quit' code=object.token %}">Завершить участие в квизе</a>
+        {% else %}
+          <a class="btn" href="{% url 'multiplayer:room_join' code=object.token %}">Стать участником квиза</a>
+        {% endif %}
+    {% endif %}
+{% endblock %}

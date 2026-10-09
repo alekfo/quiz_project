@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Удалить раунд: {{ object.subject }} — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    {% url 'quizzes:quizzes_details' pk=object.series_id as back_url %}
+
+    <a class="back-link" href="{{ back_url }}">← Раунды и вопросы</a>
+
+    <section class="card confirm-card">
+        <h1>Удалить раунд?</h1>
+        <p class="confirm-subject">{{ object.subject }}</p>
+        <p class="confirm-text">
+            Раунд удалится вместе со всеми вопросами (сейчас их {{ object.questions.count }}).
+            Остальные раунды квиза останутся. Вернуть раунд будет нельзя.
+        </p>
+        <form method="post">
+            {% csrf_token  %}
+            {{ form.as_p }}
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">
+                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
+                    </svg>
+                    Удалить раунд
+                </button>
+                <a class="btn btn-ghost" href="{{ back_url }}">Отмена</a>
+            </div>
+        </form>
+    </section>
+{% endblock %}

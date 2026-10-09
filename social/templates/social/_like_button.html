@@ -1,0 +1,33 @@
+<div class="like-block">
+    {% if already_liked %}
+        <form method="post" action="{% url 'social:delete_like' series_id=series.pk %}"
+                hx-post="{% url 'social:delete_like' series_id=series.pk %}"
+                hx-target="closest .like-block"
+                hx-swap="outerHTML"
+                hx-disabled-elt="find button">
+            {% csrf_token %}
+            <button class="btn" type="submit" aria-pressed="true"
+                    aria-label="Убрать лайк. Лайков: {{ nums_of_likes }}" title="Убрать лайк">
+                <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>
+                </svg>
+                {{ nums_of_likes }}
+            </button>
+        </form>
+    {% else %}
+        <form method="post" action="{% url 'social:create_like' series_id=series.pk %}"
+                hx-post="{% url 'social:create_like' series_id=series.pk %}"
+                hx-target="closest .like-block"
+                hx-swap="outerHTML"
+                hx-disabled-elt="find button">
+            {% csrf_token %}
+            <button class="btn" type="submit" aria-pressed="false"
+                    aria-label="Лайкнуть. Лайков: {{ nums_of_likes }}" title="Лайкнуть">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>
+                </svg>
+                {{ nums_of_likes }}
+            </button>
+        </form>
+    {% endif %}
+</div>

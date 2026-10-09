@@ -1,0 +1,12 @@
+<div id="waiting-info"{% if not already_answered %} hidden{% endif %}>
+    <p>Участники:</p>
+    <div class="player-list">
+      {% for part in current_session.participants.all %}
+        {% for answer in part.participants_answers.all %}
+            {% if answer.question_id == current_session.current_question_id %}
+                <span>{{ part.user.username }} — {% if answer.answered_at or answer.is_skipped %}✅ ответил{% else %}⏳ в процессе{% endif %}</span>
+            {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+</div>
