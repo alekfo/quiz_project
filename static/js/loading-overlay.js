@@ -99,4 +99,9 @@
             }
         });
     });
+
+    // Страница ожидания: оверлей открыт с самого начала (data-autostart), формы на странице нет
+    document.querySelectorAll('.loading-overlay[data-autostart]').forEach(function (overlay) {
+        startPhrases(overlay);
+    });
 })();

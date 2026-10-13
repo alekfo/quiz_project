@@ -1,0 +1,26 @@
+{# Экран ожидания генерации (static/js/loading-overlay.js), фразы идут в случайном порядке. #}
+{# Без параметров - скрыт и открывается при отправке формы с data-loading-overlay="generation-overlay". #}
+{# С autostart=True - открыт сразу (страница ожидания: генерация уже идёт, формы на странице нет). #}
+<div class="loading-overlay" id="generation-overlay" role="status" aria-live="polite"
+     {% if autostart %}data-autostart{% else %}hidden{% endif %}>
+    <div class="loading-ring" aria-hidden="true"></div>
+    <p class="loading-title">Генерируем вопросы</p>
+    <p class="loading-text">
+        <span>Листаем энциклопедии…</span>
+        <span>Придумываем каверзные вопросы…</span>
+        <span>Прячем верный ответ среди трёх обманок…</span>
+        <span>Проверяем факты, чтобы не опозориться…</span>
+        <span>Спорим с AI, какой ответ правильный…</span>
+        <span>Советуемся с воображаемым жюри…</span>
+        <span>Вычёркиваем слишком простые вопросы…</span>
+        <span>Ищем любопытный факт к каждому вопросу…</span>
+        <span>Точим карандаши для знатоков…</span>
+        <span>Ещё чуть-чуть — вопросы почти готовы…</span>
+    </p>
+    {% if autostart %}
+        {# без JS опроса статуса нет - остаётся обновить страницу вручную #}
+        <noscript>
+            <a class="btn" href="{% url 'ai_generator:review' pk=gen_request.pk %}">Проверить, готовы ли вопросы</a>
+        </noscript>
+    {% endif %}
+</div>

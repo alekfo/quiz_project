@@ -70,22 +70,7 @@
         <p class="helptext">Генерация занимает до минуты — дождитесь, пока страница обновится.</p>
     </form>
 
-    {# экран ожидания: показывается при отправке формы (static/js/loading-overlay.js), фразы идут в случайном порядке #}
-    <div class="loading-overlay" id="generation-overlay" role="status" aria-live="polite" hidden>
-        <div class="loading-ring" aria-hidden="true"></div>
-        <p class="loading-title">Генерируем вопросы</p>
-        <p class="loading-text">
-            <span>Листаем энциклопедии…</span>
-            <span>Придумываем каверзные вопросы…</span>
-            <span>Прячем верный ответ среди трёх обманок…</span>
-            <span>Проверяем факты, чтобы не опозориться…</span>
-            <span>Спорим с AI, какой ответ правильный…</span>
-            <span>Советуемся с воображаемым жюри…</span>
-            <span>Вычёркиваем слишком простые вопросы…</span>
-            <span>Ищем любопытный факт к каждому вопросу…</span>
-            <span>Точим карандаши для знатоков…</span>
-            <span>Ещё чуть-чуть — вопросы почти готовы…</span>
-        </p>
-    </div>
+    {# экран ожидания: показывается при отправке формы (static/js/loading-overlay.js) #}
+    {% include "ai_generator/_generation_overlay.html" %}
     <script src="{% static 'js/loading-overlay.js' %}" defer></script>
 {% endblock %}
