@@ -5,6 +5,7 @@ def get_follow_context(cur_user, target_user) -> dict:
         "target_user": target_user,
         "followed": Follow.objects.filter(follower=cur_user, following=target_user).exists(),
         "is_it_me": cur_user == target_user,
+        "followers_count": Follow.objects.filter(following=target_user).count()
     }
 
 def get_like_context(cur_user, series) -> dict:

@@ -59,9 +59,14 @@ class ServicesTests(BaseTestCase):
     def test_follow_context(self):
         Follow.objects.create(follower=self.bob, following=self.alice)
         context = get_follow_context(self.bob, self.alice)
-        self.assertEqual(context, {"target_user": self.alice, "followed": True, "is_it_me": False})
+        self.assertEqual(
+            context,
+            {"target_user": self.alice, "followed": True, "is_it_me": False, "followers_count": 1},
+        )
         # подписка не симметрична
         self.assertFalse(get_follow_context(self.alice, self.bob)["followed"])
+        # считаются подписчики владельца профиля, а не того, кто смотрит
+        self.assertEqual(get_follow_context(self.alice, self.bob)["followers_count"], 0)
         self.assertTrue(get_follow_context(self.alice, self.alice)["is_it_me"])
 
     def test_like_context(self):

@@ -928,14 +928,53 @@ footer a {
     overflow-wrap: anywhere;
 }
 
+/* --- чужой профиль (user_detail.html) и блок подписки (social/_follow_button.html) --- */
+
+.profile-fullname,
+.profile-note {
+    color: var(--color-text-muted);
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.profile-note {
+    margin: var(--space-4) 0 0;
+    font-size: var(--font-sm);
+}
+
+.follow-block {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+}
+
+.follow-count {
+    flex-basis: 100%;
+    margin: 0;
+    text-align: center;
+}
+
+.profile-quizzes {
+    margin-top: var(--space-6);
+}
+
 @media (min-width: 640px) {
     .profile-card {
         flex-direction: row;
         align-items: flex-start;
     }
 
-    .profile-name {
+    .profile-name,
+    .profile-fullname,
+    .profile-note,
+    .follow-count {
         text-align: left;
+    }
+
+    .follow-block {
+        justify-content: flex-start;
     }
 }
 

@@ -12,6 +12,7 @@ from django.core import signing
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView, ListView, DetailView, UpdateView
+from django.db.models import Count
 
 from .forms import RegisterForm, ProfileUpdateForm
 from social.services import get_follow_context
@@ -184,7 +185,12 @@ class UserDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         #берем контекст из social.services.get_follow_context
         context.update(get_follow_context(self.request.user, self.object))
-        context["public_series"] = QuizSeries.objects.filter(user=self.object, status="public")
+        context["public_series"] = (QuizSeries.objects
+                                    .filter(user=self.object, status="public")
+                                    .select_related("category")
+                                    .annotate(like_count=Count("likes", distinct=True))
+                                    .annotate(rounds_count=Count("rounds", distinct=True))
+                                    .with_in_progress(self.request.user))
         return context
 
 class SettingsPageView(LoginRequiredMixin, TemplateView):

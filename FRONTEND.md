@@ -180,6 +180,15 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 - **Категория в метке** пишется с подписью: «Категория: Литература» — на превью, в карточках коллекции и главной
   (решение пользователя: без подписи неясно, что это за метка).
 
+Готово (2026-10-13):
+
+- **Блок подписки** — partial `social/_follow_button.html`, корень `.follow-block`: строка `.follow-count`
+  («Подписчиков: N») и, на чужом профиле, кнопка. Не подписан — `.btn.btn-primary` «Подписаться» со значком;
+  подписан — метка `.tag.tag-success` «Вы подписаны» и обычная `.btn` «Отписаться». Счётчик лежит внутри partial,
+  поэтому обновляется вместе с кнопкой без перезагрузки.
+- **Чужой профиль** — та же `.card.profile-card`, что в «Мой профиль»; имя и фамилия одной приглушённой строкой
+  `.profile-fullname` (только если заполнены), пояснение под блоком — `.profile-note`. Почта не выводится.
+
 ### Организация CSS
 
 - Пока один файл `static/css/main.css`: токены → сброс и базовые теги → компоненты → страницы.
@@ -382,6 +391,19 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
   Ищет `.avatar-edit`, внутри него `.avatar` (с `data-initial` из partial), `input[type="file"]` и чекбокс.
   При выборе файла снимает отметку очистки: Django отклоняет форму, если пришло и то и другое.
 
+### Профиль пользователя — `users/user_detail.html`
+
+- Контекст из `UserDetailView`: `target_user` (не `user` — тот занят залогиненным пользователем из context processor),
+  из `social.services.get_follow_context` — `followed`, `is_it_me`, `followers_count` (подписчики `target_user`);
+  `public_series` — публичные серии владельца профиля с аннотациями `rounds_count`, `like_count`, `in_progress`
+  и `category` через `select_related`.
+- `social/_follow_button.html` включается без параметров и берёт эти же переменные; вьюхи `follow` / `unfollow`
+  на HTMX-запрос возвращают его с тем же контекстом. Новая переменная в partial — значит, новый ключ
+  в `get_follow_context`, а не в одной вьюхе.
+- На своём профиле (`is_it_me`): кнопки подписки нет, вместо неё ссылка в «Мой профиль»; список квизов не выводится.
+  Счётчик подписчиков виден всегда.
+- Карточки квизов — та же `.quiz-card`, что в коллекции. Серии без раундов в список попадают («Раундов: 0»).
+
 ### Регистрация — `users/register.html`
 
 - `#submit-btn`, чекбокс `privacy_policy`.
@@ -422,6 +444,10 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 3. **Списки и превью**: `quizseries_list.html`, `quizseries_preview.html`, `quizseries_detail.html`,
    `users_list.html`, `user_detail.html`, `about_me.html`, `room_list.html`, partial'ы `social/`.
    Сделано 2026-10-03 (вне очереди, вместе с бэкендом аватара): `about_me.html` и `user_update_form.html`.
+   Сделано 2026-10-09: `quizseries_list.html`, `quizseries_preview.html`, `quizseries_detail.html`, кнопки лайка
+   и сохранения. Сделано 2026-10-13: `user_detail.html` и `social/_follow_button.html` (сетка карточек квизов
+   на чужом профиле в браузере не проверена — в dev-базе не было чужих публичных квизов).
+   Осталось: `users_list.html`, `room_list.html`.
 4. **Формы**: `login.html`, `register.html`, `quiz_form.html`, `ai_generator_index.html`, `temp_ai_quiz.html`,
    `room_form.html`, страницы подтверждения удаления, `feedback.html`, `settings.html`.
    Сделано 2026-10-09 (вне очереди, вместе со страницами квизов): `quiz_form.html`, `quizseries_update.html`,
