@@ -5,12 +5,6 @@
 {% endblock %}
 
 {% block body %}
-    {% if series_id %}
-        {% url 'quizzes:quizzes_details' pk=series_id as back_url %}
-    {% else %}
-        {% url 'quizzes:quizzes_list' as back_url %}
-    {% endif %}
-
     <div class="page-header">
         <div>
             <h1>Проверьте вопросы</h1>
@@ -29,15 +23,10 @@
         <span class="tag tag-muted">Очков за ответ: {{ gen_request.points_per_correct }}</span>
     </p>
 
-    <form method="post" action="{% url 'ai_generator:save' %}" class="quiz-form">
+    {# Какая это генерация и в какой квиз пойдёт раунд, save() узнаёт из pk в адресе и из самой #}
+    {# GenerationRequest - скрытых полей для этого в форме нет, из формы приходят только вопросы. #}
+    <form method="post" action="{% url 'ai_generator:save' pk=gen_request.pk %}" class="quiz-form">
         {% csrf_token %}
-
-        {# generation_request_id - единственное, что нужно передать в save() отдельно от #}
-        {# formset'а: по нему save() найдёт в БД ту же GenerationRequest и возьмёт из неё #}
-        {# subject/level/audience/style/title - их тут заново не редактируют, поэтому #}
-        {# не тащим их через hidden-инпуты по отдельности. #}
-        <input type="hidden" name="generation_request_id" value="{{ gen_request.id }}">
-        <input type="hidden" name="series_id" value="{% if series_id %}{{ series_id }}{% endif %}">
 
         {# management_form - ОБЯЗАТЕЛЬНАЯ часть formset'а. Рендерит скрытые поля #}
         {# form-TOTAL_FORMS / form-INITIAL_FORMS / form-MIN_NUM_FORMS / form-MAX_NUM_FORMS. #}
@@ -86,7 +75,13 @@
                 <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>
                 Сохранить
             </button>
-            <a class="btn btn-ghost" href="{{ back_url }}">Не сохранять</a>
+            {# кнопка относится к отдельной форме ниже (атрибут form): вложить форму в форму нельзя #}
+            <button type="submit" form="discard-form" class="btn btn-ghost">Не сохранять</button>
         </div>
+    </form>
+
+    {# «Не сохранять» меняет данные (генерация помечается отклонённой), поэтому POST, а не ссылка #}
+    <form method="post" action="{% url 'ai_generator:discard' pk=gen_request.pk %}" id="discard-form">
+        {% csrf_token %}
     </form>
 {% endblock %}

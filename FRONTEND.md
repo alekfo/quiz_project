@@ -339,11 +339,25 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
   `loading-phrase`, которую скрипт собирает под их число, — не `setInterval`: во время ожидания ответа на POST
   мобильные браузеры останавливают JS-таймеры. Новые фразы — просто ещё один `<span>` в шаблоне.
   Скрипт общий: годится для любой долгой формы с той же разметкой.
-- `temp_ai_quiz.html` — контекст `formset`, `gen_request`, `series_id`, `res`. Параметры раунда в шапке берутся
-  из `gen_request` (`get_level_display` и т.п.), `res` шаблон больше не читает.
-  Скрытые поля `generation_request_id` и `series_id`, `action` на `ai_generator:save` и `{{ formset.management_form }}`
-  обязательны. Карточки вопросов лежат в `.question-cards` (тот же вид, что в `quiz_form.html`, без добавления и удаления),
-  варианты — тем же `quizzes/_option_row.html`.
+  Сам оверлей с фразами — partial `ai_generator/_generation_overlay.html` (один на форму генерации и на страницу
+  ожидания). Без параметров он скрыт (`hidden`) и открывается при отправке формы; с `autostart=True` получает
+  `data-autostart` вместо `hidden` — скрипт запускает фразы сразу при загрузке страницы.
+- **Генерация — объект с состоянием** (2026-10-13). Вьюха `review` (`ai_generator/review/<pk>/`, GET) по статусу
+  `GenerationRequest` отдаёт одну из двух страниц; обе можно обновлять сколько угодно.
+  - `generation_wait.html` (статус `in_progress`: страницу обновили во время генерации, открыли вторую вкладку) —
+    контекст `gen_request`. Оверлей открыт сразу (`autostart=True`), `#generation-status` опрашивает
+    `ai_generator:status` (`hx-get`, `hx-trigger="every 3s"`, `hx-swap="none"`). Пока генерация идёт, вьюха отвечает
+    пустым 204; когда статус сменился — 204 с заголовком `HX-Redirect` на `review`, HTMX сам перезагружает страницу.
+    Без JS — ссылка «Проверить, готовы ли вопросы» в `<noscript>` внутри оверлея.
+  - `temp_ai_quiz.html` (статус `completed`) — контекст `formset`, `gen_request`, `series_id`, `res`. Параметры
+    раунда в шапке берутся из `gen_request` (`get_level_display` и т.п.), `res` шаблон не читает.
+    `action` формы — `ai_generator:save` с `pk=gen_request.pk`; `{{ formset.management_form }}` обязателен.
+    Скрытых полей `generation_request_id` / `series_id` больше нет: генерацию и квиз вьюха берёт из адреса и из
+    самой `GenerationRequest`. «Не сохранять» — кнопка `type="submit" form="discard-form"`, привязанная к
+    отдельной POST-форме `#discard-form` (`ai_generator:discard`) под основной: форму в форму вложить нельзя.
+    При невалидном формсете `save` рендерит эту же страницу с bound-формсетом (ошибки и правки пользователя
+    на месте). Карточки вопросов лежат в `.question-cards` (тот же вид, что в `quiz_form.html`, без добавления
+    и удаления), варианты — тем же `quizzes/_option_row.html`.
 
 ### Игра — `gameplay/play.html`
 

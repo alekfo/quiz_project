@@ -1,16 +1,20 @@
 import json
+from datetime import timedelta
 from unittest import mock
 
 import requests
+from django.contrib.messages import constants as message_levels, get_messages
+from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from quiz_project.testing import BaseTestCase, make_category, make_series, make_user
 from quizzes.models import AnswerOption, Question, Quiz, QuizSeries
 
 from . import prompts
 from .models import GenerationRequest
-from .views import _questions_to_initial
+from .views import GENERATION_STALE_AFTER, _questions_to_initial
 
 FAKE_RESULT = {
     "quiz_title": "Космос",
@@ -114,7 +118,8 @@ class QuestionsToInitialTests(SimpleTestCase):
 class AiGeneratorViewTestCase(BaseTestCase):
     def setUp(self):
         super().setUp()
-        self.user = make_user("author")
+        # лимит по умолчанию - 1 генерация в день; поднимаем, чтобы он не мешал тестам не про лимит
+        self.user = make_user("author", ai_quizzes_limit_per_day=50)
         self.category = make_category("Наука")
         self.client.force_login(self.user)
 
@@ -131,20 +136,52 @@ class AiGeneratorViewTestCase(BaseTestCase):
             title="AI квиз", category=str(self.category.pk), description="Описание", quiz_status="public", **kwargs,
         )
 
+    def make_gen_request(self, status="completed", user=None, **kwargs) -> GenerationRequest:
+        kwargs.setdefault("result", FAKE_RESULT if status in ("completed", "saved", "discarded") else None)
+        return GenerationRequest.objects.create(
+            user=user or self.user, title="AI квиз", subject="Чёрные дыры", category=self.category,
+            description="Описание", questions=2, level="pro", audience="teens", style="humorous",
+            quiz_status="public", time_limit_seconds=25, points_per_correct=6, status=status, **kwargs,
+        )
 
-class IndexViewTests(AiGeneratorViewTestCase):
-    url = reverse("ai_generator:index")
+    def make_stale(self, gen_request: GenerationRequest) -> None:
+        GenerationRequest.objects.filter(pk=gen_request.pk).update(
+            created_at=timezone.now() - GENERATION_STALE_AFTER - timedelta(seconds=1),
+        )
 
     def generate(self, data, url=None, **mock_kwargs):
         mock_kwargs.setdefault("return_value", FAKE_RESULT)
         with mock.patch("ai_generator.views.generate_quiz_questions", **mock_kwargs) as generate:
-            response = self.client.post(url or self.url, data)
+            response = self.client.post(url or reverse("ai_generator:index"), data)
         return response, generate
+
+    def review_url(self, gen_request: GenerationRequest) -> str:
+        return reverse("ai_generator:review", kwargs={"pk": gen_request.pk})
+
+    def message_levels(self, response) -> list[int]:
+        return [message.level for message in get_messages(response.wsgi_request)]
+
+
+class GenerationRequestModelTests(AiGeneratorViewTestCase):
+    def test_only_one_in_progress_request_per_user(self):
+        self.make_gen_request(status="in_progress")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            self.make_gen_request(status="in_progress")
+        # на другие статусы и на других пользователей замок не действует
+        self.make_gen_request(status="completed")
+        self.make_gen_request(status="in_progress", user=make_user("other"))
+
+
+class IndexViewTests(AiGeneratorViewTestCase):
+    url = reverse("ai_generator:index")
 
     def test_login_required(self):
         self.client.logout()
         self.assertLoginRequired(self.client.get(self.url))
-        self.assertLoginRequired(self.client.post(reverse("ai_generator:save")))
+        for name in ("review", "status"):
+            self.assertLoginRequired(self.client.get(reverse(f"ai_generator:{name}", kwargs={"pk": 1})))
+        for name in ("save", "discard"):
+            self.assertLoginRequired(self.client.post(reverse(f"ai_generator:{name}", kwargs={"pk": 1})))
 
     def test_get_renders_form_with_series_fields(self):
         response = self.client.get(self.url)
@@ -158,50 +195,79 @@ class IndexViewTests(AiGeneratorViewTestCase):
         self.assertNotIn("title", response.context["form"].fields)
         self.assertIn("subject", response.context["form"].fields)
 
-    def test_successful_generation_saves_request_and_renders_question_formset(self):
+    def test_foreign_series_is_404_and_does_not_call_claude(self):
+        series = make_series(make_user("stranger"), status="public")
+        url = reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk})
+        self.assertEqual(self.client.get(url).status_code, 404)
+        response, generate = self.generate(self.round_params(), url=url)
+        self.assertEqual(response.status_code, 404)
+        generate.assert_not_called()
+
+    def test_successful_generation_saves_request_and_redirects_to_review(self):
         response, generate = self.generate(self.series_params())
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "ai_generator/temp_ai_quiz.html")
+        gen_request = GenerationRequest.objects.get()
+        # ответ на POST - редирект: F5 на странице проверки не повторяет платный запрос
+        self.assertRedirects(response, self.review_url(gen_request), fetch_redirect_response=False)
 
         # в Claude уходит название категории, а не её pk
         self.assertEqual(generate.call_args.args[0], {
             "quiz_title": "AI квиз", "quiz_category": "Наука", "quiz_subject": "Чёрные дыры",
             "quiz_questions": 2, "quiz_level": "pro", "quiz_audience": "teens", "question_style": "humorous",
         })
-
-        gen_request = GenerationRequest.objects.get()
         self.assertEqual(
-            (gen_request.user, gen_request.title, gen_request.category, gen_request.status,
+            (gen_request.user, gen_request.title, gen_request.category, gen_request.series, gen_request.status,
              gen_request.quiz_status, gen_request.time_limit_seconds, gen_request.points_per_correct,
              gen_request.result),
-            (self.user, "AI квиз", self.category, "completed", "public", 25, 3, FAKE_RESULT),
+            (self.user, "AI квиз", self.category, None, "completed", "public", 25, 3, FAKE_RESULT),
         )
-        self.assertEqual(response.context["gen_request"], gen_request)
-        self.assertIsNone(response.context["series_id"])
-        formset = response.context["formset"]
-        self.assertEqual(len(formset.forms), 2)
-        self.assertEqual(formset.forms[0].initial["option_2"], "b")
         # сами вопросы до подтверждения пользователем в quizzes не попадают
         self.assertFalse(Quiz.objects.exists())
+
+    def test_request_is_in_progress_while_claude_is_called(self):
+        seen = []
+
+        def fake_claude(_instruction):
+            gen_request = GenerationRequest.objects.get()
+            seen.append((gen_request.status, gen_request.result))
+            return FAKE_RESULT
+
+        self.generate(self.series_params(), side_effect=fake_claude)
+        self.assertEqual(seen, [("in_progress", None)])
 
     def test_generation_for_existing_series_takes_title_and_category_from_series(self):
         series = make_series(self.user, status="private", title="Серия", category=self.category)
         url = reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk})
         response, generate = self.generate(self.round_params(), url=url)
-        self.assertEqual(response.context["series_id"], series.pk)
         self.assertEqual(generate.call_args.args[0]["quiz_title"], "Серия")
         gen_request = GenerationRequest.objects.get()
-        self.assertEqual((gen_request.title, gen_request.category, gen_request.quiz_status),
-                         ("Серия", self.category, "private"))
+        self.assertEqual((gen_request.title, gen_request.category, gen_request.quiz_status, gen_request.series),
+                         ("Серия", self.category, "private", series))
 
-    def test_generation_failure_shows_form_again_and_saves_nothing(self):
+    def test_generation_failure_shows_form_again_and_marks_request_failed(self):
+        # лимит 1 в день: три неудачи подряд проходят - failed не блокирует новую попытку и лимит не тратит
+        self.user.ai_quizzes_limit_per_day = 1
+        self.user.save()
         errors = (requests.ConnectionError("down"), RuntimeError("empty"), json.JSONDecodeError("bad", "", 0))
         for error in errors:
             with self.subTest(error=type(error).__name__):
-                response, _ = self.generate(self.series_params(), side_effect=error)
+                response, generate = self.generate(self.series_params(), side_effect=error)
+                self.assertTrue(generate.called)
                 self.assertEqual(response.status_code, 200)
                 self.assertTemplateUsed(response, "ai_generator/ai_generator_index.html")
-        self.assertFalse(GenerationRequest.objects.exists())
+                self.assertIn(message_levels.ERROR, self.message_levels(response))
+        self.assertEqual(list(GenerationRequest.objects.values_list("status", flat=True)), ["failed"] * 3)
+
+    def test_answer_without_questions_is_failure(self):
+        for result in ({}, {"questions": []}, ["not", "a", "dict"]):
+            with self.subTest(result=result):
+                response, _ = self.generate(self.series_params(), return_value=result)
+                self.assertTemplateUsed(response, "ai_generator/ai_generator_index.html")
+        self.assertFalse(GenerationRequest.objects.exclude(status="failed").exists())
+
+    def test_unexpected_error_still_releases_in_progress_lock(self):
+        with self.assertRaises(ZeroDivisionError):
+            self.generate(self.series_params(), side_effect=ZeroDivisionError)
+        self.assertEqual(GenerationRequest.objects.get().status, "failed")
 
     def test_points_per_correct_out_of_range_does_not_call_claude(self):
         series = make_series(self.user)
@@ -225,25 +291,231 @@ class IndexViewTests(AiGeneratorViewTestCase):
                 self.assertEqual(
                     GenerationRequest.objects.filter(points_per_correct=int(points)).exists(), accepted,
                 )
+                # иначе готовый результат не дал бы запустить следующую генерацию
+                GenerationRequest.objects.update(status="saved")
 
-    def test_invalid_form_does_not_call_claude(self):
+    def test_invalid_form_does_not_call_claude_and_keeps_errors(self):
         response, generate = self.generate(self.series_params(questions="0"))
         self.assertEqual(response.status_code, 200)
+        self.assertIn("questions", response.context["form"].errors)
         generate.assert_not_called()
         self.assertFalse(GenerationRequest.objects.exists())
 
 
-class SaveViewTests(AiGeneratorViewTestCase):
-    url = reverse("ai_generator:save")
+class ActiveGenerationTests(AiGeneratorViewTestCase):
+    """Одна активная генерация на пользователя: in_progress / completed блокируют новую."""
+    url = reverse("ai_generator:index")
+
+    def test_unsaved_result_blocks_new_generation(self):
+        gen_request = self.make_gen_request(status="completed")
+        response = self.client.get(self.url)
+        self.assertRedirects(response, self.review_url(gen_request), fetch_redirect_response=False)
+        self.assertIn(message_levels.INFO, self.message_levels(response))
+
+        response, generate = self.generate(self.series_params())
+        self.assertRedirects(response, self.review_url(gen_request), fetch_redirect_response=False)
+        generate.assert_not_called()
+        self.assertEqual(GenerationRequest.objects.count(), 1)
+
+    def test_running_generation_blocks_new_one(self):
+        gen_request = self.make_gen_request(status="in_progress")
+        self.assertRedirects(self.client.get(self.url), self.review_url(gen_request), fetch_redirect_response=False)
+        response, generate = self.generate(self.series_params())
+        self.assertRedirects(response, self.review_url(gen_request), fetch_redirect_response=False)
+        generate.assert_not_called()
+
+    def test_block_is_per_user_and_covers_series_form_too(self):
+        self.make_gen_request(status="completed", user=make_user("other"))
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+
+        gen_request = self.make_gen_request(status="completed")
+        series = make_series(self.user)
+        response = self.client.get(reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk}))
+        self.assertRedirects(response, self.review_url(gen_request), fetch_redirect_response=False)
+
+    def test_finished_requests_do_not_block(self):
+        for status in ("saved", "discarded", "failed"):
+            self.make_gen_request(status=status)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+
+    def test_stale_in_progress_becomes_failed_and_form_is_shown(self):
+        gen_request = self.make_gen_request(status="in_progress")
+        self.make_stale(gen_request)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        gen_request.refresh_from_db()
+        self.assertEqual(gen_request.status, "failed")
+
+    def test_parallel_request_gets_message_instead_of_500(self):
+        # гонка: проверка в начале index() пройдена, но in_progress-запись уже создал соседний запрос
+        with mock.patch.object(GenerationRequest.objects, "create", side_effect=IntegrityError):
+            response, generate = self.generate(self.series_params())
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        self.assertIn(message_levels.ERROR, self.message_levels(response))
+        generate.assert_not_called()
+
+
+class DailyLimitTests(AiGeneratorViewTestCase):
+    url = reverse("ai_generator:index")
 
     def setUp(self):
         super().setUp()
-        self.gen_request = GenerationRequest.objects.create(
-            user=self.user, title="AI квиз", subject="Чёрные дыры", category=self.category,
-            description="Описание", questions=2, level="pro", audience="teens", style="humorous",
-            quiz_status="public", time_limit_seconds=25, points_per_correct=6, result=FAKE_RESULT,
-            status="completed",
+        self.user.ai_quizzes_limit_per_day = 2
+        self.user.save()
+
+    def assertLimitReached(self, expected_url=reverse("quizzes:menu"), url=None):
+        response = self.client.get(url or self.url)
+        self.assertRedirects(response, expected_url, fetch_redirect_response=False)
+        self.assertIn(message_levels.ERROR, self.message_levels(response))
+        response, generate = self.generate(self.series_params(), url=url)
+        self.assertRedirects(response, expected_url, fetch_redirect_response=False)
+        generate.assert_not_called()
+
+    def test_saved_and_discarded_requests_spend_limit(self):
+        self.make_gen_request(status="saved")
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.make_gen_request(status="discarded")
+        self.assertLimitReached()
+
+    def test_limit_for_series_form_redirects_to_series(self):
+        self.make_gen_request(status="saved")
+        self.make_gen_request(status="saved")
+        series = make_series(self.user)
+        self.assertLimitReached(
+            expected_url=reverse("quizzes:quizzes_details", kwargs={"pk": series.pk}),
+            url=reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk}),
         )
+
+    def test_failed_yesterdays_and_foreign_requests_do_not_count(self):
+        self.make_gen_request(status="saved")
+        self.make_gen_request(status="failed")
+        old = self.make_gen_request(status="saved")
+        GenerationRequest.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=1))
+        self.make_gen_request(status="saved", user=make_user("other"))
+        response, generate = self.generate(self.series_params())
+        self.assertTrue(generate.called)
+
+    def test_generation_itself_spends_limit(self):
+        for _ in range(2):
+            _, generate = self.generate(self.series_params())
+            self.assertTrue(generate.called)
+            GenerationRequest.objects.update(status="saved")
+        self.assertLimitReached()
+
+
+class ReviewAndStatusViewTests(AiGeneratorViewTestCase):
+    # Рендер самих страниц (вопросы на проверку, экран ожидания) - в ReviewPagesTests ниже.
+
+    def status_url(self, gen_request):
+        return reverse("ai_generator:status", kwargs={"pk": gen_request.pk})
+
+    def test_foreign_request_is_404(self):
+        gen_request = self.make_gen_request(status="completed", user=make_user("stranger"))
+        self.assertEqual(self.client.get(self.review_url(gen_request)).status_code, 404)
+        self.assertEqual(self.client.get(self.status_url(gen_request), headers={"HX-Request": "true"}).status_code, 404)
+
+    def test_review_of_saved_or_discarded_request_is_404(self):
+        for status in ("saved", "discarded"):
+            with self.subTest(status=status):
+                self.assertEqual(self.client.get(self.review_url(self.make_gen_request(status=status))).status_code, 404)
+
+    def test_review_of_failed_request_redirects_to_form_with_error(self):
+        response = self.client.get(self.review_url(self.make_gen_request(status="failed")))
+        self.assertRedirects(response, reverse("ai_generator:index"), fetch_redirect_response=False)
+        self.assertIn(message_levels.ERROR, self.message_levels(response))
+
+        series = make_series(self.user)
+        response = self.client.get(self.review_url(self.make_gen_request(status="failed", series=series)))
+        self.assertRedirects(
+            response, reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk}),
+            fetch_redirect_response=False,
+        )
+
+    def test_status_while_in_progress_is_empty_204(self):
+        response = self.client.get(self.status_url(self.make_gen_request(status="in_progress")),
+                                   headers={"HX-Request": "true"})
+        self.assertEqual(response.status_code, 204)
+        self.assertNotIn("HX-Redirect", response)
+
+    def test_status_after_generation_sends_hx_redirect_to_review(self):
+        for status in ("completed", "failed"):
+            with self.subTest(status=status):
+                gen_request = self.make_gen_request(status=status)
+                response = self.client.get(self.status_url(gen_request), headers={"HX-Request": "true"})
+                self.assertEqual(response.status_code, 204)
+                self.assertEqual(response["HX-Redirect"], self.review_url(gen_request))
+
+    def test_status_marks_stale_request_failed(self):
+        gen_request = self.make_gen_request(status="in_progress")
+        self.make_stale(gen_request)
+        response = self.client.get(self.status_url(gen_request), headers={"HX-Request": "true"})
+        self.assertEqual(response["HX-Redirect"], self.review_url(gen_request))
+        gen_request.refresh_from_db()
+        self.assertEqual(gen_request.status, "failed")
+
+    def test_status_without_htmx_redirects_to_review_and_post_is_not_allowed(self):
+        gen_request = self.make_gen_request(status="in_progress")
+        self.assertRedirects(self.client.get(self.status_url(gen_request)), self.review_url(gen_request),
+                             fetch_redirect_response=False)
+        self.assertEqual(self.client.post(self.status_url(gen_request)).status_code, 405)
+
+
+class ReviewPagesTests(AiGeneratorViewTestCase):
+    """Страницы, которые отдаёт review(): вопросы на проверку и экран ожидания."""
+
+    def test_completed_request_renders_question_formset(self):
+        gen_request = self.make_gen_request(status="completed")
+        response = self.client.get(self.review_url(gen_request))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "ai_generator/temp_ai_quiz.html")
+        self.assertEqual(response.context["gen_request"], gen_request)
+        self.assertIsNone(response.context["series_id"])
+        formset = response.context["formset"]
+        self.assertEqual(len(formset.forms), 2)
+        self.assertEqual(formset.forms[0].initial["option_2"], "b")
+        # формы ведут на адреса этой генерации; «Не сохранять» - кнопка POST-формы, а не ссылка
+        save_url = reverse("ai_generator:save", kwargs={"pk": gen_request.pk})
+        discard_url = reverse("ai_generator:discard", kwargs={"pk": gen_request.pk})
+        self.assertContains(response, f'action="{save_url}"')
+        self.assertContains(response, f'<form method="post" action="{discard_url}" id="discard-form">')
+        self.assertContains(response, 'form="discard-form"')
+        # обновление страницы ничего не меняет - это чтение из базы
+        self.client.get(self.review_url(gen_request))
+        gen_request.refresh_from_db()
+        self.assertEqual(gen_request.status, "completed")
+
+    def test_review_for_series_round_has_series_id(self):
+        series = make_series(self.user)
+        response = self.client.get(self.review_url(self.make_gen_request(status="completed", series=series)))
+        self.assertEqual(response.context["series_id"], series.pk)
+
+    def test_in_progress_request_renders_waiting_screen_with_status_polling(self):
+        gen_request = self.make_gen_request(status="in_progress")
+        response = self.client.get(self.review_url(gen_request))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "ai_generator/generation_wait.html")
+        status_url = reverse("ai_generator:status", kwargs={"pk": gen_request.pk})
+        self.assertContains(response, f'hx-get="{status_url}"')
+        # оверлей со спиннером открыт сразу, а не ждёт отправки формы
+        self.assertContains(response, "data-autostart>")
+
+    def test_stale_in_progress_request_is_not_shown_as_waiting(self):
+        gen_request = self.make_gen_request(status="in_progress")
+        self.make_stale(gen_request)
+        response = self.client.get(self.review_url(gen_request))
+        self.assertRedirects(response, reverse("ai_generator:index"), fetch_redirect_response=False)
+
+    def test_generation_form_overlay_is_hidden_until_submit(self):
+        response = self.client.get(reverse("ai_generator:index"))
+        self.assertContains(response, 'id="generation-overlay"')
+        self.assertContains(response, "hidden>")
+        self.assertNotContains(response, "data-autostart")
+
+
+class SaveViewTests(AiGeneratorViewTestCase):
+    def setUp(self):
+        super().setUp()
+        self.gen_request = self.make_gen_request(status="completed")
+        self.url = reverse("ai_generator:save", kwargs={"pk": self.gen_request.pk})
 
     def formset_data(self, questions=None, **extra) -> dict:
         questions = questions if questions is not None else [
@@ -253,7 +525,6 @@ class SaveViewTests(AiGeneratorViewTestCase):
              "correct_index": "3", "fact": ""},
         ]
         data = {
-            "generation_request_id": str(self.gen_request.pk),
             "form-TOTAL_FORMS": str(len(questions)),
             "form-INITIAL_FORMS": str(len(questions)),
             "form-MIN_NUM_FORMS": "0",
@@ -283,16 +554,35 @@ class SaveViewTests(AiGeneratorViewTestCase):
         self.assertEqual(first.options.get(is_correct=True).text, "b")
         self.assertEqual(second.options.get(is_correct=True).text, "h")
         self.assertEqual(AnswerOption.objects.count(), 8)
+        self.gen_request.refresh_from_db()
+        self.assertEqual(self.gen_request.status, "saved")
 
-    def test_saves_round_into_existing_series(self):
+    def test_saves_round_into_series_of_generation_request(self):
         series = make_series(self.user, rounds=1)
-        response = self.client.post(self.url, self.formset_data(series_id=str(series.pk)))
+        self.gen_request.series = series
+        self.gen_request.save()
+        # серия берётся из GenerationRequest, а не из формы: подставленный series_id игнорируется
+        other_series = make_series(self.user, title="Другая", rounds=0)
+        response = self.client.post(self.url, self.formset_data(series_id=str(other_series.pk)))
         self.assertRedirects(
             response, reverse("quizzes:quizzes_details", kwargs={"pk": series.pk}), fetch_redirect_response=False,
         )
-        self.assertEqual(QuizSeries.objects.count(), 1)
-        new_round = series.rounds.get(round_order=1)
-        self.assertEqual(new_round.type, "ai")
+        self.assertEqual(QuizSeries.objects.count(), 2)
+        self.assertEqual(series.rounds.get(round_order=1).type, "ai")
+        self.assertFalse(other_series.rounds.exists())
+
+    def test_second_save_is_404_and_creates_nothing(self):
+        self.client.post(self.url, self.formset_data())
+        response = self.client.post(self.url, self.formset_data())
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Quiz.objects.count(), 1)
+
+    def test_only_completed_request_can_be_saved(self):
+        for status in ("in_progress", "discarded", "failed"):
+            with self.subTest(status=status):
+                GenerationRequest.objects.filter(pk=self.gen_request.pk).update(status=status)
+                self.assertEqual(self.client.post(self.url, self.formset_data()).status_code, 404)
+        self.assertFalse(Quiz.objects.exists())
 
     def test_foreign_generation_request_is_404(self):
         self.client.force_login(make_user("stranger"))
@@ -300,13 +590,58 @@ class SaveViewTests(AiGeneratorViewTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertFalse(Quiz.objects.exists())
 
-    def test_invalid_formset_saves_nothing(self):
+    def test_invalid_formset_shows_review_page_again_with_user_edits(self):
         data = self.formset_data()
         data["form-0-option_1"] = ""
+        data["form-1-question"] = "Q2 (моя правка)"
         response = self.client.post(self.url, data)
-        self.assertRedirects(response, reverse("ai_generator:index"), fetch_redirect_response=False)
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "ai_generator/temp_ai_quiz.html")
+        formset = response.context["formset"]
+        self.assertIn("option_1", formset.forms[0].errors)
+        # правки пользователя не теряются, генерация остаётся ждать сохранения
+        self.assertContains(response, "Q2 (моя правка)")
+        self.assertIn(message_levels.ERROR, self.message_levels(response))
         self.assertFalse(QuizSeries.objects.exists())
         self.assertFalse(Question.objects.exists())
+        self.gen_request.refresh_from_db()
+        self.assertEqual(self.gen_request.status, "completed")
 
-    def test_get_redirects_to_index(self):
-        self.assertRedirects(self.client.get(self.url), reverse("ai_generator:index"), fetch_redirect_response=False)
+    def test_get_redirects_to_review(self):
+        self.assertRedirects(self.client.get(self.url), self.review_url(self.gen_request),
+                             fetch_redirect_response=False)
+
+
+class DiscardViewTests(AiGeneratorViewTestCase):
+    def discard_url(self, gen_request):
+        return reverse("ai_generator:discard", kwargs={"pk": gen_request.pk})
+
+    def test_discard_marks_request_and_unblocks_new_generation(self):
+        gen_request = self.make_gen_request(status="completed")
+        response = self.client.post(self.discard_url(gen_request))
+        self.assertRedirects(response, reverse("quizzes:menu"), fetch_redirect_response=False)
+        gen_request.refresh_from_db()
+        self.assertEqual(gen_request.status, "discarded")
+        self.assertFalse(Quiz.objects.exists())
+        self.assertEqual(self.client.get(reverse("ai_generator:index")).status_code, 200)
+
+    def test_discard_of_round_returns_to_series(self):
+        series = make_series(self.user)
+        gen_request = self.make_gen_request(status="completed", series=series)
+        response = self.client.post(self.discard_url(gen_request))
+        self.assertRedirects(
+            response, reverse("quizzes:quizzes_details", kwargs={"pk": series.pk}), fetch_redirect_response=False,
+        )
+
+    def test_get_is_not_allowed(self):
+        gen_request = self.make_gen_request(status="completed")
+        self.assertEqual(self.client.get(self.discard_url(gen_request)).status_code, 405)
+        gen_request.refresh_from_db()
+        self.assertEqual(gen_request.status, "completed")
+
+    def test_foreign_or_not_completed_request_is_404(self):
+        foreign = self.make_gen_request(status="completed", user=make_user("stranger"))
+        self.assertEqual(self.client.post(self.discard_url(foreign)).status_code, 404)
+        for status in ("in_progress", "saved", "failed"):
+            with self.subTest(status=status):
+                self.assertEqual(self.client.post(self.discard_url(self.make_gen_request(status=status))).status_code, 404)
