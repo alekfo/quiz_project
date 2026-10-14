@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}
+    Пользователи — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    <div class="page-header">
+        <div>
+            <h1>Пользователи</h1>
+            <p class="page-subtitle">Ваши подписки и подписчики. Других авторов ищите поиском</p>
+        </div>
+    </div>
+
+    {# Без JS - обычная GET-форма (/users/?q=...). С HTMX - живой поиск: через 300 мс после ввода #}
+    {# подменяется #user-results, адрес обновляется (hx-push-url), устаревший ответ отбрасывается (hx-sync). #}
+    {# hx-history="false": HTMX не хранит копию страницы в localStorage, «Назад» перезагружает её целиком #}
+    {# (refreshOnHistoryMiss в base.html) - иначе поле поиска и вкладки восстанавливались бы не в том состоянии. #}
+    <form class="search-form" method="get" action="{% url 'users:users_list' %}" role="search" hx-history="false"
+          hx-get="{% url 'users:users_list' %}"
+          hx-trigger="input changed delay:300ms from:find input, submit"
+          hx-target="#user-results"
+          hx-swap="outerHTML"
+          hx-push-url="true"
+          hx-sync="this:replace">
+        <label class="visually-hidden" for="user-search">Поиск пользователей</label>
+        <input type="search" id="user-search" name="q" value="{{ q }}"
+               placeholder="Ник, имя или фамилия" autocomplete="off" maxlength="150">
+        <button class="btn btn-primary" type="submit">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>
+            </svg>
+            Найти
+        </button>
+    </form>
+
+    {% include "users/_user_rows.html" %}
+
+    {# без defer: неактивная панель должна скрыться до первой отрисовки #}
+    <script src="{% static 'js/tabs.js' %}"></script>
+{% endblock %}

@@ -4,18 +4,26 @@ from django.http import HttpRequest, HttpResponse
 from django.core.cache import cache
 from django.contrib import messages
 from django.shortcuts import render, redirect
+from django.urls import reverse
 from django.contrib.auth import views as auth_views
 from django.contrib.auth import login, get_user_model
 from django.core.mail import send_mail
 from django.core import signing
 from django.conf import settings
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView, ListView, DetailView, UpdateView
+from django.db.models import Count, Q
 
-from .forms import RegisterForm
+from .forms import RegisterForm, ProfileUpdateForm
+from social.services import get_follow_context
+from quizzes.models import QuizSeries
 
 logger = logging.getLogger(__name__)
 
 _REGISTER_RATE_LIMIT = 3  # попыток регистрации с одного IP за час
 _LOGIN_RATE_LIMIT = 3  # неудачных попыток входа с одного IP за час
+_SEARCH_MIN_LENGTH = 2   # короче - поиск пользователей не выполняется
+_SEARCH_LIMIT = 20       # максимум результатов поиска пользователей
 
 def _notify_admin_new_user(user):
     """Отправляет уведомление на SUPPORT_EMAIL при регистрации нового пользователя. fail_silently."""
@@ -84,7 +92,7 @@ def confirm_email(request:HttpRequest):
     except (signing.BadSignature, Exception) as e:
         logger.warning("Invalid email confirmation token: %s ip=%s", e, ip)
         messages.error(request, 'Недействительная ссылка подтверждения.')
-    return redirect('ai_generator:index')
+    return redirect('quizzes:menu')
 
 class RateLimitedLoginView(auth_views.LoginView):
     """LoginView с защитой от перебора пароля: не более _LOGIN_RATE_LIMIT неудачных
@@ -137,15 +145,125 @@ def register(request: HttpRequest):
                 )
             except Exception as e:
                 logger.warning("Confirmation email failed for user=%s: %s", user.username, e)
-            return redirect('ai_generator:index')
+            return redirect('quizzes:menu')
     else:
         form = RegisterForm()
     return render(request, 'users/register.html', {'form': form})
 
-def privacy_policy(request):
+def privacy_policy(request: HttpRequest):
     """Страница политики конфиденциальности."""
     return render(request, 'users/privacy_policy.html')
 
-def public_offer(request):
+def public_offer(request: HttpRequest):
     """Страница договора публичной оферты."""
     return render(request, 'users/public_offer.html')
+
+def feedback(request: HttpRequest):
+    """Страница для обратной связи"""
+    return render(request, 'users/feedback.html')
+
+class AboutMeView(LoginRequiredMixin, TemplateView):
+    """Посмотреть инфу о текущем пользователе"""
+
+    template_name = "users/about_me.html"
+
+class UsersListView(LoginRequiredMixin, ListView):
+    """Посмотреть список пользователей (на которых я подписан) или
+    найти нужного мне пользователя по username,
+    first_name, last_name
+    """
+
+    template_name = "users/users_list.html"
+    context_object_name = 'users'
+
+    def get_template_names(self):
+        if self.request.headers.get("HX-Request") == "true":
+            return ["users/_user_rows.html"]
+        return [self.template_name]
+
+    def get_queryset(self):
+        User = get_user_model()
+        self.q = self.request.GET.get("q", "").strip()
+        self.is_search = len(self.q) >= _SEARCH_MIN_LENGTH
+
+        if self.is_search:
+            #если это поиск от пользователя то возвращаемся qs с icontains
+            return (User.objects
+                    .filter(Q(username__icontains=self.q)
+                                | Q(first_name__icontains=self.q)
+                                | Q(last_name__icontains=self.q))
+                    .exclude(pk=self.request.user.pk)
+                    .order_by("username")[:_SEARCH_LIMIT])
+
+        #иначе это обычный get и возвращаем список на кого-мы подписаны
+        return (User.objects
+                .filter(followers__follower=self.request.user)
+                .order_by("username"))
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["q"] = self.q
+        context["is_search"] = self.is_search
+        if not self.is_search:
+            context["followers"] = (get_user_model().objects
+                                    .filter(following__following=self.request.user)
+                                    .order_by("username"))
+        return context
+
+class UserDetailView(LoginRequiredMixin, DetailView):
+    """Посмотреть детальную инфу о любом пользователе"""
+
+    model = get_user_model()
+    template_name = 'users/user_detail.html'
+    context_object_name = 'target_user'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        #берем контекст из social.services.get_follow_context
+        context.update(get_follow_context(self.request.user, self.object))
+        context["public_series"] = (QuizSeries.objects
+                                    .filter(user=self.object, status="public")
+                                    .select_related("category")
+                                    .annotate(like_count=Count("likes", distinct=True))
+                                    .annotate(rounds_count=Count("rounds", distinct=True))
+                                    .with_in_progress(self.request.user))
+        return context
+
+class SettingsPageView(LoginRequiredMixin, TemplateView):
+    """Страница настроек аккаунта: email, подтверждение, смена пароля, информация о подписке и пр."""
+
+    template_name = "users/settings.html"
+
+class ProfileUpdateView(LoginRequiredMixin, UpdateView):
+    """Редактирование собственного профиля (имя, фамилия, аватар).
+
+    Без pk/slug в URL: get_object() всегда возвращает текущего пользователя,
+    так что чужой профиль подстановкой pk в адрес не открыть и не изменить.
+    """
+
+    form_class = ProfileUpdateForm
+    template_name = 'users/user_update_form.html'
+
+    def get_object(self, queryset=None):
+        return self.request.user
+
+    def post(self, request, *args, **kwargs):
+        # Запоминаем старое имя файла ДО is_valid(): ModelForm._post_clean()
+        # мутирует instance (= self.object) уже внутри form.is_valid(), которая
+        # выполняется раньше form_valid() - там self.object.avatar уже новый.
+        user = self.get_object()
+        self._old_avatar_name = user.avatar.name if user.avatar else None
+        return super().post(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        # Старый файл аватара ImageField сам не удаляет при замене/очистке -
+        # без этого в media/users/<pk>/avatar/ копились бы все версии навечно.
+        response = super().form_valid(form)
+        if self._old_avatar_name and self.object.avatar.name != self._old_avatar_name:
+            self.object.avatar.storage.delete(self._old_avatar_name)
+        logger.info('Профиль обновлён: username="%s"', self.request.user.username)
+        messages.success(self.request, "Профиль обновлён")
+        return response
+
+    def get_success_url(self):
+        return reverse("users:about_me")

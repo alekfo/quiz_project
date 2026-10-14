@@ -28,11 +28,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run migrations
-        run: python manage.py migrate --no-input
+      - name: System check
+        run: python manage.py check
 
+      # модели изменили, а миграцию не создали - ловим здесь, а не на сервере
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      # Без списка приложений: тест-раннер сам находит tests.py во всех приложениях
+      # и в quiz_project/ (раньше multiplayer и social в список не входили).
+      # Отдельный migrate не нужен - раннер создаёт свою тестовую БД и применяет миграции к ней.
+      # Redis тоже не нужен - тесты подменяют channel layer и кэш на in-memory (quiz_project/testing.py).
       - name: Run tests
-        run: python manage.py test ai_generator gameplay quizzes users --verbosity=2
+        run: python manage.py test --verbosity=2
 
 #  deploy:
 #    needs: test  # deploy запустится только если test прошёл
