@@ -16,7 +16,7 @@ from quiz_project.testing import PASSWORD, BaseTestCase, make_series, make_user
 from social.models import Follow
 
 from .forms import RegisterForm
-from .views import _LOGIN_RATE_LIMIT, _REGISTER_RATE_LIMIT
+from .views import _LOGIN_RATE_LIMIT, _REGISTER_RATE_LIMIT, _SEARCH_LIMIT
 
 User = get_user_model()
 
@@ -260,12 +260,6 @@ class UserPagesTests(BaseTestCase):
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(reverse(name)).status_code, 200)
 
-    def test_users_list_is_ordered_by_username(self):
-        make_user("alpha")
-        self.client.force_login(self.me)
-        response = self.client.get(reverse("users:users_list"))
-        self.assertEqual([u.username for u in response.context["users"]], ["alpha", "me", "other"])
-
     def test_foreign_profile_context(self):
         public = make_series(self.other, status="public", title="public")
         make_series(self.other, status="private", title="private")
@@ -295,6 +289,119 @@ class UserPagesTests(BaseTestCase):
         self.client.force_login(self.me)
         response = self.client.get(reverse("users:user_detail", kwargs={"pk": 999_999}))
         self.assertEqual(response.status_code, 404)
+
+
+class UsersListViewTests(BaseTestCase):
+    """Без ?q= - мои подписки и подписчики, с ?q= от _SEARCH_MIN_LENGTH символов - поиск."""
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse("users:users_list")
+        self.me = make_user("me")
+        self.client.force_login(self.me)
+
+    def get(self, q=None, **extra):
+        return self.client.get(self.url, {"q": q} if q is not None else {}, **extra)
+
+    @staticmethod
+    def names(response):
+        return [u.username for u in response.context["users"]]
+
+    def test_without_query_shows_my_followings_ordered_by_username(self):
+        zed, alpha, stranger = make_user("zed"), make_user("alpha"), make_user("stranger")
+        Follow.objects.create(follower=self.me, following=zed)
+        Follow.objects.create(follower=self.me, following=alpha)
+        # чужая подписка в мой список не попадает
+        Follow.objects.create(follower=stranger, following=zed)
+
+        response = self.get()
+        self.assertEqual(self.names(response), ["alpha", "zed"])
+        self.assertFalse(response.context["is_search"])
+        self.assertEqual(response.context["q"], "")
+
+    def test_followers_are_not_mixed_up_with_followings(self):
+        fan, idol = make_user("fan"), make_user("idol")
+        Follow.objects.create(follower=fan, following=self.me)
+        Follow.objects.create(follower=self.me, following=idol)
+
+        response = self.get()
+        self.assertEqual(self.names(response), ["idol"])
+        self.assertEqual([u.username for u in response.context["followers"]], ["fan"])
+
+    def test_search_by_username_first_and_last_name_is_case_insensitive(self):
+        make_user("Alexey77")
+        make_user("u2", first_name="Алексей")
+        make_user("u3", last_name="Алексеев")
+        make_user("nobody", first_name="Иван")
+        # кириллица - только в том же регистре: SQLite (dev и CI) приводит к одному
+        # регистру лишь ASCII, "алекс" не найдёт "Алексей"; на PostgreSQL найдёт (см. TODO.md)
+        cases = {
+            "alex": ["Alexey77"],
+            "ALEX": ["Alexey77"],
+            "Алекс": ["u2", "u3"],
+            "Алексеев": ["u3"],
+        }
+        for q, expected in cases.items():
+            with self.subTest(q=q):
+                response = self.get(q)
+                self.assertTrue(response.context["is_search"])
+                self.assertEqual(self.names(response), expected)
+
+    def test_search_does_not_match_email(self):
+        make_user("hidden", email="secret-mail@example.com")
+        self.assertEqual(self.names(self.get("secret-mail")), [])
+
+    def test_search_excludes_me(self):
+        make_user("meow")
+        self.assertEqual(self.names(self.get("me")), ["meow"])
+
+    def test_search_is_limited_and_ordered_by_username(self):
+        for i in reversed(range(_SEARCH_LIMIT + 5)):
+            make_user(f"bulk{i:02d}")
+        response = self.get("bulk")
+        self.assertEqual(self.names(response), [f"bulk{i:02d}" for i in range(_SEARCH_LIMIT)])
+
+    def test_short_or_blank_query_shows_followings(self):
+        idol = make_user("aidol")
+        Follow.objects.create(follower=self.me, following=idol)
+        for q in ("a", "   ", " a "):
+            with self.subTest(q=q):
+                response = self.get(q)
+                self.assertFalse(response.context["is_search"])
+                self.assertEqual(self.names(response), ["aidol"])
+                self.assertIn("followers", response.context)
+
+    def test_search_context_has_stripped_query_and_no_followers(self):
+        make_user("other")
+        response = self.get("  oth  ")
+        self.assertEqual(response.context["q"], "oth")
+        self.assertNotIn("followers", response.context)
+
+    def test_htmx_request_renders_only_results_block(self):
+        page = self.get("ot")
+        self.assertTemplateUsed(page, "users/users_list.html")
+        partial = self.get("ot", HTTP_HX_REQUEST="true")
+        self.assertTemplateUsed(partial, "users/_user_rows.html")
+        self.assertTemplateNotUsed(partial, "users/users_list.html")
+        self.assertTemplateNotUsed(partial, "base.html")
+
+    def test_rows_link_to_profiles_and_hide_email(self):
+        found = make_user("other", first_name="Иван", email="other-secret@example.com")
+        follower = make_user("fan", email="fan-secret@example.com")
+        Follow.objects.create(follower=follower, following=self.me)
+        Follow.objects.create(follower=self.me, following=found)
+        for response in (self.get(), self.get("oth", HTTP_HX_REQUEST="true")):
+            with self.subTest(search=response.context["is_search"]):
+                self.assertContains(response, reverse("users:user_detail", kwargs={"pk": found.pk}))
+                self.assertContains(response, "Иван")
+                self.assertNotContains(response, "other-secret@example.com")
+                self.assertNotContains(response, "fan-secret@example.com")
+
+    def test_anonymous_htmx_request_gets_hx_redirect(self):
+        self.client.logout()
+        response = self.get("al", HTTP_HX_REQUEST="true", HTTP_HX_CURRENT_URL="http://testserver/users/?q=al")
+        self.assertEqual(response.status_code, 204)
+        self.assertTrue(response["HX-Redirect"].startswith("/users/login/"))
 
 
 class ProfileUpdateViewTests(BaseTestCase):

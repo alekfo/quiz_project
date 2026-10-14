@@ -12,6 +12,7 @@ from django.core import signing
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView, ListView, DetailView, UpdateView
+from django.db.models import Count, Q
 
 from .forms import RegisterForm, ProfileUpdateForm
 from social.services import get_follow_context
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 _REGISTER_RATE_LIMIT = 3  # попыток регистрации с одного IP за час
 _LOGIN_RATE_LIMIT = 3  # неудачных попыток входа с одного IP за час
+_SEARCH_MIN_LENGTH = 2   # короче - поиск пользователей не выполняется
+_SEARCH_LIMIT = 20       # максимум результатов поиска пользователей
 
 def _notify_admin_new_user(user):
     """Отправляет уведомление на SUPPORT_EMAIL при регистрации нового пользователя. fail_silently."""
@@ -165,13 +168,47 @@ class AboutMeView(LoginRequiredMixin, TemplateView):
     template_name = "users/about_me.html"
 
 class UsersListView(LoginRequiredMixin, ListView):
-    """Посмотреть список всех пользователей"""
+    """Посмотреть список пользователей (на которых я подписан) или
+    найти нужного мне пользователя по username,
+    first_name, last_name
+    """
 
-    model = get_user_model()
-    template_name = 'users/users_list.html'
+    template_name = "users/users_list.html"
     context_object_name = 'users'
-    ordering = ['username']
 
+    def get_template_names(self):
+        if self.request.headers.get("HX-Request") == "true":
+            return ["users/_user_rows.html"]
+        return [self.template_name]
+
+    def get_queryset(self):
+        User = get_user_model()
+        self.q = self.request.GET.get("q", "").strip()
+        self.is_search = len(self.q) >= _SEARCH_MIN_LENGTH
+
+        if self.is_search:
+            #если это поиск от пользователя то возвращаемся qs с icontains
+            return (User.objects
+                    .filter(Q(username__icontains=self.q)
+                                | Q(first_name__icontains=self.q)
+                                | Q(last_name__icontains=self.q))
+                    .exclude(pk=self.request.user.pk)
+                    .order_by("username")[:_SEARCH_LIMIT])
+
+        #иначе это обычный get и возвращаем список на кого-мы подписаны
+        return (User.objects
+                .filter(followers__follower=self.request.user)
+                .order_by("username"))
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["q"] = self.q
+        context["is_search"] = self.is_search
+        if not self.is_search:
+            context["followers"] = (get_user_model().objects
+                                    .filter(following__following=self.request.user)
+                                    .order_by("username"))
+        return context
 
 class UserDetailView(LoginRequiredMixin, DetailView):
     """Посмотреть детальную инфу о любом пользователе"""
@@ -184,7 +221,12 @@ class UserDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         #берем контекст из social.services.get_follow_context
         context.update(get_follow_context(self.request.user, self.object))
-        context["public_series"] = QuizSeries.objects.filter(user=self.object, status="public")
+        context["public_series"] = (QuizSeries.objects
+                                    .filter(user=self.object, status="public")
+                                    .select_related("category")
+                                    .annotate(like_count=Count("likes", distinct=True))
+                                    .annotate(rounds_count=Count("rounds", distinct=True))
+                                    .with_in_progress(self.request.user))
         return context
 
 class SettingsPageView(LoginRequiredMixin, TemplateView):

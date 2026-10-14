@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {# hx-push-url: если состояния страницы нет в истории HTMX (кнопка «Назад» после F5), #}
+    {# перезагрузить страницу целиком - иначе вьюха на запрос с HX-Request отдала бы один partial #}
+    <meta name="htmx-config" content='{"refreshOnHistoryMiss": true}'>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
     <script src="{% static 'js/base.js' %}"></script>
     <script src="{% static 'js/htmx.min.js' %}"></script>
