@@ -707,7 +707,9 @@ footer a {
     border-bottom: none;
     border-radius: var(--radius-btn) var(--radius-btn) 0 0;
     cursor: pointer;
-    transition: color var(--transition-fast);
+    transition: color var(--transition-fast),
+                background-color var(--transition-fast),
+                border-color var(--transition-fast);
 }
 
 .tab:hover {
@@ -739,6 +741,25 @@ footer a {
 /* заголовок панели нужен только без JS - с JS его роль играет вкладка */
 .js .tab-panel-title {
     display: none;
+}
+
+/* Появление панели при переключении. Класс ставит tabs.js только на клик / стрелки,
+   поэтому при открытии страницы панель не "въезжает". Прежняя панель скрывается сразу. */
+.tab-panel.is-entering {
+    animation: tab-panel-in 0.2s ease-out;
+}
+
+@keyframes tab-panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tab-panel.is-entering {
+        animation: none;
+    }
 }
 
 @media (min-width: 640px) {
@@ -808,6 +829,90 @@ footer a {
 
 .empty-state {
     color: var(--color-text-muted);
+}
+
+/* --- текст только для экранного диктора (подпись поля, у которого есть placeholder и значок) --- */
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* --- поиск: поле и кнопка в один ряд --- */
+
+/* Общее правило для input (раздел полей форм) специфичнее селектора внутри формы, поэтому ширина
+   задаётся через --field-width, а верхний отступ поля гасится выравниванием по нижнему краю. */
+.search-form {
+    --field-width: 100%;
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+    max-width: var(--card-width);
+    margin-bottom: var(--space-5);
+}
+
+.search-form input[type="search"] {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.search-form .btn {
+    flex: none;
+    min-height: var(--tap-size);
+}
+
+/* --- список пользователей строками (users/_user_row_list.html) --- */
+
+.user-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-width: var(--card-width);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.user-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    color: var(--color-text);
+    text-decoration: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    transition: border-color var(--transition-fast);
+}
+
+.user-row:hover {
+    border-color: var(--color-accent);
+}
+
+.user-row-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.user-row-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.user-row-fullname {
+    font-size: var(--font-sm);
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
 }
 
 /* --- flash-сообщения: тосты в правом нижнем углу, исчезают через 15 секунд --- */
@@ -976,6 +1081,20 @@ footer a {
     .follow-block {
         justify-content: flex-start;
     }
+}
+
+/* --- страница «Пользователи» (users_list.html, _user_rows.html) --- */
+
+.user-results-title {
+    margin: 0 0 var(--space-4);
+    font-size: var(--font-lg);
+    overflow-wrap: anywhere;
+}
+
+.search-hint {
+    margin: 0 0 var(--space-4);
+    font-size: var(--font-sm);
+    color: var(--color-text-muted);
 }
 
 /* --- редактирование профиля (user_update_form.html) --- */
