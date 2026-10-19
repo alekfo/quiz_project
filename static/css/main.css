@@ -868,9 +868,10 @@ footer a {
     min-height: var(--tap-size);
 }
 
-/* --- список пользователей строками (users/_user_row_list.html) --- */
+/* --- список строками: пользователи (users/_user_row_list.html) и комнаты (multiplayer/room_list.html) --- */
 
-.user-list {
+.user-list,
+.room-list {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -880,7 +881,8 @@ footer a {
     list-style: none;
 }
 
-.user-row {
+.user-row,
+.room-row {
     display: flex;
     align-items: center;
     gap: var(--space-3);
@@ -894,7 +896,8 @@ footer a {
     transition: border-color var(--transition-fast);
 }
 
-.user-row:hover {
+.user-row:hover,
+.room-row:hover {
     border-color: var(--color-accent);
 }
 
@@ -1814,9 +1817,74 @@ html:not(.js) #add-question-btn {
 }
 
 /* ===== 9. MULTIPLAYER ===== */
-.room-list {
+
+/* --- список комнат (room_list.html): блок "Вы участник" и строки комнат --- */
+/* .room-list / .room-row - общий вид со строкой пользователя, см. раздел компонентов */
+
+.room-group + .room-group {
+    margin-top: var(--space-5);
+}
+
+.room-group h3 {
+    margin-bottom: var(--space-3);
+}
+
+.room-row {
+    justify-content: space-between;
+}
+
+.room-row .tag {
+    flex: none;
+}
+
+.room-row-text {
     display: flex;
     flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.room-row-title {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+/* строка "Квиз · Игроков · Создана": пункты переносятся целиком */
+.room-meta {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+    font-size: var(--font-sm);
+    color: var(--color-text-muted);
+}
+
+.room-meta > span {
+    overflow-wrap: anywhere;
+}
+
+/* комната, где пользователь сейчас участник: выделена рамкой акцента */
+.room-current {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    max-width: var(--card-width);
+    border-color: var(--color-accent);
+}
+
+.room-current-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.room-current-title {
+    margin: 0;
+    font-size: var(--font-lg);
+    font-weight: 700;
+    overflow-wrap: anywhere;
 }
 
 .player-list {

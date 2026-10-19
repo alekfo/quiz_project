@@ -2,7 +2,9 @@ from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
+from django.db import connection
 from django.test import Client, TransactionTestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from gameplay.models import GameParticipant, GameSession, SeriesRun
@@ -77,13 +79,92 @@ class RoomCreateAndListTests(RoomTestCase):
         tokens = list(Room.objects.values_list("token", flat=True))
         self.assertEqual(len(tokens), len(set(tokens)))
 
-    def test_list_shows_only_own_rooms_split_by_status(self):
-        finished = Room.objects.create(title="Закрытая", token="finished1", host=self.host, status="finished")
-        Room.objects.create(title="Чужая", token="foreign1", host=self.guest)
-        response = self.client.get(reverse("multiplayer:room_list"))
+
+class RoomListTests(RoomTestCase):
+    """Список комнат: комната участника отдельно, комнаты хоста, завершённые (хост или участник)."""
+
+    def room_list(self, client=None):
+        response = (client or self.client).get(reverse("multiplayer:room_list"))
         self.assertEqual(response.status_code, 200)
-        self.assertCountEqual(response.context["active_rooms"], [self.room])
-        self.assertCountEqual(response.context["finished_rooms"], [finished])
+        return response.context
+
+    def test_host_without_playing_sees_room_in_hosted_only(self):
+        ctx = self.room_list()
+        self.assertIsNone(ctx["participant_room"])
+        self.assertCountEqual(ctx["hosted_rooms"], [self.room])
+        self.assertCountEqual(ctx["finished_rooms"], [])
+
+    def test_player_of_foreign_room_sees_it_as_participant_room(self):
+        self.add_player(self.guest)
+        ctx = self.room_list(self.guest_client)
+        self.assertEqual(ctx["participant_room"], self.room)
+        self.assertCountEqual(ctx["hosted_rooms"], [])
+
+    def test_hosting_and_playing_room_is_not_duplicated_in_hosted(self):
+        self.add_player(self.host)
+        other = Room.objects.create(title="Вторая", token="hosted2", host=self.host)
+        ctx = self.room_list()
+        self.assertEqual(ctx["participant_room"], self.room)
+        self.assertCountEqual(ctx["hosted_rooms"], [other])
+
+    def test_participant_room_counts_all_players(self):
+        # условие "я участник" не должно сужать JOIN, по которому считается players_count
+        self.add_player(self.guest)
+        self.add_player(make_user("third"))
+        ctx = self.room_list(self.guest_client)
+        self.assertEqual(ctx["participant_room"].players_count, 2)
+
+    def test_finished_rooms_include_hosted_and_played_without_duplicates(self):
+        self.room.status = "finished"
+        self.room.save()
+        for name in ("p1", "p2", "p3"):
+            self.add_player(make_user(name))
+        played = Room.objects.create(title="Чужая закрытая", token="played1", host=self.guest, status="finished")
+        RoomPlayer.objects.create(room=played, user=self.host)
+        RoomPlayer.objects.create(room=played, user=self.guest)
+
+        finished = list(self.room_list()["finished_rooms"])
+        self.assertCountEqual(finished, [self.room, played])
+        counts = {room.pk: room.players_count for room in finished}
+        self.assertEqual(counts, {self.room.pk: 3, played.pk: 2})
+
+    def test_finished_room_is_not_active(self):
+        self.add_player(self.host)
+        self.room.status = "finished"
+        self.room.save()
+        ctx = self.room_list()
+        self.assertIsNone(ctx["participant_room"])
+        self.assertCountEqual(ctx["hosted_rooms"], [])
+        self.assertCountEqual(ctx["finished_rooms"], [self.room])
+
+    def test_foreign_rooms_are_not_listed(self):
+        Room.objects.create(title="Чужая", token="foreign1", host=self.guest)
+        Room.objects.create(title="Чужая закрытая", token="foreign2", host=self.guest, status="finished")
+        ctx = self.room_list()
+        self.assertIsNone(ctx["participant_room"])
+        self.assertCountEqual(ctx["hosted_rooms"], [self.room])
+        self.assertCountEqual(ctx["finished_rooms"], [])
+
+    def test_rooms_are_newest_first(self):
+        newer = Room.objects.create(title="Новее", token="newer1", host=self.host)
+        self.assertEqual(list(self.room_list()["hosted_rooms"]), [newer, self.room])
+
+    def test_query_count_does_not_grow_with_rooms(self):
+        series = make_series(self.host)
+        self.room.current_series = series
+        self.room.save()
+        self.add_player(self.host)
+        url = reverse("multiplayer:room_list")
+        with CaptureQueriesContext(connection) as few:
+            self.client.get(url)
+        for i in range(3):
+            room = Room.objects.create(title=f"Ещё {i}", token=f"more{i}", host=self.host, current_series=series)
+            RoomPlayer.objects.create(room=room, user=self.guest)
+            Room.objects.create(title=f"Закрытая {i}", token=f"closed{i}", host=self.host,
+                                current_series=series, status="finished")
+        with CaptureQueriesContext(connection) as many:
+            self.client.get(url)
+        self.assertEqual(len(many), len(few))
 
 
 class RoomDetailTests(RoomTestCase):

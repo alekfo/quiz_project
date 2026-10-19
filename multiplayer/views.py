@@ -4,20 +4,21 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.core.exceptions import PermissionDenied
 from django.utils.crypto import get_random_string
-from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
+from django.views.generic import DetailView, CreateView, DeleteView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction, IntegrityError
-from django.http import HttpResponse, HttpRequest, HttpResponseRedirect
-from django.urls import reverse, reverse_lazy
+from django.http import HttpRequest, HttpResponseRedirect
+from django.urls import reverse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.conf import settings
 from django.utils import timezone
+from django.db.models import Count, Exists, OuterRef, Q
 
 from .models import Room, RoomPlayer
-from .forms import RoomSeriesForm, RoomPlayerReadyForm
+from .forms import RoomSeriesForm
 from gameplay.models import GameSession, GameParticipant, SeriesRun
 from gameplay.services import get_series_progress
 
@@ -76,16 +77,33 @@ def _get_room_context(context: dict, room: Room, user: settings.AUTH_USER_MODEL)
 
     return context
 
-class RoomListView(LoginRequiredMixin, ListView):
+class RoomListView(LoginRequiredMixin, TemplateView):
+
+    template_name = "multiplayer/room_list.html"
+
+    def _rooms(self):
+        """
+        вспомогательный метод для получения qs, используемого для трех необходимых для шаблона запросов:
+        participant_room, finished_rooms, hosted_rooms
+        """
+        return (Room.objects
+                .select_related("current_series")
+                .annotate(players_count=Count("room_players"))
+                .order_by("-created_at"))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["active_rooms"] = self.object_list.exclude(status="finished")
-        context["finished_rooms"] = self.object_list.filter(status="finished")
-        return context
+        i_am_player = Exists(RoomPlayer.objects.filter(room=OuterRef("pk"), user=self.request.user))
+        participant_room = self._rooms().filter(i_am_player, status__in=["waiting", "in_progress"]).first()
+        hosted = self._rooms().filter(host=self.request.user).filter(status__in=["waiting", "in_progress"])
 
-    def get_queryset(self):
-        return Room.objects.filter(host=self.request.user).order_by("-created_at")
+        context["participant_room"] = participant_room
+        context["finished_rooms"] = self._rooms().filter(Q(host=self.request.user) | i_am_player, status="finished")
+        if participant_room:
+            context["hosted_rooms"] = hosted.exclude(pk=participant_room.pk)
+        else:
+            context["hosted_rooms"] = hosted
+        return context
 
 class RoomCreateView(LoginRequiredMixin, CreateView):
     model = Room
