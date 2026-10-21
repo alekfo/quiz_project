@@ -5,6 +5,7 @@
 {% endblock %}
 
 {% block body %}
+    <h1>{{ series_run.series.title }}</h1>
     {% include "gameplay/_series_progress.html" %}
     {% if not is_completed %}
         <form method="post">

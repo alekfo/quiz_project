@@ -224,6 +224,18 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 - **Выделенная карточка комнаты** — `.card.room-current` (рамка акцентом): ряд меток `.room-current-tags`,
   `.room-current-title`, `.room-meta`, главная кнопка. Группы на странице — `.room-group` с `<h3>`.
 
+Готово (2026-10-21):
+
+- **Поле «Скопировать»** — `.copy-field`: поле `readonly` с готовым текстом (приглушённое, на фоне страницы) и
+  `.btn` со значком «Скопировать» в один ряд, подпись поля — `.visually-hidden`. Ширина поля — тем же приёмом
+  `--field-width: 100%`, что у поиска. Копирование и тост — в JS страницы (образец — `static/js/room-lobby.js`:
+  clipboard API, а без https — через выделение поля).
+- **Прогресс серии** — partial `gameplay/_series_progress.html` (лобби и соло-комната): `ol.progress-list` из
+  `.progress-item.is-completed / .is-current / .is-pending` — номер в кружке (у пройденного — галочка на зелёном,
+  у текущего — акцент), название, справа ссылка «Результат» или метка «Идёт» / «Следующий»; ниже «Счёт» / «Итог»
+  — `ol.score-list` (аватар, ник, очки акцентом), в соло — одна строка «Ваш счёт». Заголовка внутри нет —
+  его выводит страница.
+
 ### Организация CSS
 
 - Пока один файл `static/css/main.css`: токены → сброс и базовые теги → компоненты → страницы.
@@ -329,12 +341,18 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 
 ### Фрагменты, приходящие по WebSocket
 
-`multiplayer/_room_status.html` (корень `#room-status`) и `gameplay/_players_status.html` (корень `#waiting-info`)
-рендерятся в консьюмерах через `render_to_string` **без `request`** и заменяют элемент целиком.
+`multiplayer/_room_status.html` и `gameplay/_players_status.html` (корень `#waiting-info`) рендерятся в консьюмерах
+через `render_to_string` **без `request`**.
 
-- Корневой элемент и его `id` сохранять.
+- `gameplay/_players_status.html` заменяет `#waiting-info` целиком — корень и его `id` сохранять.
+- `multiplayer/_room_status.html` (с 2026-10-21) — только обёртка для WS-ответа: включает блоки
+  `_lobby_status.html` (`#lobby-status`), `_lobby_series.html` (`#lobby-series`), `_lobby_players.html`
+  (`#lobby-players`), `_lobby_history.html` (`#lobby-history`). На странице обёртки нет — `room_detail.html`
+  включает те же partial'ы по своим местам, а `room-lobby.js` заменяет каждый блок с `data-live` по его `id`.
+  Новый обновляемый блок лобби — отдельный partial с `id` и `data-live`, включённый и в обёртку, и в страницу.
 - Внутри этих фрагментов нельзя использовать `request`, `user`, `{% csrf_token %}` и формы —
-  их там нет, отрисуется пустота. Формы лобби лежат в `room_detail.html` вне `#room-status`.
+  их там нет, отрисуется пустота. Вместо `user` в лобби — `my_room_player` / `is_host` / `is_player`.
+  Формы лобби лежат в `room_detail.html` вне блоков `data-live`.
 - `gameplay/_series_progress.html` включается и в лобби, и в `solo_room.html` — править с оглядкой на оба места.
 
 ### Формсет вопросов — `quizzes/quiz_form.html`
@@ -408,12 +426,20 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 - `#answer-form`, `input[name="chosen_option_id"]`, `#submit_button`, `#timer`, `#fact`, `#waiting-info`.
 - Таймер и блокировка отправки управляются inline-JS страницы — его не трогать.
 
-### Лобби — `multiplayer/room_detail.html`, `_room_status.html`
+### Лобби — `multiplayer/room_detail.html`, `_room_status.html`, `_lobby_*.html`
 
-- `#confirm-ready-form`, `#select-series-form`, `#reset-series-form`, `#start-form`, `#start-button`,
-  `#ready-confirmed-msg`, `#room-link`, `#copy-link-btn`.
-- `.toggle-btn` + `data-target="<id блока>"` + `hidden` у целевого блока
-  (`#link-container`, `#series-history-container`).
+- Весь JS лобби — `static/js/room-lobby.js` (inline-скриптов в шаблоне нет). Адрес WS — атрибут
+  `data-lobby-socket` на `.lobby`: только хосту и игроку незакрытой комнаты (посетителя консьюмер не пускает).
+- id форм и элементов, которые JS скрывает по флагам WS-сообщения: `#select-series-form` (`!has_selected_series`),
+  `#reset-series-form` и `#start-form` (`start_available`), `#start-button` (`disabled` — `!can_start_round`, текст —
+  по `is_first_round`), `#start-note` («Ждём готовности: N из M»), `#confirm-ready-form` (`can_confirm`),
+  `#ready-confirmed-msg` и `#return-to-game` (по тому, идёт ли раунд). Ссылка на комнату — `#room-link`
+  (поле, значение — `value`) и `#copy-link-btn`; плашка обрыва WS — `#lobby-connection`.
+- `#reset-series-form` — `<form>` (серия не начата, сброс сразу) или `<a>` на страницу подтверждения
+  (`series_run_started`) — тот же `id` у обоих.
+- `#lobby-status` несёт `data-room-status`: переход в `finished` — JS перезагружает страницу.
+- «История игр» — `<details id="lobby-history-details">`: открытость сохраняется при замене блока по WS.
+- `room_join` — только POST: «Стать участником» — форма, не ссылка.
 
 ### Профиль — `users/about_me.html`, `users/user_update_form.html`
 
@@ -523,6 +549,9 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
    `quiz_confirm_delete.html`, `round_confirm_delete.html`, `ai_generator_index.html`, `temp_ai_quiz.html`
    (последняя в браузере не проверена — открывается только после реальной генерации).
 5. **Лобби**: `room_detail.html`, `_room_status.html`, `_series_progress.html`, `solo_room.html`, `room_close.html`.
+   Сделано 2026-10-21: `room_detail.html` (блоки `_lobby_*.html`, `static/js/room-lobby.js`), `_room_status.html`,
+   `_series_progress.html`, `room_close.html`, `roomplayer_confirm_delete.html`, `room_reset_confirm.html`.
+   `solo_room.html` — только заголовок (вернули после выноса его из `_series_progress.html`), вёрстка — отдельным шагом.
 6. **Игра**: `start.html`, `play.html`, `_players_status.html`, `result.html`.
 
 Статичные тексты (`privacy_policy.html`, `public_offer.html`) — в конце, им достаточно базовой типографики.

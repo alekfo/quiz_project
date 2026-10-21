@@ -274,7 +274,7 @@ input[type="file"]::file-selector-button:hover {
     flex-direction: column;
 }
 
-/* .header-main - общий "ряд с разнесёнными краями": используется и в шапке, и в room_detail.html */
+/* .header-main - "ряд с разнесёнными краями" в шапке */
 .header-main {
     display: flex;
     justify-content: space-between;
@@ -864,6 +864,28 @@ footer a {
 }
 
 .search-form .btn {
+    flex: none;
+    min-height: var(--tap-size);
+}
+
+/* --- готовый текст и кнопка «Скопировать» в один ряд (ссылка на комнату) --- */
+/* Ширина и отступ поля - тем же приёмом, что у .search-form. */
+
+.copy-field {
+    --field-width: 100%;
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+}
+
+.copy-field input {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+}
+
+.copy-field .btn {
     flex: none;
     min-height: var(--tap-size);
 }
@@ -1737,14 +1759,125 @@ html:not(.js) #add-question-btn {
     flex-direction: column;
 }
 
-.solo-room-main {
+/* --- прогресс серии (gameplay/_series_progress.html): лобби и соло-комната --- */
+
+.series-progress {
     display: flex;
     flex-direction: column;
+    gap: var(--space-4);
 }
 
-.solo-room-completed-rounds {
+.series-progress-note {
+    margin: 0;
+    font-weight: 600;
+}
+
+/* раунды по порядку: номер в кружке, название, справа - ссылка на результат или метка */
+.progress-list {
     display: flex;
     flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: progress;
+}
+
+.progress-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--tap-size);
+    counter-increment: progress;
+}
+
+.progress-item::before {
+    content: counter(progress);
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--avatar-sm);
+    height: var(--avatar-sm);
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    border-radius: var(--radius-full);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.progress-item.is-completed::before {
+    content: "✓";
+    color: var(--color-on-status);
+    background: var(--color-success);
+    box-shadow: none;
+}
+
+.progress-item.is-current::before {
+    color: var(--color-on-accent);
+    background: var(--color-accent);
+    box-shadow: none;
+}
+
+.progress-subject {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.progress-item.is-pending .progress-subject {
+    color: var(--color-text-muted);
+}
+
+.progress-item.is-current .progress-subject {
+    font-weight: 600;
+}
+
+.progress-action {
+    flex: none;
+    font-size: var(--font-sm);
+    font-weight: 600;
+}
+
+.progress-item .tag {
+    flex: none;
+}
+
+.score-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--font-md);
+}
+
+.score-solo {
+    margin: 0;
+}
+
+.score-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.score-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.score-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.score-value {
+    flex: none;
+    font-weight: 700;
+    color: var(--color-accent);
 }
 
 .spinner {
@@ -1887,21 +2020,208 @@ html:not(.js) #add-question-btn {
     overflow-wrap: anywhere;
 }
 
-.player-list {
+/* --- лобби комнаты (room_detail.html и его partial'ы _lobby_*.html) --- */
+
+.lobby {
     display: flex;
     flex-direction: column;
+    gap: var(--space-5);
 }
 
-.host-buttons {
+.lobby-header {
     display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
 }
 
-.series-history {
+.lobby-tags {
     display: flex;
-    align-items: center;   /* выравнивает по центру по вертикали */
-    gap: 10px;
-}
-
-.series-history p {
+    flex-wrap: wrap;
+    gap: var(--space-2);
     margin: 0;
+}
+
+.lobby-title {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.lobby-host {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    color: var(--color-text-muted);
+}
+
+/* обрыв WebSocket: страница перестала обновляться сама */
+.lobby-connection {
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    font-weight: 600;
+    color: var(--color-warning);
+    background: var(--color-surface);
+    border: 1px solid var(--color-warning);
+    border-radius: var(--radius-md);
+}
+
+.lobby-closed {
+    margin: 0;
+    color: var(--color-text-muted);
+}
+
+/* на телефоне колонки идут подряд, с 900px - квиз слева, игроки и история справа */
+.lobby-grid {
+    display: grid;
+    gap: var(--space-5);
+    align-items: start;
+}
+
+.lobby-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+.lobby-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+}
+
+.lobby-card h2,
+.lobby-section h2 {
+    margin: 0;
+    font-size: var(--font-lg);
+}
+
+.lobby-card-hint {
+    margin: calc(-1 * var(--space-2)) 0 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.lobby-card .copy-field,
+.lobby-series,
+.lobby-select {
+    align-self: stretch;
+}
+
+.lobby-series {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.lobby-series-title {
+    margin: 0;
+    font-size: var(--font-xl);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.lobby-series .empty-state {
+    margin: 0;
+}
+
+.lobby-select {
+    --field-width: 100%;
+}
+
+.lobby-select-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-2);
+}
+
+.lobby-select-row select {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.lobby-select-row .btn {
+    min-height: var(--tap-size);
+}
+
+.lobby-select .helptext {
+    margin-top: var(--space-2);
+}
+
+/* главное действие карточки: старт раунда у хоста, «Я готов» у игрока */
+.lobby-start {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+}
+
+.lobby-note {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.lobby-ready {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    color: var(--color-text-muted);
+}
+
+.lobby-section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.lobby-section-meta {
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+    font-weight: 600;
+}
+
+.lobby-section .empty-state {
+    margin: 0;
+}
+
+.lobby-player .tag {
+    flex: none;
+    margin-left: auto;
+}
+
+.lobby-you {
+    font-weight: 400;
+    color: var(--color-text-muted);
+}
+
+/* блок истории остаётся на странице и пустым (его заменяет WS) - без него не занимаем отступ колонки */
+.lobby-history-slot:not(:has(*)) {
+    display: none;
+}
+
+.lobby-history-list {
+    margin-top: var(--space-3);
+}
+
+.lobby-actions {
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border);
+}
+
+.lobby-actions form {
+    margin: 0;
+}
+
+@media (min-width: 900px) {
+    .lobby-grid {
+        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    }
 }

@@ -1,0 +1,41 @@
+{# Игроки комнаты с готовностью. Обновляется по WS (см. _room_status.html): вместо user - my_room_player. #}
+<section id="lobby-players" class="lobby-section" data-live aria-labelledby="lobby-players-title">
+    <div class="lobby-section-header">
+        <h2 id="lobby-players-title">Игроки</h2>
+        {% if object.status != "finished" and players_count %}
+            <span class="lobby-section-meta">Готовы {{ ready_count }} из {{ players_count }}</span>
+        {% endif %}
+    </div>
+    {% if players_count %}
+        <ul class="user-list">
+            {% for player in object.room_players.all %}
+                <li>
+                    <a class="user-row lobby-player" href="{% url 'users:user_detail' pk=player.user_id %}">
+                        {% include "users/_avatar.html" with avatar_user=player.user size="sm" %}
+                        <span class="user-row-text">
+                            <span class="user-row-name">
+                                {{ player.user.username }}{% if player == my_room_player %} <span class="lobby-you">(вы)</span>{% endif %}
+                            </span>
+                            {% if player.user_id == object.host_id %}
+                                <span class="user-row-fullname">хост</span>
+                            {% endif %}
+                        </span>
+                        {% if object.status != "finished" %}
+                            {% if player.is_ready %}
+                                <span class="tag tag-success">Готов</span>
+                            {% else %}
+                                <span class="tag tag-muted">Не готов</span>
+                            {% endif %}
+                        {% endif %}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% elif object.status == "finished" %}
+        <p class="empty-state">В комнате никто не играл.</p>
+    {% elif is_host %}
+        <p class="empty-state">Пока никого нет. Отправьте друзьям ссылку на комнату.</p>
+    {% else %}
+        <p class="empty-state">Пока никого нет.</p>
+    {% endif %}
+</section>

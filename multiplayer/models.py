@@ -44,3 +44,4 @@ class RoomPlayer(models.Model):
                 name="unique_per_user_room",
             )
         ]
+        ordering = ["joined_at", "pk"]

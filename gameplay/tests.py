@@ -458,6 +458,22 @@ class SeriesProgressTests(BaseTestCase):
         self.make_session(0, "completed", {self.alice: 1})
         self.assertFalse(get_series_progress(self.run)["is_current_round_is_in_progress"])
 
+    def test_rounds_progress_follows_round_order_with_gaps(self):
+        # раунды созданы не по порядку и с дырками в round_order (как после RoundDeleteView)
+        make_round(self.series, round_order=5)
+        make_round(self.series, round_order=3)
+        self.run.current_round_index = 3
+        first = self.make_session(0, "completed", {self.alice: 1})
+        second = self.make_session(1, "completed", {self.alice: 1})
+        self.make_session(3, "in_progress", {self.alice: 0})
+
+        progress = get_series_progress(self.run)
+        self.assertEqual(
+            [(item["round"].round_order, item["state"], item["session"]) for item in progress["rounds_progress"]],
+            [(0, "completed", first), (1, "completed", second), (3, "current", None), (5, "pending", None)],
+        )
+        self.assertEqual(progress["rounds_count"], 4)
+
     def test_abandoned_run_counts_as_completed(self):
         for status, expected in (("in_progress", False), ("completed", True), ("abandoned", True)):
             with self.subTest(status=status):

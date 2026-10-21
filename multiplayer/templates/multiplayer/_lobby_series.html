@@ -1,0 +1,25 @@
+{# Содержимое карточки «Квиз»: выбранная серия, её раунды и счёт. Обновляется по WS (см. _room_status.html). #}
+{# Посетителю (не хост и не игрок) - только название: ссылки на результаты его не пустят. #}
+<div id="lobby-series" class="lobby-series" data-live>
+    {% if object.current_series %}
+        <p class="lobby-series-title">{{ object.current_series.title }}</p>
+        {% if is_host or is_player %}
+            {% if series_run %}
+                {% include "gameplay/_series_progress.html" %}
+            {% else %}
+                {# серия выбрана, но ещё не начата: раунды без состояний #}
+                <ol class="progress-list">
+                    {% for round in object.current_series.rounds.all|dictsort:"round_order" %}
+                        <li class="progress-item">
+                            <span class="progress-subject">{{ round.subject }}</span>
+                        </li>
+                    {% endfor %}
+                </ol>
+            {% endif %}
+        {% endif %}
+    {% elif is_host %}
+        <p class="empty-state">Выберите квиз, в который будете играть.</p>
+    {% else %}
+        <p class="empty-state">Хост ещё не выбрал квиз.</p>
+    {% endif %}
+</div>

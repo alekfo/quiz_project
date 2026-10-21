@@ -1,24 +1,28 @@
 {% extends 'base.html' %}
 
 {% block title %}
-   Confirm quit room #{{ object.room.pk }}
+    Выйти из комнаты: {{ object.room.title }} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>Вы уверены, что хотите выйти из комнаты #{{ object.room.pk }}?</h1>
-    <br>
-    <div>
-        <form method="post">
-            {% csrf_token  %}
-            {{ form.as_p }}
-            <button type="submit">Да, уверен</button>
-        </form>
-    </div>
-    <div>
-        <a href="{% url 'multiplayer:room_detail' code=object.room.token %}">
-            Вернуться в комнату #{{ object.room.pk }}
-        </a>
-    </div>
-    <br>
+    {% url 'multiplayer:room_detail' code=object.room.token as back_url %}
 
+    <a class="back-link" href="{{ back_url }}">← В комнату</a>
+
+    <section class="card confirm-card">
+        <h1>Выйти из комнаты?</h1>
+        <p class="confirm-subject">{{ object.room.title }}</p>
+        <p class="confirm-text">
+            Вы перестанете быть игроком этой комнаты, а готовность сбросится.
+            Вернуться можно по ссылке на комнату, пока хост её не закрыл.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Выйти из комнаты</button>
+                <a class="btn btn-ghost" href="{{ back_url }}">Остаться</a>
+            </div>
+        </form>
+    </section>
 {% endblock %}
