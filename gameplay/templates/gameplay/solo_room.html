@@ -1,22 +1,78 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}
-    SOLO ROOM
+    {{ series_run.series.title }} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>{{ series_run.series.title }}</h1>
-    {% include "gameplay/_series_progress.html" %}
-    {% if not is_completed %}
-        <form method="post">
-            {%  csrf_token %}
-            <div>
-                <button type="submit">НАЧАТЬ СЛЕДУЮЩИЙ РАУНД</button>
-            </div>
-        </form>
+    {% if series_run.mode == "multiplayer" %}
+        <a class="back-link" href="{% url 'multiplayer:room_detail' code=series_run.room.token %}">← В комнату</a>
     {% else %}
-        {% if series_run.mode == "multiplayer" %}
-            <a class="btn" href="{% url 'multiplayer:room_detail' code=series_run.room.token %}">Вернуться в лобби мультплеера</a>
-        {% endif %}
+        <a class="back-link" href="{% url 'quizzes:quizzes_preview' pk=series_run.series_id %}">← К квизу</a>
     {% endif %}
+
+    {# номер раунда - по числу пройденных, а не по current_round_index: после удаления раундов в нём бывают дырки #}
+    {% with round_number=completed_sessions|length|add:1 %}
+        <article class="card quiz-preview series-room">
+            <p class="quiz-card-tags">
+                {% if series_run.mode == "multiplayer" %}
+                    <span class="tag">Мультиплеер</span>
+                {% else %}
+                    <span class="tag">Соло</span>
+                {% endif %}
+                {# статус в шапке; строку «Квиз пройден» из _series_progress.html на этой странице прячет CSS #}
+                {% if series_run.status == "completed" %}
+                    <span class="tag tag-success">Квиз пройден</span>
+                {% elif series_run.status == "abandoned" %}
+                    <span class="tag tag-muted">Квиз прерван</span>
+                {% endif %}
+            </p>
+
+            <h1 class="quiz-preview-title">{{ series_run.series.title }}</h1>
+            {% if not is_completed %}
+                <p class="series-room-step">Раунд {{ round_number }} из {{ rounds_count }}</p>
+            {% endif %}
+
+            {# запускать раунд можно только в своём соло-прогоне; мультиплеерный из истории - только просмотр #}
+            {% if series_run.mode == "solo" and not is_completed and current_round %}
+                <section class="next-round" aria-labelledby="next-round-title">
+                    <p class="next-round-label">Следующий раунд</p>
+                    <h2 id="next-round-title" class="next-round-title">{{ current_round.subject }}</h2>
+                    <p class="progress-meta">
+                        {% if current_round.level != "common" %}Уровень: {{ current_round.get_level_display }} · {% endif %}{{ current_round.time_limit_seconds }} с на ответ · +{{ current_round.points_per_correct }} за верный ответ
+                    </p>
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>
+                            Начать раунд {{ round_number }}
+                        </button>
+                    </form>
+                    <p class="quiz-preview-note">Таймер запустится сразу после нажатия.</p>
+                </section>
+            {% endif %}
+
+            <section class="quiz-preview-rounds">
+                <h2>Раунды</h2>
+                {% include "gameplay/_series_progress.html" %}
+            </section>
+
+            {% if is_completed %}
+                <div class="quiz-actions">
+                    {% if series_run.mode == "multiplayer" %}
+                        <a class="btn btn-primary btn-lg" href="{% url 'multiplayer:room_detail' code=series_run.room.token %}">Вернуться в комнату</a>
+                    {% else %}
+                        <a class="btn btn-primary btn-lg" href="{% url 'gameplay:start' pk=series_run.series_id %}">
+                            <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>
+                            Играть снова
+                        </a>
+                        <a class="btn btn-ghost" href="{% url 'quizzes:quizzes_preview' pk=series_run.series_id %}">К квизу</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </article>
+    {% endwith %}
+
+    <script src="{% static 'js/score-gain.js' %}" defer></script>
 {% endblock %}

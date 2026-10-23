@@ -1,44 +1,108 @@
 {% extends 'base.html' %}
 
 {% block title %}
-    INDEX Result
+    Результат: {{ session.quiz.subject }} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>Результаты раунда:</h1>
-    <h1>Режим: {{ session.mode }}</h1>
-    <h1>Тема раунда: {{ session.quiz.subject }}</h1>
-    {% if curr_participant %}
-        <p>Количество набранных очков: {{ curr_participant.score }}</p>
-        <p>Подробности:</p>
-        {% for answer in curr_participant.participants_answers.all %}
-            <p>Вопрос №{{answer.question.order}}: {{ answer.question.text|truncatechars:40 }}? Ваш ответ: {{answer.chosen_option.text|truncatechars:40}} - {% if answer.is_correct %} ✅ верно {% elif answer.is_skipped%} ❌ пропущено {% else %} ❌ неверно {% endif %}</p>
-        {% endfor %}
-    {% endif %}
+    {# back-link: в соло - экран между раундами, в мультиплеере - лобби; без series_run / room ссылок нет ({% url %} с None - 500) #}
     {% if session.mode == "multiplayer" %}
-        <h1>Результаты других участников:</h1>
-        <ul>
-            {% for participant in session.participants.all %}
-                {% if participant.user.username != curr_participant.user.username  %}
-                    <li>
-                        <p>Никнейм: {{participant.user.username}}</p>
-                        {% if participant.finished_at %}
-                            <p>Очков набрано: {{participant.score}}</p>
-                        {% else %}
-                            <p>Еще не завершено</p>
-                        {% endif %}
-                    </li>
-                {% endif %}
-            {% endfor %}
-        </ul>
+        {% if session.room %}
+            <a class="back-link" href="{% url 'multiplayer:room_detail' code=session.room.token %}">← В комнату</a>
+        {% endif %}
+    {% elif session.series_run %}
+        {# ?gained= - очки раунда, solo_room анимирует их прибавку к счёту (static/js/score-gain.js) #}
+        <a class="back-link" href="{% url 'gameplay:solo_room' pk=session.series_run_id %}{% if curr_participant %}?gained={{ curr_participant.score }}{% endif %}">← К квизу</a>
+    {% endif %}
+
+    <article class="card quiz-preview round-result">
+        <p class="quiz-card-tags">
+            {% if session.mode == "multiplayer" %}
+                <span class="tag">Мультиплеер</span>
+            {% else %}
+                <span class="tag">Соло</span>
+            {% endif %}
+        </p>
+
         <div>
-            {% if session.room %}
-              <a href="{% url 'multiplayer:room_detail' code=session.room.token %}">Вернуться в лобби мультплеера</a>
+            <h1 class="quiz-preview-title">{{ session.quiz.subject }}</h1>
+            {% if session.quiz.series %}
+                <p class="round-result-series">Квиз: {{ session.quiz.series.title }}</p>
             {% endif %}
         </div>
-    {% else %}
-        <div>
-            <a href="{% url 'gameplay:solo_room' pk=session.series_run.pk %}">Вернуться в комнату</a>
+
+        {# хост-наблюдатель сам не играл - у него только таблица участников #}
+        {% if curr_participant %}
+            <section class="result-summary" aria-label="Итог раунда">
+                <p class="result-score">
+                    <span class="result-score-value">{{ curr_participant.score }}</span>
+                    <span class="result-score-label">очков за раунд</span>
+                </p>
+                <p class="result-correct">Верных ответов: <strong>{{ correct_answer_count }} из {{ question_count }}</strong></p>
+            </section>
+
+            {# верный ответ и факт не показываем намеренно (решение пользователя) #}
+            <section class="quiz-preview-rounds">
+                <h2>Ваши ответы</h2>
+                <ol class="answer-list">
+                    {% for answer in curr_participant.participants_answers.all %}
+                        <li class="answer-row">
+                            <span class="answer-number">{{ forloop.counter }}</span>
+                            <span class="answer-text">
+                                <span class="answer-question">{{ answer.question.text }}</span>
+                                <span class="answer-chosen">
+                                    {% if answer.chosen_option %}Ваш ответ: {{ answer.chosen_option.text }}{% else %}Нет ответа{% endif %}
+                                </span>
+                            </span>
+                            {% if answer.is_correct %}
+                                <span class="tag tag-success">Верно</span>
+                            {% elif answer.is_skipped %}
+                                <span class="tag tag-muted">Пропущено</span>
+                            {% else %}
+                                <span class="tag tag-danger">Неверно</span>
+                            {% endif %}
+                        </li>
+                    {% empty %}
+                        <li class="empty-state">Ответов нет.</li>
+                    {% endfor %}
+                </ol>
+            </section>
+        {% endif %}
+
+        {% if session.mode == "multiplayer" %}
+            <section class="quiz-preview-rounds">
+                <h2>Участники раунда</h2>
+                <ol class="score-list">
+                    {% for participant in session.participants.all|dictsortreversed:"score" %}
+                        <li class="score-row">
+                            {% include "users/_avatar.html" with avatar_user=participant.user size="sm" %}
+                            <span class="score-name">
+                                {{ participant.user.username }}{% if participant == curr_participant %} <span class="lobby-you">(вы)</span>{% endif %}
+                            </span>
+                            {% if participant.finished_at %}
+                                <span class="score-value">{{ participant.score }}</span>
+                            {% else %}
+                                <span class="tag tag-warning">Ещё играет</span>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ol>
+            </section>
+        {% endif %}
+
+        <div class="quiz-actions">
+            {% if session.mode == "multiplayer" %}
+                {% if session.room %}
+                    <a class="btn btn-primary btn-lg" href="{% url 'multiplayer:room_detail' code=session.room.token %}">Вернуться в комнату</a>
+                {% endif %}
+                {% if session.series_run %}
+                    <a class="btn btn-ghost" href="{% url 'gameplay:solo_room' pk=session.series_run_id %}{% if curr_participant %}?gained={{ curr_participant.score }}{% endif %}">Прогресс квиза</a>
+                {% endif %}
+            {% elif session.series_run %}
+                <a class="btn btn-primary btn-lg" href="{% url 'gameplay:solo_room' pk=session.series_run_id %}{% if curr_participant %}?gained={{ curr_participant.score }}{% endif %}">
+                    {% if session.series_run.status == "in_progress" %}К следующему раунду{% else %}К итогам квиза{% endif %}
+                </a>
+            {% endif %}
         </div>
-    {% endif %}
+    </article>
 {% endblock %}
