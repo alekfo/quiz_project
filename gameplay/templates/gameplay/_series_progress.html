@@ -32,15 +32,17 @@
             <h3 class="score-title">{% if is_completed %}Итог{% else %}Счёт{% endif %}</h3>
             {% if series_run.mode == "solo" %}
                 {% for player, total_score in leaderboard %}
-                    <p class="score-solo">Ваш счёт: <strong>{{ total_score }}</strong></p>
+                    {# .score-solo-value / data-score - для анимации прибавки в solo_room (static/js/score-gain.js) #}
+                    <p class="score-solo">Ваш счёт: <strong class="score-solo-value" data-score="{{ total_score }}">{{ total_score }}</strong></p>
                 {% endfor %}
             {% else %}
                 <ol class="score-list">
+                    {# data-me / data-score - для анимации прибавки в solo_room (static/js/score-gain.js); при рендере по WS user нет - пометки не будет #}
                     {% for player, total_score in leaderboard %}
-                        <li class="score-row">
+                        <li class="score-row"{% if player == user %} data-me{% endif %}>
                             {% include "users/_avatar.html" with avatar_user=player size="sm" %}
                             <span class="score-name">{{ player.username }}</span>
-                            <span class="score-value">{{ total_score }}</span>
+                            <span class="score-value" data-score="{{ total_score }}">{{ total_score }}</span>
                         </li>
                     {% endfor %}
                 </ol>

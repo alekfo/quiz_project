@@ -645,6 +645,11 @@ footer a {
     background: var(--color-warning);
 }
 
+.tag-danger {
+    color: var(--color-on-status);
+    background: var(--color-error);
+}
+
 /* нейтральная метка: без заливки акцентом */
 .tag-muted {
     color: var(--color-text-muted);
@@ -1351,6 +1356,164 @@ footer a {
     font-weight: 600;
 }
 
+/* правила перед стартом квиза (gameplay/start.html) */
+.start-rules {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-6);
+    font-size: var(--font-sm);
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+}
+
+/* экран между раундами (gameplay/solo_room.html) */
+.series-room-step {
+    margin: calc(-1 * var(--space-2)) 0 0;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+/* статус прогона здесь - меткой в шапке карточки */
+.series-room .series-progress-note {
+    display: none;
+}
+
+/* блок следующего раунда: название, параметры, «Начать раунд N» */
+.next-round {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+}
+
+.next-round-label {
+    margin: 0;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--color-accent);
+}
+
+.next-round-title {
+    margin: 0;
+    font-size: var(--font-lg);
+    overflow-wrap: anywhere;
+}
+
+.next-round .progress-meta {
+    margin: 0 0 var(--space-2);
+}
+
+.next-round form {
+    margin: 0;
+}
+
+.next-round .quiz-preview-note,
+.quiz-start .quiz-preview-note {
+    font-style: italic;
+}
+
+/* результат раунда (gameplay/result.html) */
+.round-result-series {
+    margin: var(--space-1) 0 0;
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+}
+
+/* итог: очки крупно, рядом верные ответы; на телефоне - в столбик */
+.result-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-4);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+}
+
+.result-score {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.result-score-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--color-accent);
+}
+
+.result-score-label,
+.result-correct {
+    margin: 0;
+    color: var(--color-text-muted);
+}
+
+.result-correct strong {
+    color: var(--color-text);
+}
+
+/* разбор по вопросам: номер, вопрос и ответ, справа метка */
+.answer-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.answer-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.answer-row:last-child {
+    border-bottom: none;
+}
+
+.answer-number {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--avatar-sm);
+    height: var(--avatar-sm);
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: var(--color-text-muted);
+    border-radius: var(--radius-full);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.answer-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.answer-chosen {
+    font-size: var(--font-sm);
+    color: var(--color-text-muted);
+}
+
+.answer-row .tag {
+    flex: none;
+}
+
 /* ряд действий: играть, лайк, сохранить; ниже через линию - действия автора */
 .quiz-actions {
     display: flex;
@@ -1832,7 +1995,9 @@ html:not(.js) #add-question-btn {
     overflow-wrap: anywhere;
 }
 
-.progress-points {
+/* .progress-meta - параметры раунда одной строкой (start.html) */
+.progress-points,
+.progress-meta {
     font-size: var(--font-sm);
     color: var(--color-text-muted);
 }
@@ -1862,6 +2027,111 @@ html:not(.js) #add-question-btn {
 
 .score-solo {
     margin: 0;
+}
+
+/* анимация прибавки очков в solo_room (static/js/score-gain.js); при reduced-motion JS её не запускает */
+.score-solo-value,
+.score-row[data-me] .score-value {
+    display: inline-block;
+    font-variant-numeric: tabular-nums;
+}
+
+.score-solo-value.is-flash,
+.score-value.is-flash {
+    animation: score-flash 0.9s ease-out;
+}
+
+/* «+N» - зелёная таблетка, как метка «Верно» */
+.score-gain {
+    display: inline-block;
+    margin-left: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-lg);
+    font-weight: 800;
+    line-height: 1.2;
+    color: var(--color-on-status);
+    background: var(--color-success);
+    border-radius: var(--radius-full);
+    animation: score-gain 2.5s ease-out forwards;
+}
+
+/* в строке таблицы метка слева от числа, отступ даёт gap строки */
+.score-row .score-gain {
+    margin-left: 0;
+}
+
+.score-gain.is-zero {
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+@keyframes score-gain {
+    0%   { opacity: 0; transform: translateX(-8px) scale(0.6); }
+    10%  { opacity: 1; transform: translateX(0) scale(1.15); }
+    18%  { opacity: 1; transform: scale(1); }
+    80%  { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-14px); }
+}
+
+/* цвет только в начале: в конце число возвращается к своему цвету без скачка */
+@keyframes score-flash {
+    0%   { color: var(--color-success); transform: scale(1.35); text-shadow: 0 0 18px var(--color-success); }
+    100% { transform: scale(1); text-shadow: 0 0 0 transparent; }
+}
+
+/* крупный счёт - только на экране между раундами; в лобби partial остаётся компактным */
+.series-room .score {
+    padding: var(--space-4);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+}
+
+.series-room .score-title {
+    margin-bottom: var(--space-3);
+    font-size: var(--font-lg);
+}
+
+.series-room .score-solo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--font-lg);
+    color: var(--color-text-muted);
+}
+
+.series-room .score-solo-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--color-accent);
+}
+
+.series-room .score-solo .score-gain {
+    margin-left: 0;
+}
+
+.series-room .score-row {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+}
+
+.series-room .score-row[data-me] {
+    background: var(--color-accent-soft);
+}
+
+.series-room .score-name {
+    font-size: var(--font-md);
+}
+
+.series-room .score-row[data-me] .score-name {
+    font-weight: 700;
+}
+
+.series-room .score-value {
+    font-size: var(--font-xl);
+    font-weight: 800;
 }
 
 .score-list {

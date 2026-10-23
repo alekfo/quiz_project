@@ -371,7 +371,7 @@ def solo_room(request: HttpRequest, pk: int):
         raise PermissionDenied
 
     if request.method == "POST":
-        if series_run.status in ["completed", "abandoned"] or series_run.created_by_id != request.user.id:
+        if series_run.status in ["completed", "abandoned"] or series_run.created_by_id != request.user.id or series_run.mode != "solo":
             raise PermissionDenied
         curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
 
@@ -510,8 +510,15 @@ def result(request: HttpRequest, pk: int):
     if curr_participant is None and not is_host:
         raise PermissionDenied
 
+    #считаем количество верных ответов
+    correct_answer_count = 0
+    if curr_participant is not None:
+        correct_answer_count = sum(1 for pa in curr_participant.participants_answers.all() if pa.is_correct)
+
     context = {
         "curr_participant": curr_participant,
         "session": session,
+        "question_count": len(session.quiz.questions.all()),
+        "correct_answer_count": correct_answer_count,
     }
     return render(request, "gameplay/result.html", context=context)
