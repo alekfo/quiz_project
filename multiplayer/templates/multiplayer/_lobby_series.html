@@ -11,7 +11,10 @@
                 <ol class="progress-list">
                     {% for round in object.current_series.rounds.all|dictsort:"round_order" %}
                         <li class="progress-item">
-                            <span class="progress-subject">{{ round.subject }}</span>
+                            <span class="progress-text">
+                                <span class="progress-subject">{{ round.subject }}</span>
+                                <span class="progress-points">+{{ round.points_per_correct }} за верный ответ</span>
+                            </span>
                         </li>
                     {% endfor %}
                 </ol>

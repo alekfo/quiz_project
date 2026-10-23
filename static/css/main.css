@@ -1820,10 +1820,21 @@ html:not(.js) #add-question-btn {
     box-shadow: none;
 }
 
-.progress-subject {
+/* название раунда и под ним очки за верный ответ */
+.progress-text {
+    display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
     min-width: 0;
+}
+
+.progress-subject {
     overflow-wrap: anywhere;
+}
+
+.progress-points {
+    font-size: var(--font-sm);
+    color: var(--color-text-muted);
 }
 
 .progress-item.is-pending .progress-subject {
@@ -2173,13 +2184,18 @@ html:not(.js) #add-question-btn {
     color: var(--color-text-muted);
 }
 
+/* «Игроки» - карточка .lobby-card: отступ под заголовком даёт её gap, ширину - stretch */
 .lobby-section-header {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
     gap: var(--space-2);
-    margin-bottom: var(--space-3);
+    align-self: stretch;
+}
+
+.lobby-section .user-list {
+    align-self: stretch;
 }
 
 .lobby-section-meta {
@@ -2207,8 +2223,49 @@ html:not(.js) #add-question-btn {
     display: none;
 }
 
+/* «История игр» - раскрывающаяся карточка: вся шапка нажимается, стрелка поворачивается */
+.lobby-history-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    list-style: none;
+    cursor: pointer;
+}
+
+.lobby-history-summary::-webkit-details-marker {
+    display: none;
+}
+
+.lobby-history-summary h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--font-lg);
+}
+
+.lobby-history-summary .disclosure-chevron {
+    flex: none;
+    color: var(--color-text-muted);
+}
+
+.lobby-history[open] .disclosure-chevron {
+    transform: rotate(180deg);
+}
+
+.lobby-history-summary:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 4px;
+    border-radius: var(--radius-btn);
+}
+
 .lobby-history-list {
-    margin-top: var(--space-3);
+    margin-top: var(--space-4);
+}
+
+.lobby-card .empty-state {
+    margin: 0;
 }
 
 .lobby-actions {

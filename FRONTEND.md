@@ -232,7 +232,8 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
   clipboard API, а без https — через выделение поля).
 - **Прогресс серии** — partial `gameplay/_series_progress.html` (лобби и соло-комната): `ol.progress-list` из
   `.progress-item.is-completed / .is-current / .is-pending` — номер в кружке (у пройденного — галочка на зелёном,
-  у текущего — акцент), название, справа ссылка «Результат» или метка «Идёт» / «Следующий»; ниже «Счёт» / «Итог»
+  у текущего — акцент), название и под ним `.progress-points` «+N за верный ответ» (обёртка `.progress-text`),
+  справа ссылка «Результат» или метка «Идёт» / «Следующий»; ниже «Счёт» / «Итог»
   — `ol.score-list` (аватар, ник, очки акцентом), в соло — одна строка «Ваш счёт». Заголовка внутри нет —
   его выводит страница.
 
@@ -440,6 +441,13 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 - `#lobby-status` несёт `data-room-status`: переход в `finished` — JS перезагружает страницу.
 - «История игр» — `<details id="lobby-history-details">`: открытость сохраняется при замене блока по WS.
 - `room_join` — только POST: «Стать участником» — форма, не ссылка.
+- Раскладка: с 900px две колонки, верхние карточки на одном уровне — слева «Пригласить игроков» (только хост)
+  и под ней «Квиз», справа «Игроки» и под ними «История игр». «Игроки» — тоже карточка (`.card.lobby-card`):
+  классы стоят на корне `#lobby-players` в partial, чтобы рамка сохранялась при замене блока по WS.
+  «История игр» — тоже карточка: `<details class="card lobby-history">`, шапка `<summary class="lobby-history-summary">`
+  (заголовок + счётчик + стрелка) нажимается целиком; в закрытой комнате без игр — `.card.lobby-card` с текстом.
+- Строка раунда (`.progress-item` в `_lobby_series.html` и `gameplay/_series_progress.html`) — название и под ним
+  `.progress-points` «+N за верный ответ» (`round.points_per_correct`; «+N», чтобы не склонять «очко»).
 
 ### Профиль — `users/about_me.html`, `users/user_update_form.html`
 
@@ -552,6 +560,8 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
    Сделано 2026-10-21: `room_detail.html` (блоки `_lobby_*.html`, `static/js/room-lobby.js`), `_room_status.html`,
    `_series_progress.html`, `room_close.html`, `roomplayer_confirm_delete.html`, `room_reset_confirm.html`.
    `solo_room.html` — только заголовок (вернули после выноса его из `_series_progress.html`), вёрстка — отдельным шагом.
+   2026-10-23 — правки по ручному тесту пользователя: «Игроки» и «История игр» — карточки, очки за верный ответ
+   у раундов, «Завершить участие» для хоста-участника. Лобби принято пользователем; осталась `solo_room.html`.
 6. **Игра**: `start.html`, `play.html`, `_players_status.html`, `result.html`.
 
 Статичные тексты (`privacy_policy.html`, `public_offer.html`) — в конце, им достаточно базовой типографики.

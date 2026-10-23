@@ -1,5 +1,5 @@
 {# Игроки комнаты с готовностью. Обновляется по WS (см. _room_status.html): вместо user - my_room_player. #}
-<section id="lobby-players" class="lobby-section" data-live aria-labelledby="lobby-players-title">
+<section id="lobby-players" class="card lobby-card lobby-section" data-live aria-labelledby="lobby-players-title">
     <div class="lobby-section-header">
         <h2 id="lobby-players-title">Игроки</h2>
         {% if object.status != "finished" and players_count %}

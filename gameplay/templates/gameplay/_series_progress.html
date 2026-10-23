@@ -10,7 +10,10 @@
     <ol class="progress-list">
         {% for item in rounds_progress %}
             <li class="progress-item is-{{ item.state }}">
-                <span class="progress-subject">{{ item.round.subject }}</span>
+                <span class="progress-text">
+                    <span class="progress-subject">{{ item.round.subject }}</span>
+                    <span class="progress-points">+{{ item.round.points_per_correct }} за верный ответ</span>
+                </span>
                 {% if item.state == "completed" %}
                     <a class="progress-action" href="{% url 'gameplay:result' pk=item.session.pk %}">Результат</a>
                 {% elif item.state == "current" %}

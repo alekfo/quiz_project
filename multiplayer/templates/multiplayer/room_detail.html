@@ -129,7 +129,7 @@
 
             <div class="form-actions lobby-actions">
                 {% if is_player %}
-                    <a class="btn btn-ghost" href="{% url 'multiplayer:room_quit' code=object.token %}">Выйти из комнаты</a>
+                    <a class="btn btn-ghost" href="{% url 'multiplayer:room_quit' code=object.token %}">{% if is_host %}Завершить участие{% else %}Выйти из комнаты{% endif %}</a>
                 {% else %}
                     <form method="post" action="{% url 'multiplayer:room_join' code=object.token %}">
                         {% csrf_token %}
