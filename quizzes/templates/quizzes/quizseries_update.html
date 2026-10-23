@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Общая информация: {{ object.title }} — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    {% url 'quizzes:quizzes_preview' pk=object.pk as back_url %}
+
+    <a class="back-link" href="{{ back_url }}">← К квизу</a>
+
+    <div class="page-header">
+        <div>
+            <h1>Общая информация</h1>
+            <p class="page-subtitle">Название, описание, категория и доступность квиза</p>
+        </div>
+    </div>
+
+    <form method="POST" class="quiz-form">
+        {% csrf_token  %}
+        {{ form.non_field_errors }}
+
+        <section class="card form-section">
+            {% include "_form_field.html" with field=form.title %}
+            {% include "_form_field.html" with field=form.description %}
+            <div class="form-grid">
+                {% include "_form_field.html" with field=form.category %}
+                {% include "_form_field.html" with field=form.status %}
+            </div>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>
+                Сохранить
+            </button>
+            <a class="btn btn-ghost" href="{{ back_url }}">Отмена</a>
+        </div>
+    </form>
+{% endblock %}

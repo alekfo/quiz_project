@@ -1,0 +1,12 @@
+{# Вариант ответа и радиокнопка "верный" в одной строке: option - поле option_N, radio - N-я кнопка correct_index #}
+<div class="option-row">
+    <label for="{{ option.id_for_label }}">{{ option.label }}</label>
+    <div class="option-row-controls">
+        {{ option }}
+        <label class="option-correct" for="{{ radio.id_for_label }}">
+            {{ radio.tag }}
+            Верный
+        </label>
+    </div>
+    {{ option.errors }}
+</div>

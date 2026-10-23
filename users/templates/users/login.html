@@ -1,4 +1,4 @@
-{% extends 'users/base.html' %}
+{% extends 'base.html' %}
 
 {% block title %}
     Login
@@ -8,7 +8,7 @@
     <form method="post">
         {% csrf_token %}
         {{ form.as_p }}
-        <button type="submit">Login</button>
+        <button class="btn" type="submit">Login</button>
     </form>
-    <a href="{% url 'users:register' %}">Зарегистрироваться</a>
+    <a class="btn" href="{% url 'users:register' %}">Зарегистрироваться</a>
 {% endblock %}

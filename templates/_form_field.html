@@ -1,0 +1,12 @@
+{# Поле формы при ручной раскладке: {% include "_form_field.html" with field=form.title %} #}
+<div class="form-field">
+    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {{ field }}
+    {# обёртка есть всегда: в .form-grid это третья строка поля, по ней выравниваются соседи #}
+    <div class="form-field-notes">
+        {{ field.errors }}
+        {% if field.help_text %}
+            <span class="helptext">{{ field.help_text }}</span>
+        {% endif %}
+    </div>
+</div>

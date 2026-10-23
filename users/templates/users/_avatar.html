@@ -1,0 +1,9 @@
+{# Аватар пользователя: картинка, а если её нет - первая буква ника. #}
+{# Параметры: avatar_user - пользователь; size - "sm" / "lg" (без него - средний). #}
+<span class="avatar{% if size %} avatar-{{ size }}{% endif %}" data-initial="{{ avatar_user.username|slice:':1'|upper }}">
+    {% if avatar_user.avatar %}
+        <img src="{{ avatar_user.avatar.url }}" alt="">
+    {% else %}
+        {{ avatar_user.username|slice:':1'|upper }}
+    {% endif %}
+</span>

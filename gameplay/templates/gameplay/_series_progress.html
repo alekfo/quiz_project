@@ -1,0 +1,52 @@
+{# Прогресс серии: раунды по порядку и счёт. Контекст - gameplay.services.get_series_progress. #}
+{# Включается в gameplay/solo_room.html и в лобби (multiplayer/_lobby_series.html, в т.ч. по WS - без request/user). #}
+<div class="series-progress">
+    {% if is_completed %}
+        <p class="series-progress-note">
+            {% if series_run.status == "completed" %}Квиз пройден{% else %}Квиз прерван{% endif %}
+        </p>
+    {% endif %}
+
+    <ol class="progress-list">
+        {% for item in rounds_progress %}
+            <li class="progress-item is-{{ item.state }}">
+                <span class="progress-text">
+                    <span class="progress-subject">{{ item.round.subject }}</span>
+                    <span class="progress-points">+{{ item.round.points_per_correct }} за верный ответ</span>
+                </span>
+                {% if item.state == "completed" %}
+                    <a class="progress-action" href="{% url 'gameplay:result' pk=item.session.pk %}">Результат</a>
+                {% elif item.state == "current" %}
+                    {% if is_current_round_is_in_progress %}
+                        <span class="tag tag-warning">Идёт</span>
+                    {% else %}
+                        <span class="tag">Следующий</span>
+                    {% endif %}
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ol>
+
+    {% if leaderboard %}
+        <div class="score">
+            <h3 class="score-title">{% if is_completed %}Итог{% else %}Счёт{% endif %}</h3>
+            {% if series_run.mode == "solo" %}
+                {% for player, total_score in leaderboard %}
+                    {# .score-solo-value / data-score - для анимации прибавки в solo_room (static/js/score-gain.js) #}
+                    <p class="score-solo">Ваш счёт: <strong class="score-solo-value" data-score="{{ total_score }}">{{ total_score }}</strong></p>
+                {% endfor %}
+            {% else %}
+                <ol class="score-list">
+                    {# data-me / data-score - для анимации прибавки в solo_room (static/js/score-gain.js); при рендере по WS user нет - пометки не будет #}
+                    {% for player, total_score in leaderboard %}
+                        <li class="score-row"{% if player == user %} data-me{% endif %}>
+                            {% include "users/_avatar.html" with avatar_user=player size="sm" %}
+                            <span class="score-name">{{ player.username }}</span>
+                            <span class="score-value" data-score="{{ total_score }}">{{ total_score }}</span>
+                        </li>
+                    {% endfor %}
+                </ol>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>

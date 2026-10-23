@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}
+    Редактирование профиля — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    <h1>Редактирование профиля</h1>
+    <form method="post" enctype="multipart/form-data" class="card profile-form">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        <div class="form-field">
+            <label for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+            {{ form.first_name }}
+            {{ form.first_name.errors }}
+        </div>
+        <div class="form-field">
+            <label for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+            {{ form.last_name }}
+            {{ form.last_name.errors }}
+        </div>
+        <div class="form-field">
+            <label for="{{ form.avatar.id_for_label }}">{{ form.avatar.label }}</label>
+            <div class="avatar-edit">
+                {% include "users/_avatar.html" with avatar_user=user size="lg" %}
+                <div class="avatar-field">{{ form.avatar }}</div>
+            </div>
+            {{ form.avatar.errors }}
+            <span class="helptext">Изображение до 5 МБ. Будет уменьшено и обрезано по кругу.</span>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="{% url 'users:about_me' %}" class="btn">Отмена</a>
+        </div>
+    </form>
+    <script src="{% static 'js/avatar-preview.js' %}" defer></script>
+{% endblock %}

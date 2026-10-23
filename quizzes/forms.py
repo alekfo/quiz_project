@@ -1,7 +1,7 @@
 from django import forms
 from django.core import validators
 
-from .models import Quiz, Question, AnswerOption, Category
+from .models import Quiz, Question, QuizSeries, Category
 from users.models import User
 
 class QuestionForm(forms.ModelForm):
@@ -55,22 +55,51 @@ QuestionFormSet = forms.inlineformset_factory(
         can_delete=True,
     )
 
-class QuizForm(forms.ModelForm):
+class QuizFormWithSeriesId(forms.ModelForm):
 
     class Meta:
         model = Quiz
-        fields = ["title", "description", "category", "subject", "level", "status", "style", "audience"]
+        fields = ["subject", "level", "style", "audience", "time_limit_seconds", "points_per_correct"]
+        labels = {
+            "subject": "Тема раунда",
+            "level": "Уровень сложности вопросов раунда",
+            "style": "Стиль вопросов раунда",
+            "audience": "Аудитория раунда",
+            "time_limit_seconds": "Отведенное время на ответ (в секундах)",
+            "points_per_correct": "Количество очков за правильный ответ"
+
+        }
+
+class QuizForm(QuizFormWithSeriesId):
+    """
+          Наследует поля раунда (subject/level/style/audience/time_limit_seconds)
+          от QuizFormWithSeriesId и добавляет поля будущей QuizSeries - используется,
+          когда series_id НЕТ (создаём новый квиз с нуля, а не раунд в существующий).
+          title/category/description/status объявлены прямо на классе, а не через
+          Meta.fields - это поля QuizSeries, а не Quiz, Meta.model у формы остаётся
+          Quiz (унаследован от родителя), так что form.save() их не тронет; достаёшь
+          их вручную из cleaned_data в forms_valid() при QuizSeries.objects.create(...).
+          """
+    title = forms.CharField(label="Название квиза", max_length=50)
+    category = forms.ModelChoiceField(label="Категория квиза", queryset=Category.objects.all())
+    description = forms.CharField(label="Описание квиза", max_length=255, required=False, widget=forms.Textarea(attrs={"rows": 4}))
+    status = forms.ChoiceField(label="Уровень доступности квиза", choices=QuizSeries.STATUS_CHOICES)
+
+    field_order = ["title", "category", "description", "status",
+                   "subject", "level", "style", "audience", "time_limit_seconds", "points_per_correct"]
+
+
+class QuizSeriesUpdateForm(forms.ModelForm):
+    class Meta:
+        model = QuizSeries
+        fields = ["title", "description", "category", "status"]
         labels = {
             "title": "Название квиза",
             "description": "Описание квиза",
             "category": "Категория квиза",
-            "subject": "Тема квиза",
-            "level": "Уровень сложности вопросов квиза",
             "status": "Уровень доступности квиза",
-            "style": "Стиль вопросов квиза",
-            "audience": "Аудитория квиза",
 
         }
         widgets = {
-            "description": forms.Textarea(attrs={"rows":10, "cols": 30})
+            "description": forms.Textarea(attrs={"rows": 3, "cols": 30})
         }
