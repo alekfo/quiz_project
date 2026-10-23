@@ -1,8 +1,13 @@
+from datetime import timedelta
+
 from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
+from django.contrib.messages import get_messages
+from django.db import connection
 from django.test import Client, TransactionTestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from gameplay.models import GameParticipant, GameSession, SeriesRun
@@ -42,22 +47,41 @@ class RoomTestCase(BaseTestCase):
         self.room.save()
         return run
 
+    def grow_lobby(self, run, step):
+        """
+        Ещё игрок, старый прогон и сыгранный раунд текущей серии - для тестов на число запросов.
+        Первый шаг делается до базового замера: пока связанных строк нет, Django пропускает
+        вложенные prefetch-запросы, и разница была бы не N+1, а фиксированной.
+        """
+        self.add_player(make_user(f"player{step}"), is_ready=True)
+        SeriesRun.objects.create(
+            series=make_series(self.host, title=f"Старая {step}"), mode="multiplayer", room=self.room,
+            created_by=self.host, status="abandoned",
+        )
+        GameSession.objects.create(
+            quiz=run.series.rounds.get(round_order=step), mode="multiplayer", created_by=self.host,
+            room=self.room, series_run=run, status="completed",
+        )
+        run.current_round_index = step + 1
+        run.save()
+
 
 class LoginRequiredTests(RoomTestCase):
     def test_all_room_urls_require_login(self):
         self.client.logout()
         get_urls = [reverse("multiplayer:room_list"), reverse("multiplayer:room_create")] + [
-            room_url(name, self.room) for name in ("room_detail", "room_join", "room_quit", "room_close")
+            room_url(name, self.room) for name in ("room_detail", "room_quit", "room_reset_quiz", "room_close")
         ]
         for url in get_urls:
             with self.subTest(url=url):
                 self.assertLoginRequired(self.client.get(url))
-        for name in ("room_set_quiz", "room_reset_quiz", "room_confirm_ready", "room_start"):
+        for name in ("room_join", "room_set_quiz", "room_reset_quiz", "room_confirm_ready", "room_start"):
             with self.subTest(name=name):
                 self.assertLoginRequired(self.client.post(room_url(name, self.room)))
 
     def test_state_changing_views_reject_get(self):
-        for name in ("room_set_quiz", "room_reset_quiz", "room_confirm_ready", "room_start"):
+        # GET на ссылку из <img src> на чужой странице не должен ничего менять (CSRF)
+        for name in ("room_join", "room_set_quiz", "room_confirm_ready", "room_start"):
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(room_url(name, self.room)).status_code, 405)
 
@@ -77,13 +101,92 @@ class RoomCreateAndListTests(RoomTestCase):
         tokens = list(Room.objects.values_list("token", flat=True))
         self.assertEqual(len(tokens), len(set(tokens)))
 
-    def test_list_shows_only_own_rooms_split_by_status(self):
-        finished = Room.objects.create(title="Закрытая", token="finished1", host=self.host, status="finished")
-        Room.objects.create(title="Чужая", token="foreign1", host=self.guest)
-        response = self.client.get(reverse("multiplayer:room_list"))
+
+class RoomListTests(RoomTestCase):
+    """Список комнат: комната участника отдельно, комнаты хоста, завершённые (хост или участник)."""
+
+    def room_list(self, client=None):
+        response = (client or self.client).get(reverse("multiplayer:room_list"))
         self.assertEqual(response.status_code, 200)
-        self.assertCountEqual(response.context["active_rooms"], [self.room])
-        self.assertCountEqual(response.context["finished_rooms"], [finished])
+        return response.context
+
+    def test_host_without_playing_sees_room_in_hosted_only(self):
+        ctx = self.room_list()
+        self.assertIsNone(ctx["participant_room"])
+        self.assertCountEqual(ctx["hosted_rooms"], [self.room])
+        self.assertCountEqual(ctx["finished_rooms"], [])
+
+    def test_player_of_foreign_room_sees_it_as_participant_room(self):
+        self.add_player(self.guest)
+        ctx = self.room_list(self.guest_client)
+        self.assertEqual(ctx["participant_room"], self.room)
+        self.assertCountEqual(ctx["hosted_rooms"], [])
+
+    def test_hosting_and_playing_room_is_not_duplicated_in_hosted(self):
+        self.add_player(self.host)
+        other = Room.objects.create(title="Вторая", token="hosted2", host=self.host)
+        ctx = self.room_list()
+        self.assertEqual(ctx["participant_room"], self.room)
+        self.assertCountEqual(ctx["hosted_rooms"], [other])
+
+    def test_participant_room_counts_all_players(self):
+        # условие "я участник" не должно сужать JOIN, по которому считается players_count
+        self.add_player(self.guest)
+        self.add_player(make_user("third"))
+        ctx = self.room_list(self.guest_client)
+        self.assertEqual(ctx["participant_room"].players_count, 2)
+
+    def test_finished_rooms_include_hosted_and_played_without_duplicates(self):
+        self.room.status = "finished"
+        self.room.save()
+        for name in ("p1", "p2", "p3"):
+            self.add_player(make_user(name))
+        played = Room.objects.create(title="Чужая закрытая", token="played1", host=self.guest, status="finished")
+        RoomPlayer.objects.create(room=played, user=self.host)
+        RoomPlayer.objects.create(room=played, user=self.guest)
+
+        finished = list(self.room_list()["finished_rooms"])
+        self.assertCountEqual(finished, [self.room, played])
+        counts = {room.pk: room.players_count for room in finished}
+        self.assertEqual(counts, {self.room.pk: 3, played.pk: 2})
+
+    def test_finished_room_is_not_active(self):
+        self.add_player(self.host)
+        self.room.status = "finished"
+        self.room.save()
+        ctx = self.room_list()
+        self.assertIsNone(ctx["participant_room"])
+        self.assertCountEqual(ctx["hosted_rooms"], [])
+        self.assertCountEqual(ctx["finished_rooms"], [self.room])
+
+    def test_foreign_rooms_are_not_listed(self):
+        Room.objects.create(title="Чужая", token="foreign1", host=self.guest)
+        Room.objects.create(title="Чужая закрытая", token="foreign2", host=self.guest, status="finished")
+        ctx = self.room_list()
+        self.assertIsNone(ctx["participant_room"])
+        self.assertCountEqual(ctx["hosted_rooms"], [self.room])
+        self.assertCountEqual(ctx["finished_rooms"], [])
+
+    def test_rooms_are_newest_first(self):
+        newer = Room.objects.create(title="Новее", token="newer1", host=self.host)
+        self.assertEqual(list(self.room_list()["hosted_rooms"]), [newer, self.room])
+
+    def test_query_count_does_not_grow_with_rooms(self):
+        series = make_series(self.host)
+        self.room.current_series = series
+        self.room.save()
+        self.add_player(self.host)
+        url = reverse("multiplayer:room_list")
+        with CaptureQueriesContext(connection) as few:
+            self.client.get(url)
+        for i in range(3):
+            room = Room.objects.create(title=f"Ещё {i}", token=f"more{i}", host=self.host, current_series=series)
+            RoomPlayer.objects.create(room=room, user=self.guest)
+            Room.objects.create(title=f"Закрытая {i}", token=f"closed{i}", host=self.host,
+                                current_series=series, status="finished")
+        with CaptureQueriesContext(connection) as many:
+            self.client.get(url)
+        self.assertEqual(len(many), len(few))
 
 
 class RoomDetailTests(RoomTestCase):
@@ -102,28 +205,105 @@ class RoomDetailTests(RoomTestCase):
                 self.assertEqual((response.context["is_host"], response.context["is_player"]),
                                  (is_host, is_player))
 
+    def test_visitor_sees_players_and_series_without_forms_or_links(self):
+        """Посетитель: снимок без WS, только вход в комнату; ссылки на результаты и историю ему дали бы 403."""
+        series = make_series(self.host, rounds=2, title="Выбранный квиз")
+        run = self.make_run(series)
+        GameSession.objects.create(
+            quiz=series.rounds.get(round_order=0), mode="multiplayer", created_by=self.host,
+            room=self.room, series_run=run, status="completed",
+        )
+        SeriesRun.objects.create(
+            series=make_series(self.host, title="Старый"), mode="multiplayer", room=self.room,
+            created_by=self.host, status="abandoned",
+        )
+        self.add_player(self.guest)
+        visitor = Client()
+        visitor.force_login(make_user("visitor"))
+
+        response = self.detail(visitor)
+        self.assertContains(response, "Выбранный квиз")
+        self.assertContains(response, "guest")
+        self.assertContains(response, room_url("room_join", self.room))
+        for absent in ("data-lobby-socket", "confirm-ready-form", "start-form", "select-series-form",
+                       "reset-series-form", "lobby-history-details", "/result/", "solo_room"):
+            with self.subTest(absent=absent):
+                self.assertNotContains(response, absent)
+
     def test_series_form_is_only_in_host_context(self):
         self.add_player(self.guest)
         self.assertIn("series_form", self.detail(self.client).context)
         self.assertNotIn("series_form", self.detail(self.guest_client).context)
 
-    def test_can_start_round_depends_on_series_and_active_round(self):
-        series = make_series(self.host)
+    def start_flags(self):
         context = self.detail(self.client).context
-        self.assertEqual((context["has_selected_series"], context["can_start_round"], context["is_first_round"]),
-                         (False, False, True))
+        return {key: context[key] for key in ("players_count", "ready_count", "start_available", "can_start_round")}
 
-        run = self.make_run(series)
+    def test_start_is_unavailable_without_series(self):
+        self.add_player(self.guest, is_ready=True)
         context = self.detail(self.client).context
-        self.assertEqual((context["has_selected_series"], context["can_start_round"], context["is_first_round"]),
-                         (True, True, False))
+        self.assertEqual(
+            (context["has_selected_series"], context["start_available"], context["can_start_round"],
+             context["is_first_round"], context["series_run_started"]),
+            (False, False, False, True, False),
+        )
+
+    def test_can_start_round_requires_players_and_everyone_ready(self):
+        """start_available - блок старта виден, can_start_round - кнопку можно нажать (как в room_start)."""
+        self.room.current_series = make_series(self.host)
+        self.room.save()
+        self.assertEqual(self.start_flags(), {
+            "players_count": 0, "ready_count": 0, "start_available": True, "can_start_round": False,
+        })
+
+        self.add_player(self.guest, is_ready=True)
+        host_player = self.add_player(self.host)
+        self.assertEqual(self.start_flags(), {
+            "players_count": 2, "ready_count": 1, "start_available": True, "can_start_round": False,
+        })
+
+        host_player.is_ready = True
+        host_player.save()
+        self.assertEqual(self.start_flags(), {
+            "players_count": 2, "ready_count": 2, "start_available": True, "can_start_round": True,
+        })
+
+    def test_start_is_unavailable_while_round_is_running(self):
+        series = make_series(self.host)
+        run = self.make_run(series)
+        self.add_player(self.guest, is_ready=True)
+        context = self.detail(self.client).context
+        self.assertEqual((context["is_first_round"], context["series_run_started"], context["can_start_round"]),
+                         (False, True, True))
 
         session = GameSession.objects.create(
             quiz=series.rounds.get(), mode="multiplayer", created_by=self.host, room=self.room, series_run=run,
         )
         self.room.current_game_session = session
         self.room.save()
-        self.assertFalse(self.detail(self.client).context["can_start_round"])
+        flags = self.start_flags()
+        self.assertEqual((flags["start_available"], flags["can_start_round"]), (False, False))
+
+    def test_players_are_listed_in_join_order(self):
+        # порядок задаёт RoomPlayer.Meta.ordering по joined_at, а не pk
+        first_created = self.add_player(self.guest)
+        second_created = self.add_player(self.host)
+        RoomPlayer.objects.filter(pk=first_created.pk).update(joined_at=second_created.joined_at + timedelta(minutes=1))
+        room = self.detail(self.client).context["object"]
+        self.assertEqual([p.user for p in room.room_players.all()], [self.host, self.guest])
+
+    def test_query_count_does_not_grow_with_players_and_history(self):
+        run = self.make_run(make_series(self.host, rounds=4))
+        self.grow_lobby(run, 0)
+        url = room_url("room_detail", self.room)
+        with CaptureQueriesContext(connection) as few:
+            self.client.get(url)
+
+        self.grow_lobby(run, 1)
+        self.grow_lobby(run, 2)
+        with CaptureQueriesContext(connection) as many:
+            self.client.get(url)
+        self.assertEqual(len(many), len(few))
 
     def test_history_contains_only_finished_runs(self):
         abandoned = SeriesRun.objects.create(
@@ -147,37 +327,46 @@ class RoomDetailTests(RoomTestCase):
 
 
 class JoinAndQuitTests(RoomTestCase):
+    def join(self, room):
+        return self.guest_client.post(room_url("room_join", room))
+
     def test_join_creates_room_player(self):
-        response = self.guest_client.get(room_url("room_join", self.room))
+        response = self.join(self.room)
         self.assertRedirects(response, room_url("room_detail", self.room), fetch_redirect_response=False)
         player = RoomPlayer.objects.get()
         self.assertEqual((player.room, player.user, player.is_ready), (self.room, self.guest, False))
 
     def test_join_twice_keeps_single_player(self):
-        self.guest_client.get(room_url("room_join", self.room))
-        self.guest_client.get(room_url("room_join", self.room))
+        self.join(self.room)
+        self.join(self.room)
         self.assertEqual(RoomPlayer.objects.count(), 1)
+
+    def test_rejoining_same_room_says_already_in_this_room(self):
+        """Своя комната не считается "другой активной" - сообщение про эту комнату."""
+        self.add_player(self.guest)
+        response = self.join(self.room)
+        self.assertEqual([m.message for m in get_messages(response.wsgi_request)], ["Вы уже участвуете в этой комнате"])
 
     def test_cannot_join_second_active_room(self):
         self.add_player(self.guest)
         other = Room.objects.create(title="Другая", token="other1", host=self.host)
-        self.guest_client.get(room_url("room_join", other))
+        self.join(other)
         self.assertFalse(other.room_players.exists())
 
     def test_can_join_after_previous_room_finished(self):
         self.add_player(self.guest)
         Room.objects.filter(pk=self.room.pk).update(status="finished")
         other = Room.objects.create(title="Другая", token="other1", host=self.host)
-        self.guest_client.get(room_url("room_join", other))
+        self.join(other)
         self.assertTrue(other.room_players.filter(user=self.guest).exists())
 
     def test_cannot_join_finished_room(self):
         Room.objects.filter(pk=self.room.pk).update(status="finished")
-        self.guest_client.get(room_url("room_join", self.room))
+        self.join(self.room)
         self.assertFalse(RoomPlayer.objects.exists())
 
     def test_join_unknown_room_is_404(self):
-        response = self.guest_client.get(reverse("multiplayer:room_join", kwargs={"code": "nosuchroom"}))
+        response = self.guest_client.post(reverse("multiplayer:room_join", kwargs={"code": "nosuchroom"}))
         self.assertEqual(response.status_code, 404)
 
     def test_quit_removes_only_own_player(self):
@@ -243,6 +432,12 @@ class SeriesSelectionTests(RoomTestCase):
         self.assertEqual(self.guest_client.post(room_url("room_reset_quiz", self.room)).status_code, 403)
         self.assertIsNone(self.current_series())
 
+        self.select(self.own)
+        self.make_run(self.own)
+        self.assertEqual(self.guest_client.get(room_url("room_reset_quiz", self.room)).status_code, 403)
+        self.assertEqual(self.guest_client.post(room_url("room_reset_quiz", self.room)).status_code, 403)
+        self.assertEqual(self.current_series(), self.own)
+
     def test_selecting_series_resets_readiness(self):
         self.add_player(self.guest, is_ready=True)
         self.select(self.own)
@@ -268,6 +463,48 @@ class SeriesSelectionTests(RoomTestCase):
         self.assertIsNotNone(run.finished_at)
         self.assertEqual((self.room.current_series, self.room.current_series_run), (None, None))
         self.assertFalse(self.room.room_players.filter(is_ready=True).exists())
+
+    def test_reset_before_first_round_clears_series(self):
+        """Серия выбрана, прогона ещё нет (current_series_run is None)."""
+        self.select(self.own)
+        response = self.client.post(room_url("room_reset_quiz", self.room))
+        self.assertRedirects(response, room_url("room_detail", self.room), fetch_redirect_response=False)
+        self.assertIsNone(self.current_series())
+
+    def test_reset_get_with_started_series_shows_confirmation(self):
+        """Серия начата - GET только спрашивает: прогон не прерывается, серия остаётся."""
+        run = self.make_run(make_series(self.host, rounds=3, title="Начатая"))
+        GameSession.objects.create(
+            quiz=run.series.rounds.get(round_order=0), mode="multiplayer", created_by=self.host,
+            room=self.room, series_run=run, status="completed",
+        )
+        response = self.client.get(room_url("room_reset_quiz", self.room))
+        self.assertTemplateUsed(response, "multiplayer/room_reset_confirm.html")
+        self.assertEqual((response.context["completed_rounds"], response.context["rounds_in_series"]), (1, 3))
+        run.refresh_from_db()
+        self.assertEqual((self.current_series(), run.status), (run.series, "in_progress"))
+
+    def test_reset_get_without_run_redirects_to_lobby(self):
+        """Прогона нет - подтверждать нечего, GET ничего не меняет."""
+        self.select(self.own)
+        response = self.client.get(room_url("room_reset_quiz", self.room))
+        self.assertRedirects(response, room_url("room_detail", self.room), fetch_redirect_response=False)
+        self.assertEqual(self.current_series(), self.own)
+
+    def test_cannot_reset_while_round_is_running(self):
+        run = self.make_run(self.own)
+        session = GameSession.objects.create(
+            quiz=self.own.rounds.get(), mode="multiplayer", created_by=self.host, room=self.room, series_run=run,
+        )
+        self.room.current_game_session = session
+        self.room.save()
+        for method in (self.client.get, self.client.post):
+            with self.subTest(method=method.__name__):
+                response = method(room_url("room_reset_quiz", self.room))
+                self.assertRedirects(response, room_url("room_detail", self.room), fetch_redirect_response=False)
+                self.assertEqual({m.level_tag for m in get_messages(response.wsgi_request)}, {"error"})
+        run.refresh_from_db()
+        self.assertEqual((self.current_series(), run.status), (self.own, "in_progress"))
 
     def test_series_stays_in_room_when_author_makes_it_private(self):
         """Принятое решение: правило проверяется только в момент выбора, комната доигрывает."""
@@ -389,6 +626,30 @@ class RoomStartTests(RoomTestCase):
         self.assertFalse(GameSession.objects.exists())
 
 
+class RoomConsumerQueryCountTests(RoomTestCase):
+    """room_update рендерит лобби на каждое событие для каждого подключённого - без N+1."""
+
+    def render_update(self) -> int:
+        consumer = RoomConsumer()
+        consumer.scope = {"user": self.host}
+        consumer.room_code = self.room.token
+        sent = []
+        consumer.send = lambda text_data=None, **kwargs: sent.append(text_data)
+        with CaptureQueriesContext(connection) as queries:
+            consumer.room_update({"type": "room.update"})
+        self.assertEqual(len(sent), 1)
+        return len(queries)
+
+    def test_query_count_does_not_grow_with_players_and_history(self):
+        run = self.make_run(make_series(self.host, rounds=4))
+        self.grow_lobby(run, 0)
+        few = self.render_update()
+
+        self.grow_lobby(run, 1)
+        self.grow_lobby(run, 2)
+        self.assertEqual(self.render_update(), few)
+
+
 class RoomCloseTests(RoomTestCase):
     def test_host_sees_confirmation_page(self):
         self.assertEqual(self.client.get(room_url("room_close", self.room)).status_code, 200)
@@ -472,13 +733,18 @@ class RoomConsumerTests(TransactionTestCase):
         communicator, _ = await self.connect(self.guest)
         await self.send_update()
         message = await communicator.receive_json_from()
-        self.assertCountEqual(
-            message, ["html", "can_confirm", "is_ready", "can_start_round", "has_selected_series", "is_first_round"],
-        )
-        # серия выбрана, игрок ещё не подтвердил готовность
+        self.assertCountEqual(message, [
+            "html", "can_confirm", "is_ready", "players_count", "ready_count", "start_available",
+            "can_start_round", "has_selected_series", "is_first_round",
+        ])
+        # серия выбрана, единственный игрок ещё не подтвердил готовность
         self.assertEqual(
             (message["can_confirm"], message["is_ready"], message["has_selected_series"], message["is_first_round"]),
             (True, False, True, True),
+        )
+        self.assertEqual(
+            (message["players_count"], message["ready_count"], message["start_available"], message["can_start_round"]),
+            (1, 0, True, False),
         )
         await communicator.disconnect()
 

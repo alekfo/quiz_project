@@ -210,6 +210,33 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
   селекторов внутри компонентов, переопределять `max-width` / `margin-top` напрямую бесполезно.
 - **`.visually-hidden`** — скрыть текст визуально, оставив его для экранного диктора.
 
+Готово (2026-10-19):
+
+- **Строка комнаты** — `ul.room-list` из строк `a.room-row`: вид общий со строкой пользователя (правила
+  `.user-list` / `.user-row` объединены с ними в разделе компонентов), слева `.room-row-text` (`.room-row-title` +
+  строка `.room-meta`), справа метка. Вся строка — ссылка в лобби.
+- **Строка о комнате** — partial `multiplayer/_room_meta.html` (параметр `room`): приглушённая `.room-meta` —
+  «Квиз: … / Квиз не выбран», «Игроков: N», «Создана дд.мм.гггг»; пункты переносятся целиком.
+  Дата — цифрами (`d.m.Y`): `LANGUAGE_CODE = 'en-us'`, месяц словами вышел бы английским.
+- **Метка статуса комнаты** — partial `multiplayer/_room_status_tag.html` (параметр `room`): «Ожидание» — `.tag-muted`,
+  «Идёт игра» — `.tag-warning` (тот же цвет, что «Идёт игра» у квизов), «Завершена» — `.tag-muted`.
+  Использовать её же в лобби, если там понадобится статус.
+- **Выделенная карточка комнаты** — `.card.room-current` (рамка акцентом): ряд меток `.room-current-tags`,
+  `.room-current-title`, `.room-meta`, главная кнопка. Группы на странице — `.room-group` с `<h3>`.
+
+Готово (2026-10-21):
+
+- **Поле «Скопировать»** — `.copy-field`: поле `readonly` с готовым текстом (приглушённое, на фоне страницы) и
+  `.btn` со значком «Скопировать» в один ряд, подпись поля — `.visually-hidden`. Ширина поля — тем же приёмом
+  `--field-width: 100%`, что у поиска. Копирование и тост — в JS страницы (образец — `static/js/room-lobby.js`:
+  clipboard API, а без https — через выделение поля).
+- **Прогресс серии** — partial `gameplay/_series_progress.html` (лобби и соло-комната): `ol.progress-list` из
+  `.progress-item.is-completed / .is-current / .is-pending` — номер в кружке (у пройденного — галочка на зелёном,
+  у текущего — акцент), название и под ним `.progress-points` «+N за верный ответ» (обёртка `.progress-text`),
+  справа ссылка «Результат» или метка «Идёт» / «Следующий»; ниже «Счёт» / «Итог»
+  — `ol.score-list` (аватар, ник, очки акцентом), в соло — одна строка «Ваш счёт». Заголовка внутри нет —
+  его выводит страница.
+
 ### Организация CSS
 
 - Пока один файл `static/css/main.css`: токены → сброс и базовые теги → компоненты → страницы.
@@ -315,12 +342,18 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 
 ### Фрагменты, приходящие по WebSocket
 
-`multiplayer/_room_status.html` (корень `#room-status`) и `gameplay/_players_status.html` (корень `#waiting-info`)
-рендерятся в консьюмерах через `render_to_string` **без `request`** и заменяют элемент целиком.
+`multiplayer/_room_status.html` и `gameplay/_players_status.html` (корень `#waiting-info`) рендерятся в консьюмерах
+через `render_to_string` **без `request`**.
 
-- Корневой элемент и его `id` сохранять.
+- `gameplay/_players_status.html` заменяет `#waiting-info` целиком — корень и его `id` сохранять.
+- `multiplayer/_room_status.html` (с 2026-10-21) — только обёртка для WS-ответа: включает блоки
+  `_lobby_status.html` (`#lobby-status`), `_lobby_series.html` (`#lobby-series`), `_lobby_players.html`
+  (`#lobby-players`), `_lobby_history.html` (`#lobby-history`). На странице обёртки нет — `room_detail.html`
+  включает те же partial'ы по своим местам, а `room-lobby.js` заменяет каждый блок с `data-live` по его `id`.
+  Новый обновляемый блок лобби — отдельный partial с `id` и `data-live`, включённый и в обёртку, и в страницу.
 - Внутри этих фрагментов нельзя использовать `request`, `user`, `{% csrf_token %}` и формы —
-  их там нет, отрисуется пустота. Формы лобби лежат в `room_detail.html` вне `#room-status`.
+  их там нет, отрисуется пустота. Вместо `user` в лобби — `my_room_player` / `is_host` / `is_player`.
+  Формы лобби лежат в `room_detail.html` вне блоков `data-live`.
 - `gameplay/_series_progress.html` включается и в лобби, и в `solo_room.html` — править с оглядкой на оба места.
 
 ### Формсет вопросов — `quizzes/quiz_form.html`
@@ -394,12 +427,27 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
 - `#answer-form`, `input[name="chosen_option_id"]`, `#submit_button`, `#timer`, `#fact`, `#waiting-info`.
 - Таймер и блокировка отправки управляются inline-JS страницы — его не трогать.
 
-### Лобби — `multiplayer/room_detail.html`, `_room_status.html`
+### Лобби — `multiplayer/room_detail.html`, `_room_status.html`, `_lobby_*.html`
 
-- `#confirm-ready-form`, `#select-series-form`, `#reset-series-form`, `#start-form`, `#start-button`,
-  `#ready-confirmed-msg`, `#room-link`, `#copy-link-btn`.
-- `.toggle-btn` + `data-target="<id блока>"` + `hidden` у целевого блока
-  (`#link-container`, `#series-history-container`).
+- Весь JS лобби — `static/js/room-lobby.js` (inline-скриптов в шаблоне нет). Адрес WS — атрибут
+  `data-lobby-socket` на `.lobby`: только хосту и игроку незакрытой комнаты (посетителя консьюмер не пускает).
+- id форм и элементов, которые JS скрывает по флагам WS-сообщения: `#select-series-form` (`!has_selected_series`),
+  `#reset-series-form` и `#start-form` (`start_available`), `#start-button` (`disabled` — `!can_start_round`, текст —
+  по `is_first_round`), `#start-note` («Ждём готовности: N из M»), `#confirm-ready-form` (`can_confirm`),
+  `#ready-confirmed-msg` и `#return-to-game` (по тому, идёт ли раунд). Ссылка на комнату — `#room-link`
+  (поле, значение — `value`) и `#copy-link-btn`; плашка обрыва WS — `#lobby-connection`.
+- `#reset-series-form` — `<form>` (серия не начата, сброс сразу) или `<a>` на страницу подтверждения
+  (`series_run_started`) — тот же `id` у обоих.
+- `#lobby-status` несёт `data-room-status`: переход в `finished` — JS перезагружает страницу.
+- «История игр» — `<details id="lobby-history-details">`: открытость сохраняется при замене блока по WS.
+- `room_join` — только POST: «Стать участником» — форма, не ссылка.
+- Раскладка: с 900px две колонки, верхние карточки на одном уровне — слева «Пригласить игроков» (только хост)
+  и под ней «Квиз», справа «Игроки» и под ними «История игр». «Игроки» — тоже карточка (`.card.lobby-card`):
+  классы стоят на корне `#lobby-players` в partial, чтобы рамка сохранялась при замене блока по WS.
+  «История игр» — тоже карточка: `<details class="card lobby-history">`, шапка `<summary class="lobby-history-summary">`
+  (заголовок + счётчик + стрелка) нажимается целиком; в закрытой комнате без игр — `.card.lobby-card` с текстом.
+- Строка раунда (`.progress-item` в `_lobby_series.html` и `gameplay/_series_progress.html`) — название и под ним
+  `.progress-points` «+N за верный ответ» (`round.points_per_correct`; «+N», чтобы не склонять «очко»).
 
 ### Профиль — `users/about_me.html`, `users/user_update_form.html`
 
@@ -441,6 +489,21 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
   перезагружается целиком обычным GET. Без этого HTMX восстанавливал бы старую копию HTML (пустое поле поиска,
   вкладки без обработчиков), а при её отсутствии запрашивал бы адрес с `HX-Request` и получал один partial.
   Любой новой странице с `hx-push-url` нужно то же самое.
+
+### Комнаты — `multiplayer/room_list.html`
+
+- Контекст из `RoomListView` (`TemplateView`): `participant_room` — незакрытая комната, где пользователь игрок
+  (один `Room` или `None`), `hosted_rooms` — незакрытые комнаты, где он хост, без `participant_room`,
+  `finished_rooms` — закрытые, где он хост или игрок. У каждой комнаты `current_series` подгружена через
+  `select_related` и есть аннотация `players_count`: в шаблоне не заменять на `room.room_players.count` /
+  `.all|length` (тест `RoomListTests.test_query_count_does_not_grow_with_rooms` ловит рост числа запросов).
+- Вкладки — тот же `.tabs` + `tabs.js`, панели `#active` и `#finished` (попадают в адрес). Счётчик «Активные» —
+  `hosted_rooms|length` плюс 1, если есть `participant_room`; `|length` вычисляет QuerySet и кэширует его,
+  цикл ниже второго запроса не делает.
+- Во вкладке «Активные»: блок «Вы участник» (`participant_room`, метка «Вы хост», если он же хост), затем «Вы хост»;
+  пустое состояние — только если пусто и то и другое. В «Завершённых» метка роли «Вы хост» / «Участник» —
+  по `room.host_id == user.id` (отображение, не правило доступа; кто попадает в список, решает вьюха).
+- Комната ведёт в лобби по `room.token` (`multiplayer:room_detail`, параметр `code`).
 
 ### Регистрация — `users/register.html`
 
@@ -486,13 +549,19 @@ flash-сообщение (`.messages li.success` / `.error`), список, ша
    и сохранения. Сделано 2026-10-13: `user_detail.html` и `social/_follow_button.html` (сетка карточек квизов
    на чужом профиле в браузере не проверена — в dev-базе не было чужих публичных квизов).
    Сделано 2026-10-14: `users_list.html` (подписки / подписчики вкладками, живой поиск).
-   Осталось: `room_list.html` (вкладки «Активные / Завершённые» — тем же `.tabs` + `tabs.js`).
+   Сделано 2026-10-19: `room_list.html` (вкладки «Активные / Завершённые», блок «Вы участник», список «Вы хост»).
+   Шаг «Списки и превью» закрыт.
 4. **Формы**: `login.html`, `register.html`, `quiz_form.html`, `ai_generator_index.html`, `temp_ai_quiz.html`,
    `room_form.html`, страницы подтверждения удаления, `feedback.html`, `settings.html`.
    Сделано 2026-10-09 (вне очереди, вместе со страницами квизов): `quiz_form.html`, `quizseries_update.html`,
    `quiz_confirm_delete.html`, `round_confirm_delete.html`, `ai_generator_index.html`, `temp_ai_quiz.html`
    (последняя в браузере не проверена — открывается только после реальной генерации).
 5. **Лобби**: `room_detail.html`, `_room_status.html`, `_series_progress.html`, `solo_room.html`, `room_close.html`.
+   Сделано 2026-10-21: `room_detail.html` (блоки `_lobby_*.html`, `static/js/room-lobby.js`), `_room_status.html`,
+   `_series_progress.html`, `room_close.html`, `roomplayer_confirm_delete.html`, `room_reset_confirm.html`.
+   `solo_room.html` — только заголовок (вернули после выноса его из `_series_progress.html`), вёрстка — отдельным шагом.
+   2026-10-23 — правки по ручному тесту пользователя: «Игроки» и «История игр» — карточки, очки за верный ответ
+   у раундов, «Завершить участие» для хоста-участника. Лобби принято пользователем; осталась `solo_room.html`.
 6. **Игра**: `start.html`, `play.html`, `_players_status.html`, `result.html`.
 
 Статичные тексты (`privacy_policy.html`, `public_offer.html`) — в конце, им достаточно базовой типографики.

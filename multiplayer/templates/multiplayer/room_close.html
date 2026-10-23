@@ -1,16 +1,29 @@
 {% extends 'base.html' %}
 
 {% block title %}
-   confirm_close
+    Закрыть комнату: {{ room.title }} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <div>
-        <form method="POST">
-            {% csrf_token  %}
-            <p>Вы уверены, что хотите закрыть комнату {{ room.title }}?</p>
-            <button class="btn" type="submit">Да, уверен</button>
+    {% url 'multiplayer:room_detail' code=room.token as back_url %}
+
+    <a class="back-link" href="{{ back_url }}">← В комнату</a>
+
+    <section class="card confirm-card">
+        <h1>Закрыть комнату?</h1>
+        <p class="confirm-subject">{{ room.title }}</p>
+        <p class="confirm-text">
+            {% if room.current_series_run %}
+                Квиз «{{ room.current_series_run.series.title }}» ещё не доигран — он будет прерван.
+            {% endif %}
+            Новые игры в комнате начать будет нельзя, войти в неё — тоже. История игр и список игроков останутся.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Закрыть комнату</button>
+                <a class="btn btn-ghost" href="{{ back_url }}">Отмена</a>
+            </div>
         </form>
-        <a class="btn" href="{% url 'multiplayer:room_detail' code=room.token %}">Вернуться</a>
-    </div>
+    </section>
 {% endblock %}

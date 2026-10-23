@@ -37,9 +37,28 @@ def get_series_progress(series_run: SeriesRun) -> dict:
         if gs.quiz == current_round and gs.status == "in_progress"
     )
 
+    #все раунды прогона
+    rounds = sorted(series_run.series.rounds.all(), key=lambda r: r.round_order)
+
+    #словарь завершенных сессиий прогона где ключ - quiz_id текущей завершенной сессии, значение - сама текущая завершенная сессия
+    completed_by_quiz = {s.quiz_id: s for s in completed_sessions}
+
+    rounds_progress = []
+    for r in rounds:
+        session = completed_by_quiz.get(r.pk)
+        if session:
+            state = "completed"
+        elif r.round_order == series_run.current_round_index:
+            state = "current"
+        else:
+            state = "pending"
+        rounds_progress.append({"round": r, "state": state, "session": session})
+
     return {
         "series_run": series_run,
         "completed_sessions": completed_sessions,
+        "rounds_progress": rounds_progress,
+        "rounds_count": len(rounds),
         "current_round": current_round,
         "is_completed": is_completed,
         "leaderboard": leaderboard,
