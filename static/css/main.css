@@ -1912,14 +1912,466 @@ html:not(.js) #add-question-btn {
 }
 
 /* ===== 7. GAMEPLAY ===== */
-.session-section {
-    display: flex;
-    justify-content: space-between;
-}
 
-.question-section {
+/* --- экран игры (gameplay/play.html, _players_status.html; логика - static/js/play.js) --- */
+
+.play-card {
     display: flex;
     flex-direction: column;
+    gap: var(--space-5);
+    max-width: var(--card-width);
+    padding: var(--space-5);
+}
+
+/* шапка: слева номер вопроса и точки ответов, справа счёт и серия */
+.play-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3) var(--space-4);
+}
+
+.play-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.play-step {
+    margin: 0;
+    font-weight: 700;
+    color: var(--color-text-muted);
+}
+
+.answer-dots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.answer-dot {
+    flex: none;
+    width: var(--space-3);
+    height: var(--space-3);
+    background: var(--color-track);
+    border-radius: var(--radius-full);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.answer-dot.is-correct {
+    background: var(--color-success);
+    box-shadow: none;
+}
+
+.answer-dot.is-wrong {
+    background: var(--color-error);
+    box-shadow: none;
+}
+
+.answer-dot.is-skipped {
+    background: var(--color-text-muted);
+    box-shadow: none;
+}
+
+.answer-dot.is-current {
+    background: var(--color-accent-soft);
+}
+
+/* где мы сейчас - кольцо акцентом, и до ответа, и на экране вердикта */
+.answer-dot.is-now {
+    box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent);
+}
+
+.play-stats {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-2);
+}
+
+.play-score {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin: 0;
+    color: var(--color-text-muted);
+}
+
+.play-score-value {
+    font-size: var(--font-xl);
+    font-weight: 800;
+    line-height: 1;
+    color: var(--color-accent);
+    font-variant-numeric: tabular-nums;
+}
+
+/* полоса времени: цвет по доле оставшегося (классы ставит play.js) */
+.timer {
+    --timer-color: var(--color-success);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.timer.is-warning {
+    --timer-color: var(--color-warning);
+}
+
+.timer.is-danger {
+    --timer-color: var(--color-error);
+}
+
+.timer-track {
+    flex: 1 1 auto;
+    height: var(--space-2);
+    overflow: hidden;
+    background: var(--color-track);
+    border-radius: var(--radius-full);
+}
+
+.timer-fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: var(--timer-color);
+    border-radius: inherit;
+    transition: width 0.25s linear, background-color 0.6s ease;
+}
+
+.timer-seconds {
+    flex: none;
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.play-question {
+    margin: 0;
+    font-size: var(--font-xl);
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+/* варианты ответа - карточки вокруг радиокнопок; на телефоне столбиком, с 640px - 2×2 */
+.option-list {
+    display: grid;
+    gap: var(--space-3);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    list-style: none;
+}
+
+.option-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--tap-size);
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    font-weight: 400;
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.option-card:hover {
+    border-color: var(--color-accent);
+}
+
+/* сама радиокнопка не видна, но остаётся в фокусе и в форме */
+.option-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.option-card:has(.option-input:checked) {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+}
+
+.option-card:has(.option-input:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+.option-key {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--avatar-sm);
+    height: var(--avatar-sm);
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    border-radius: var(--radius-full);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.option-card:has(.option-input:checked) .option-key {
+    color: var(--color-on-accent);
+    background: var(--color-accent);
+    box-shadow: none;
+}
+
+/* метка «Ваш ответ» / «Верный ответ» - под текстом варианта, чтобы не сжимать его по ширине */
+.option-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+    min-width: 0;
+    overflow-wrap: break-word;
+}
+
+/* после ответа и у ведущего - без выбора */
+.option-card.is-static {
+    cursor: default;
+}
+
+.option-card.is-static:hover {
+    border-color: var(--color-border);
+}
+
+.option-card.is-chosen,
+.option-card.is-chosen:hover {
+    border-color: var(--color-accent);
+}
+
+.option-card.is-correct,
+.option-card.is-correct:hover {
+    background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface));
+    border-color: var(--color-success);
+}
+
+.option-card.is-correct .option-key {
+    color: var(--color-on-status);
+    background: var(--color-success);
+    box-shadow: none;
+}
+
+@media (min-width: 640px) {
+    .option-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.answer-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+}
+
+.play-hint {
+    margin: 0;
+    font-size: var(--font-sm);
+    color: var(--color-text-muted);
+}
+
+/* на сенсорных экранах клавиатурной подсказке не место */
+@media (hover: none) {
+    .play-hint {
+        display: none;
+    }
+}
+
+/* вердикт: цвет дублируется значком и текстом; таймаут - нейтрально */
+.verdict {
+    --verdict-color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: color-mix(in srgb, var(--verdict-color) 14%, var(--color-surface));
+    border: 2px solid var(--verdict-color);
+    border-radius: var(--radius-md);
+}
+
+.verdict.is-correct {
+    --verdict-color: var(--color-success);
+}
+
+.verdict.is-wrong {
+    --verdict-color: var(--color-error);
+}
+
+.verdict-icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--tap-size);
+    height: var(--tap-size);
+    font-size: var(--font-xl);
+    font-weight: 800;
+    color: var(--color-on-status);
+    background: var(--verdict-color);
+    border-radius: var(--radius-full);
+}
+
+.verdict-title {
+    margin: 0;
+    font-size: var(--font-xl);
+    font-weight: 800;
+}
+
+.play-fact {
+    padding: var(--space-4);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+}
+
+.play-fact-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--font-md);
+}
+
+.play-fact p {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+/* кто ответил (мультиплеер): блок #waiting-info заменяется целиком по WS */
+.players-status {
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border);
+}
+
+.players-status-title {
+    margin: 0 0 var(--space-3);
+    font-size: var(--font-md);
+}
+
+.players-status-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.players-status-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.players-status-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+/* «Думает» - по умолчанию; найден ответ на текущий вопрос - прячем (в шаблоне нет флага на участника) */
+.players-status-row:has(.players-status-done) .players-status-thinking {
+    display: none;
+}
+
+.play-next {
+    margin: 0;
+}
+
+/* главная кнопка экрана - на телефоне во всю ширину */
+.answer-form .btn-lg,
+.play-next .btn-lg {
+    width: 100%;
+}
+
+@media (min-width: 640px) {
+    .answer-form .btn-lg,
+    .play-next .btn-lg {
+        width: auto;
+        align-self: flex-start;
+    }
+}
+
+.play-waiting {
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    font-weight: 600;
+    text-align: center;
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+}
+
+/* «+N» к счёту в шапке игры (play.js, по образцу score-gain.js): метка слева от числа - число не прыгает */
+.play-score .score-gain {
+    margin-left: 0;
+    font-size: var(--font-md);
+}
+
+/* последние 5 секунд - число тоже красное (цвет, не движение - и при reduced-motion) */
+.timer.is-ending .timer-seconds {
+    color: var(--color-error-text);
+}
+
+/* Движение экрана игры - исключения из правила «движение только у иконок разделов» (решение от 2026-10-26).
+   Классы is-revealed / is-flash-* ставит play.js только после ответа через HTMX: при F5 экран стоит спокойно. */
+@media (prefers-reduced-motion: no-preference) {
+    .play-card.is-revealed .verdict {
+        animation: verdict-in 0.35s ease-out;
+    }
+
+    .play-card.is-revealed .play-fact {
+        animation: fact-in 0.5s ease-out 0.5s both;
+    }
+
+    .play-card.is-flash-correct {
+        --flash-color: var(--color-success);
+        animation: play-flash 1s ease-out;
+    }
+
+    .play-card.is-flash-wrong {
+        --flash-color: var(--color-error);
+        animation: play-flash 1s ease-out;
+    }
+
+    .timer.is-ending .timer-fill {
+        animation: timer-pulse 0.8s ease-in-out infinite;
+    }
+}
+
+@keyframes verdict-in {
+    0%   { opacity: 0; transform: scale(0.92); }
+    60%  { opacity: 1; transform: scale(1.03); }
+    100% { transform: scale(1); }
+}
+
+@keyframes fact-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* заливка карточки цветом вердикта и кольцо - гаснут к обычному виду */
+@keyframes play-flash {
+    0% {
+        background: color-mix(in srgb, var(--flash-color) 18%, var(--color-surface));
+        border-color: var(--flash-color);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--flash-color) 45%, transparent);
+    }
+}
+
+@keyframes timer-pulse {
+    50% { opacity: 0.45; }
 }
 
 /* --- прогресс серии (gameplay/_series_progress.html): лобби и соло-комната --- */
@@ -2037,7 +2489,8 @@ html:not(.js) #add-question-btn {
 }
 
 .score-solo-value.is-flash,
-.score-value.is-flash {
+.score-value.is-flash,
+.play-score-value.is-flash {
     animation: score-flash 0.9s ease-out;
 }
 
@@ -2336,7 +2789,9 @@ html:not(.js) #add-question-btn {
 }
 
 /* обрыв WebSocket: страница перестала обновляться сама */
-.lobby-connection {
+/* плашка обрыва WS - общая для лобби и экрана игры */
+.lobby-connection,
+.play-connection {
     margin: 0;
     padding: var(--space-3) var(--space-4);
     font-weight: 600;

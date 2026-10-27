@@ -117,6 +117,10 @@
                                 <a class="btn btn-primary btn-lg" id="return-to-game"
                                    href="{% url 'gameplay:play' pk=object.current_game_session_id %}">Вернуться в игру</a>
                             {% endif %}
+                        {% elif is_host and object.current_game_session_id %}
+                            {# неиграющий ведущий тоже ведёт раунд со страницы игры #}
+                            <a class="btn btn-primary btn-lg" id="return-to-game"
+                               href="{% url 'gameplay:play' pk=object.current_game_session_id %}">Вернуться в игру</a>
                         {% endif %}
                     </section>
                 </div>
