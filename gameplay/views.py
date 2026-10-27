@@ -14,11 +14,12 @@ from django.db.models import F, Q
 from django.contrib.auth.decorators import login_required
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.views.decorators.http import require_POST
 
 from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
 from quizzes.models import Quiz, Question, AnswerOption, QuizSeries
 from multiplayer.views import _notify_room
-from .services import get_series_progress
+from .services import get_series_progress, get_answer_stats, get_role
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +49,20 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
         participant__user=request.user,
         participant__session=session
     )
+
+    #проверяем не пришел ли ответ на вопрос, который уже переключен
+    if answ.question_id != session.current_question_id:
+        raise PermissionDenied
+
     #вычисляем время, затраченное на вопрос для дальнейшего определения is_skipped
     elapsed = (timezone.now() - answ.shown_at).total_seconds()
 
     #определяем наличие таймаута
     timed_out = elapsed > session.quiz.time_limit_seconds
 
-    if answ.answered_at:
-        raise PermissionDenied("На этот вопрос уже отвечали")
+    if answ.answered_at or answ.is_skipped:
+        raise PermissionDenied("На этот вопрос уже отвечали или он был пропущен")
+
     if opt and opt.question_id != answ.question_id:
         raise PermissionDenied
     with transaction.atomic():
@@ -82,31 +89,6 @@ def _update_total_score(sess: GameSession, req: HttpRequest) -> GameParticipant:
     participant.refresh_from_db(fields=["score"])
     return participant
 
-def _get_questions_without_answer(part: GameParticipant, sess: GameSession) -> List[Question]:
-    """
-    Идем циклом по всем GameAnswer данного GameParticipant,
-    проверяем у данного GameAnswer if a.answered_at is not None or a.is_skipped (или уже отвечено или пропущено),
-    формируем список из Question у вопросов, у которых (if a.answered_at is not None or a.is_skipped) = True.
-    Таким образом мы имеем список вопросов, у которых уже есть ответ и которые принадлежат данному GameParticipant.
-    Далее идем циклом по всем
-    Далее проверяется каждый вопрос Question из данной сессии и квиза и если айди данного вопроса не найден в предыдущем списке вопросв,
-    на который дан ответ, то этот вопрос и есть тот, который мы ищем - без ответа, и он попадает в конечный q_without_answers
-    :param part: текущий участник сессии
-    :param sess: сессия
-    :return: список Question данного квиза на котореы еще не ответили в рамках текущей сессии
-    """
-
-    answered_question_ids = [
-        a.question_id
-        for a in part.participants_answers.all()
-        if a.answered_at is not None or a.is_skipped
-    ]
-    q_without_answers = [
-        q
-        for q in sess.quiz.questions.all()
-        if q.pk not in answered_question_ids
-    ]
-    return q_without_answers
 
 def _check_and_make_complete(sess: GameSession) -> GameSession:
     """
@@ -148,6 +130,8 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
                     sess.room.current_series_run = None
                     sess.room.save(update_fields=["current_series", "current_series_run"])
 
+                transaction.on_commit(lambda: _notify_room(sess.room))
+
 
             # on_commit, а не прямой вызов: этот notify всё ещё внутри
             # транзакции, а WS-консьюмер читает БД через отдельное
@@ -159,7 +143,7 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
             # (внешняя, если это вложенный вызов) успешно закоммитится —
             # то есть уже по гарантированно свежим данным.
             transaction.on_commit(lambda: _notify_session(sess))
-            transaction.on_commit(lambda: _notify_room(sess.room))
+
     return sess
 
 
@@ -184,84 +168,8 @@ def _advance_series_run(series_run: SeriesRun, completed_round_order: int) -> Se
         series_run.save(update_fields=["current_round_index", "status", "finished_at"])
         return series_run
 
-def _check_and_advance_question(session_pk):
-    """"
-    продвигает вопрос в рамках раунда в мультплеере
-    """
-    with transaction.atomic():
-        session = GameSession.objects.select_for_update().get(pk=session_pk)
-        current_question = session.current_question
-        if current_question is None:
-            return session
 
-        total = session.participants.count()
-        answered = GameAnswer.objects.filter(
-            participant__session=session,
-            question=current_question,
-        ).filter(
-            Q(answered_at__isnull=False) | Q(is_skipped=True)
-        ).count()
-
-        if answered < total:
-            return session
-        with transaction.atomic():
-            next_question = session.quiz.questions.filter(
-                order__gt=current_question.order
-            ).order_by("order").first()
-            session.current_question = next_question
-            session.save(update_fields=["current_question"])
-            transaction.on_commit(lambda: _notify_session(session))
-        return session
-
-def _play_solo(request: HttpRequest, session: GameSession, participant: GameParticipant):
-    """
-    Логика view-функции play для solo-режима
-    :param request:
-    :param session:
-    :param participant:
-    :return:
-    """
-
-    # получаем список вопросов данного квиза без ответов для данного GameParticipant
-    questions_without_answers = _get_questions_without_answer(participant, session)
-
-    if not questions_without_answers:
-        # считаем, что у данного GameParticipant все вопросы пройдены и сессия для него завершена, ставим время finished_at для данного participant
-        if not participant.finished_at:
-            participant.finished_at = timezone.now()
-            participant.save()
-
-        session.status = "completed"
-        session.save()
-
-        #также проставляем session.series_run следующий current_round_index или None
-        series_run = _advance_series_run(session.series_run, completed_round_order=session.quiz.round_order)
-
-        url = reverse("gameplay:result", kwargs={"pk": session.pk})
-        return redirect(url)
-
-    current_question = questions_without_answers[0]
-
-    current_answer, _ = GameAnswer.objects.get_or_create(
-        participant=participant,
-        question=current_question
-    )
-    elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
-    # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
-    # уйдёт в минус; на экране должно быть "0", а не отрицательное число
-    remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
-
-    context = {
-        "mode": "solo",
-        "current_question": current_question,
-        "current_answer": current_answer,
-        "current_session": session,
-        "remaining_seconds": remaining_seconds,
-    }
-
-    return render(request, "gameplay/play.html", context=context)
-
-def _play_multiplayer(request: HttpRequest, session: GameSession, participant: GameParticipant):
+def _play_multiplayer_or_solo(request: HttpRequest, session: GameSession, participant: GameParticipant, role: str):
 
     # проверяем для mode=multiplayer, завершена ли для всех сессия
     if session.current_question == None:
@@ -271,26 +179,84 @@ def _play_multiplayer(request: HttpRequest, session: GameSession, participant: G
             #считаем что сессия завершена у всех GameParticipant
             return  redirect("gameplay:result", pk=session.pk)
 
-    current_answer, _ = GameAnswer.objects.get_or_create(
-        participant=participant,
-        question=session.current_question
-    )
+    if role == "player":
+        current_answer, _ = GameAnswer.objects.get_or_create(
+            participant=participant,
+            question=session.current_question
+        )
 
-    already_answered = bool(current_answer and (current_answer.answered_at or current_answer.is_skipped))
+        already_answered = bool(current_answer and (current_answer.answered_at or current_answer.is_skipped))
 
-    elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
-    # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
-    # уйдёт в минус; на экране должно быть "0", а не отрицательное число
-    remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
+        elapsed = (timezone.now() - current_answer.shown_at).total_seconds()
+        # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
+        # уйдёт в минус; на экране должно быть "0", а не отрицательное число
+        remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
+        points_gained = session.quiz.points_per_correct if current_answer.is_correct else 0
+
+    #вспомогательные переменные и is_last_question
+    questions = list(session.quiz.questions.all())  # уже по order, из prefetch
+    current_index = next(i for i, q in enumerate(questions) if q.pk == session.current_question_id)
+    question_number = current_index + 1
+    is_last_question = current_index == len(questions) - 1
+
+    answers_progress = []
+    streak = 0
+    if role == "player":
+        answers_by_question = {a.question_id: a for a in participant.participants_answers.all()}
+        # свежий current_answer из get_or_create — prefetch мог его не застать
+        answers_by_question[current_answer.question_id] = current_answer
+
+        # определеяем прогресс каждого вопроса из questions
+        for q in questions:
+            a = answers_by_question.get(q.pk)
+            if a is None or not (a.answered_at or a.is_skipped):
+                state = "current" if q.pk == session.current_question_id else "pending"
+            elif a.is_correct:
+                state = "correct"
+            elif a.is_skipped:
+                state = "skipped"
+            else:
+                state = "wrong"
+            answers_progress.append({"question": q, "state": state})
+
+        #Определяем streak
+        # серия: с текущего вопроса назад, до первого неверного
+        for item in reversed(answers_progress[:current_index + 1]):
+            if item["state"] == "current":  # текущий без ответа — не считается и не прерывает
+                continue
+            if item["state"] != "correct":
+                break
+            streak += 1
+
+    #показывать ли кнопку Следующий вопрос
+    if session.mode == "solo":
+        can_advance = already_answered
+    elif session.mode == "multiplayer":
+        can_advance = (session.room.host_id == request.user.id) and (role == "host_observer" or already_answered)
+
 
     context = {
-        "mode": "multiplayer",
-        "current_question": session.current_question,
-        "current_answer": current_answer,
+        "mode": session.mode,
+        "role": role,
         "current_session": session,
-        "remaining_seconds": remaining_seconds,
-        "already_answered": already_answered,
+        "current_question": session.current_question,
+        "question_number": question_number,
+        "question_count": len(questions),
+        "is_last_question": is_last_question,
+        "current_answer": current_answer if role == "player" else None,
+        "already_answered": already_answered if role == "player" else None,
+        "points_gained": points_gained if role == "player" else None,
+        "score": participant.score if role == "player" else None,
+        "streak": streak if role == "player" else None,
+        "answers_progress": answers_progress if role == "player" else None,
+        "remaining_seconds": remaining_seconds if role == "player" else None,
+        "can_advance": can_advance,
     }
+
+    # получаем необходимый контекст подсчета ответтов (participants_count, answered_count, all_answered)
+    # из функции get_answer_stats
+    answer_context = get_answer_stats(session)
+    context.update(answer_context)
 
     return render(request, "gameplay/play.html", context=context)
 
@@ -393,7 +359,8 @@ def solo_room(request: HttpRequest, pk: int):
                     quiz=curr_quiz,
                     mode="solo",
                     created_by=user,
-                    series_run=series_run
+                    series_run=series_run,
+                    current_question=curr_quiz.questions.first()
                 )
                 participant = GameParticipant.objects.create(
                     session=session,
@@ -424,14 +391,19 @@ def play(request: HttpRequest, pk: int):
         chosen_option_pk = request.POST.get("chosen_option_id", "")
         current_answer_pk = request.POST.get("current_answer_id", "")
 
-        #получаем сессию для редиректа на gameplay:play
-        session = get_object_or_404(GameSession.objects.select_related('quiz'), pk=pk)
-
         #получаем AnswerOption по chosen_option_pk
         if chosen_option_pk:
             option = get_object_or_404(AnswerOption, pk=chosen_option_pk)
 
         with transaction.atomic():
+
+            # получаем сессию для редиректа на gameplay:play
+            # используем select_for_update для того, чтобы заблокировать запись в БД для других операций
+            session = get_object_or_404(
+                GameSession.objects.select_for_update(of=("self",)).select_related("quiz"),
+                pk=pk
+            )
+
             #получаем, обновляем и сохраняем GameAnswer
             answer = _update_gameAnswer(current_answer_pk, option, session, request)
 
@@ -439,27 +411,19 @@ def play(request: HttpRequest, pk: int):
             if answer.is_correct:
                 participant = _update_total_score(session, request)
 
-            if session.mode == "multiplayer":
-                _check_and_advance_question(session.pk)
-
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
 
     session = get_object_or_404(
         GameSession.objects.select_related(
-            "quiz",
-            "created_by",
-            "room",
-            "series_run"
+            "quiz",# time_limit_seconds, points_per_correct
+            "room",# host_id — роль и can_advance
+            "current_question",# текст вопроса, факт; без него — отдельный запрос
+            "series_run",# нужен _check_and_make_complete
         ).prefetch_related(
-            "participants",
-            "participants__user",
-            "quiz__questions",
-            "quiz__questions__options",
-            "participants__participants_answers__question",
-            "participants__participants_answers__chosen_option",
-            "room__room_players",
-            "series_run__series__rounds"
+            "participants__user",# имена в списке игроков
+            "participants__participants_answers",# статистика, прогресс, серия
+            "quiz__questions__options",# список вопросов и варианты
         ),
         pk=pk)
 
@@ -467,18 +431,81 @@ def play(request: HttpRequest, pk: int):
         url = reverse("gameplay:result", kwargs={"pk": session.pk})
         return redirect(url)
 
-    # Получаем всех участников из кэша (без дополнительного запроса)
-    participants = session.participants.all()
-
-    # Находим нужного. Останавливаемся на первом найденном за счет next
-    participant = next((p for p in participants if p.user_id == request.user.id), None)
-
-    if participant is None:
+    #получаем роль пользователя в текущей сессии
+    role, participant = get_role(session, request.user.id)
+    if role == "undefined":
         raise PermissionDenied
 
-    if session.mode == "multiplayer":
-        return _play_multiplayer(request, session, participant)
-    return _play_solo(request, session, participant)
+    return _play_multiplayer_or_solo(request, session, participant, role)
+
+@login_required
+@require_POST
+def next_question(request: HttpRequest, pk: int):
+
+    with transaction.atomic():
+        session = get_object_or_404(
+            (GameSession.objects
+             .select_for_update(of=("self",))
+             .select_related("quiz", "room", "current_question", "series_run")
+             .prefetch_related("participants", "participants__participants_answers")),
+            pk=pk
+        )
+
+        if session.status != "in_progress":
+            url = reverse("gameplay:result", kwargs={"pk": session.pk})
+            return redirect(url)
+
+        role, participant = get_role(session, request.user.id)
+        is_host = session.room_id is not None and session.room.host_id == request.user.id
+
+        # соло — переключает сам игрок, мультиплеер — только хост
+        if session.mode == "solo" and participant is None:
+            raise PermissionDenied
+        if session.mode == "multiplayer" and not is_host:
+            raise PermissionDenied
+
+        curr_question = session.current_question
+        if curr_question is None:  # вопросы кончились, но раунд не закрыт
+            _check_and_make_complete(session)
+            return redirect("gameplay:result", pk=session.pk)
+
+        #если session.current_question_id не равно question_id из формы - считаем,
+        # что вопрос уже кто-то продвинул и просто редиректимся на play (двойной клик)
+        if str(curr_question.pk) != request.POST.get("question_id"):
+            url = reverse("gameplay:play", kwargs={"pk": session.pk})
+            return redirect(url)
+
+        # кто нажимает и сам играет (соло или играющий хост) — сначала отвечает
+        if participant is not None:
+            own = next((a for a in participant.participants_answers.all()
+                        if a.question_id == curr_question.pk), None)
+            if own is None or not (own.answered_at or own.is_skipped):
+                raise PermissionDenied
+
+        #продвигаем у каждого GameParticipant ответ
+        if session.mode == "multiplayer":
+            for gp in session.participants.all():
+                cur_ans, _ = GameAnswer.objects.get_or_create(
+                    participant=gp,
+                    question=curr_question
+                )
+                if not cur_ans.answered_at and not cur_ans.is_skipped:
+                    cur_ans.is_skipped = True
+                    cur_ans.save(update_fields=["is_skipped"])
+
+        #вычисляем новый вопрос и присваиваем его сессии
+        next_q = session.quiz.questions.filter(order__gt=curr_question.order).order_by("order").first()
+        session.current_question = next_q
+        session.save(update_fields=["current_question"])
+        if next_q is None:
+            session = _check_and_make_complete(session)
+            return redirect("gameplay:result", pk=session.pk)
+
+        transaction.on_commit(lambda: _notify_session(session))
+
+    url = reverse("gameplay:play", kwargs={"pk": session.pk})
+    return redirect(url)
+
 
 @login_required
 def result(request: HttpRequest, pk: int):

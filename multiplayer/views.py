@@ -355,8 +355,6 @@ def room_start(request: HttpRequest, code: str):
     if room.host != user:
         raise PermissionDenied
 
-    is_player = any(p.user_id == user.id for p in room.room_players.all())
-
     if room.current_series is None:
         messages.error(request, "Не выбран квиз")
         url = reverse("multiplayer:room_detail", kwargs={"code": code})
@@ -384,11 +382,7 @@ def room_start(request: HttpRequest, code: str):
         #у current_series_run уже есть активная game_session - переходим в нее и доигрываем
         for game_session in room.current_series_run.game_sessions.all():
             if game_session.status == "in_progress":
-                #если хост не игрок - перенаправляем обратно на room_detail
-                if is_player:
-                    url = reverse("gameplay:play", kwargs={"pk": game_session.pk})
-                else:
-                    url = reverse("multiplayer:room_detail", kwargs={"code": code})
+                url = reverse("gameplay:play", kwargs={"pk": game_session.pk})
                 return redirect(url)
 
     #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
@@ -452,11 +446,7 @@ def room_start(request: HttpRequest, code: str):
             transaction.on_commit(lambda: _notify_room(room))
             logger.info("Сессия %s квиза %s серии %s создана и начата пользователем %s", session.pk, current_round.pk, room.current_series.pk, session.created_by.username)
 
-    # если хост не игрок - перенаправляем обратно на room_detail
-    if is_player:
-        url = reverse("gameplay:play", kwargs={"pk": session.pk})
-    else:
-        url = reverse("multiplayer:room_detail", kwargs={"code": code})
+    url = reverse("gameplay:play", kwargs={"pk": session.pk})
     return redirect(url)
 
 @login_required

@@ -70,7 +70,7 @@ class RoomConsumer(WebsocketConsumer):
         # Хост нажал "Начать игру" (room_start) — вместо статуса лобби
         # шлём сигнал редиректа, ждать следующего тика поллинга не нужно,
         # т.к. группа и так уже оповещается через _notify_room(room).
-        if is_player and (room.status == "in_progress" and room.current_game_session_id):
+        if (is_player or room.host_id == user.id) and (room.status == "in_progress" and room.current_game_session_id):
             self.send(text_data=json.dumps({
                 "type": "redirect",
                 "url": reverse("gameplay:play", kwargs={"pk": room.current_game_session_id}),

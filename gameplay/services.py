@@ -1,7 +1,7 @@
 from django.db.models import Sum
 from django.contrib.auth import get_user_model
 
-from gameplay.models import GameParticipant, SeriesRun
+from gameplay.models import GameParticipant, SeriesRun, GameSession
 
 User = get_user_model()
 
@@ -64,3 +64,36 @@ def get_series_progress(series_run: SeriesRun) -> dict:
         "leaderboard": leaderboard,
         "is_current_round_is_in_progress": is_current_round_is_in_progress,
     }
+
+def get_answer_stats(session: GameSession) -> dict:
+    if session.current_question_id is None:
+        return {"participants_count": 0, "answered_count": 0, "all_answered": False}
+
+    #вычисляем количество участников в сессии
+    participants_count = len(session.participants.all())
+
+    #вычисляем количество уже ответивших на наш вопрос (session.current_question)
+    answered_count = 0
+    for p in session.participants.all():
+        for pa in p.participants_answers.all():
+            if pa.question_id == session.current_question_id and (pa.answered_at or pa.is_skipped):
+                answered_count += 1
+
+    #флаг "ответили все участники"
+    all_answered = answered_count == participants_count
+
+    return {
+        "participants_count": participants_count,
+        "answered_count": answered_count,
+        "all_answered": all_answered,
+    }
+
+def get_role(session: GameSession, user_id) -> tuple[str, GameParticipant | None]:
+    participant = next((p for p in session.participants.all() if p.user_id == user_id), None)
+    if participant:
+        role = "player"
+    elif session.room and session.room.host_id == user_id:
+        role = "host_observer"
+    else:
+        role = "undefined"
+    return role, participant

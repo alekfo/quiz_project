@@ -602,10 +602,14 @@ class RoomStartTests(RoomTestCase):
         self.assertEqual((self.room.status, self.room.current_game_session, self.room.current_series_run),
                          ("in_progress", session, run))
 
-    def test_host_moderator_stays_in_lobby(self):
+    def test_host_moderator_goes_to_game_as_observer(self):
+        """Хост без RoomPlayer не участник раунда, но ведёт его со страницы игры."""
         self.add_player(self.guest, is_ready=True)
         response = self.start()
-        self.assertRedirects(response, room_url("room_detail", self.room), fetch_redirect_response=False)
+        session = GameSession.objects.get()
+        self.assertRedirects(
+            response, reverse("gameplay:play", kwargs={"pk": session.pk}), fetch_redirect_response=False,
+        )
         self.assertEqual(GameParticipant.objects.count(), 1)
 
     def test_second_start_does_not_create_second_session(self):
@@ -765,12 +769,13 @@ class RoomConsumerTests(TransactionTestCase):
         )
         await communicator.disconnect()
 
-    async def test_started_round_does_not_redirect_host_moderator(self):
-        """Хост без RoomPlayer не участник GameSession - редирект в игру дал бы ему 403."""
+    async def test_started_round_redirects_host_moderator_into_game(self):
+        """Хост без RoomPlayer тоже уходит в игру - вести раунд как наблюдатель."""
         communicator, _ = await self.connect(self.host)
-        await self.start_round()
+        session = await self.start_round()
         await self.send_update()
-        message = await communicator.receive_json_from()
-        self.assertIn("html", message)
-        self.assertNotEqual(message.get("type"), "redirect")
+        self.assertEqual(
+            await communicator.receive_json_from(),
+            {"type": "redirect", "url": reverse("gameplay:play", kwargs={"pk": session.pk})},
+        )
         await communicator.disconnect()
