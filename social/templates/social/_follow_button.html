@@ -1,0 +1,39 @@
+<div class="follow-block">
+    <p class="follow-count">Подписчиков: <strong>{{ followers_count }}</strong></p>
+    {% if not is_it_me %}
+        {% if followed %}
+            <span class="tag tag-success">Вы подписаны</span>
+            <form method="post" action="{% url 'social:unfollow' user_id=target_user.pk %}"
+                  hx-post="{% url 'social:unfollow' user_id=target_user.pk %}"
+                  hx-target="closest .follow-block"
+                  hx-swap="outerHTML"
+                  hx-disabled-elt="find button">
+                {% csrf_token %}
+                <button class="btn" type="submit">
+                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M15 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/>
+                        <circle cx="8.5" cy="7.5" r="3.5"/>
+                        <path d="M16 11h6"/>
+                    </svg>
+                    Отписаться
+                </button>
+            </form>
+        {% else %}
+            <form method="post" action="{% url 'social:follow' user_id=target_user.pk %}"
+                  hx-post="{% url 'social:follow' user_id=target_user.pk %}"
+                  hx-target="closest .follow-block"
+                  hx-swap="outerHTML"
+                  hx-disabled-elt="find button">
+                {% csrf_token %}
+                <button class="btn btn-primary" type="submit">
+                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M15 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/>
+                        <circle cx="8.5" cy="7.5" r="3.5"/>
+                        <path d="M19 8v6M16 11h6"/>
+                    </svg>
+                    Подписаться
+                </button>
+            </form>
+        {% endif %}
+    {% endif %}
+</div>

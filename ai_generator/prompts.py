@@ -70,7 +70,8 @@ def generate_quiz_questions(instruction_data: dict) -> dict:
     Возвращает dict с ключами job_title, company_name и questions (список {text, type}).
     """
 
-
+    quiz_title= instruction_data.get("quiz_title", "")
+    quiz_category = instruction_data.get("quiz_category", "")
     quiz_subject = instruction_data.get("quiz_subject", "")
     quiz_questions = instruction_data.get("quiz_questions", 1)
     quiz_level = instruction_data.get("quiz_level", "")
@@ -81,11 +82,12 @@ def generate_quiz_questions(instruction_data: dict) -> dict:
 
 
     text = _ask(f"""Ты эксперт по составлению вопросов к викторинам. Даю тебе вводные инструкции на генерацию вопросов викторины.
-
-                        Тема викторины: {quiz_subject}
+                        Наименование квиза: {quiz_title}
+                        Категория квиза: {quiz_category}
+                        Тема вопросов квиза: {quiz_subject}
                         {level}
-                        Аудитория для викторины: {quiz_audience}
-                        Стиль вопросов викторины: {question_style}
+                        Аудитория для вопросов квиза: {quiz_audience}
+                        Стиль вопросов квиза: {question_style}
                         
                         Сгенерируй {quiz_questions} вопросов: сделай ступенчатый переход в стиле интересных квизов.
                         Каждый новый вопрос должен быть чуть сложнее предыдущего. Избегай банальных и предсказуемых вопросов.
@@ -93,10 +95,12 @@ def generate_quiz_questions(instruction_data: dict) -> dict:
 
                         Ответь строго в формате JSON:
                         {{
-                          "quiz_subject": "тема викторины или пустая строка",
-                          "quiz_level": "уровень сложности викторины или пустая строка",
-                          "quiz_audience": "аудитория викторины или пустая строка",
-                          "question_style": "стиль вопросов викторины или пустая строка",
+                          "quiz_title": "наименование квиза или пустая строка",
+                          "quiz_category": "категория квиза или пустая строка",
+                          "quiz_subject": "тема вопросов квиза или пустая строка",
+                          "quiz_level": "уровень сложности вопросов квиза или пустая строка",
+                          "quiz_audience": "аудитория для вопросов квиза или пустая строка",
+                          "question_style": "стиль вопросов квиза или пустая строка",
                           "questions": [
                             {{'id': 1, 'question': 'сам вопрос', 'options': [вариант0, .., вариант3], 'correct_answer_index': 'индекс правильного ответа из списка options', 'fact': 'какой-нибудь факт в стиле вопроса ({question_style})'}},
                             {{...}},

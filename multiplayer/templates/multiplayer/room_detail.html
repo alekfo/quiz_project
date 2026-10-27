@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}
+    {{ object.title }} — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    <a class="back-link" href="{% url 'multiplayer:room_list' %}">← Комнаты</a>
+
+    {# data-lobby-socket - адрес WS для room-lobby.js; посетителя консьюмер не пускает, закрытой комнате он не нужен #}
+    <div class="lobby"{% if object.status != "finished" %}{% if is_host or is_player %} data-lobby-socket="/ws/multiplayer/rooms/{{ object.token }}/"{% endif %}{% endif %}>
+        <header class="lobby-header">
+            <p class="lobby-tags">
+                {% include "multiplayer/_lobby_status.html" %}
+                {% if is_host %}
+                    <span class="tag">Вы хост</span>
+                {% endif %}
+            </p>
+            <h1 class="lobby-title">{{ object.title }}</h1>
+            {% if object.host %}
+                <p class="lobby-host">
+                    {% include "users/_avatar.html" with avatar_user=object.host size="sm" %}
+                    <span>Хост: <a href="{% url 'users:user_detail' pk=object.host_id %}">{{ object.host.username }}</a></span>
+                </p>
+            {% endif %}
+        </header>
+
+        <p id="lobby-connection" class="lobby-connection" role="status" hidden>
+            Соединение потеряно — обновите страницу, чтобы видеть изменения.
+        </p>
+
+        {% if object.status == "finished" %}
+            <p class="card lobby-closed">Комната закрыта. Остались история игр и список игроков.</p>
+            <div class="lobby-grid">
+                <div class="lobby-column">
+                    {% include "multiplayer/_lobby_history.html" %}
+                </div>
+                <div class="lobby-column">
+                    {% include "multiplayer/_lobby_players.html" %}
+                </div>
+            </div>
+        {% else %}
+            <div class="lobby-grid">
+                <div class="lobby-column">
+                    {% if is_host %}
+                        <section class="card lobby-card" aria-labelledby="lobby-invite-title">
+                            <h2 id="lobby-invite-title">Пригласить игроков</h2>
+                            <p class="lobby-card-hint">Отправьте ссылку друзьям — по ней они войдут в комнату.</p>
+                            <div class="copy-field">
+                                <label class="visually-hidden" for="room-link">Ссылка на комнату</label>
+                                <input id="room-link" type="text" readonly
+                                       value="{{ request.scheme }}://{{ request.get_host }}{% url 'multiplayer:room_detail' code=object.token %}">
+                                <button class="btn" type="button" id="copy-link-btn">
+                                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+                                    Скопировать
+                                </button>
+                            </div>
+                        </section>
+                    {% endif %}
+
+                    <section class="card lobby-card" aria-labelledby="lobby-quiz-title">
+                        <h2 id="lobby-quiz-title">Квиз</h2>
+                        {% include "multiplayer/_lobby_series.html" %}
+
+                        {# формы - вне фрагментов, обновляемых по WS: только здесь есть CSRF-токен; room-lobby.js переключает им hidden #}
+                        {% if is_host %}
+                            <form method="post" id="select-series-form" class="lobby-select"
+                                  action="{% url 'multiplayer:room_set_quiz' code=object.token %}"{% if has_selected_series %} hidden{% endif %}>
+                                {% csrf_token %}
+                                <label for="{{ series_form.current_series.id_for_label }}">Квиз для игры</label>
+                                <div class="lobby-select-row">
+                                    {{ series_form.current_series }}
+                                    <button class="btn btn-primary" type="submit">Выбрать</button>
+                                </div>
+                                <p class="helptext">
+                                    Свои квизы и добавленные в
+                                    <a href="{% url 'quizzes:quizzes_list' %}">коллекцию</a>.
+                                </p>
+                            </form>
+
+                            {# серия уже начата - смена квиза прервёт её, поэтому через страницу подтверждения #}
+                            {% if series_run_started %}
+                                <a class="btn" id="reset-series-form" href="{% url 'multiplayer:room_reset_quiz' code=object.token %}"{% if not start_available %} hidden{% endif %}>Сменить квиз</a>
+                            {% else %}
+                                <form method="post" id="reset-series-form"
+                                      action="{% url 'multiplayer:room_reset_quiz' code=object.token %}"{% if not start_available %} hidden{% endif %}>
+                                    {% csrf_token %}
+                                    <button class="btn" type="submit">Сменить квиз</button>
+                                </form>
+                            {% endif %}
+
+                            <form method="post" id="start-form" class="lobby-start"
+                                  action="{% url 'multiplayer:room_start' code=object.token %}"{% if not start_available %} hidden{% endif %}>
+                                {% csrf_token %}
+                                <button class="btn btn-primary btn-lg" id="start-button" type="submit"{% if not can_start_round %} disabled{% endif %}>
+                                    {% if is_first_round %}Начать игру{% else %}Следующий раунд{% endif %}
+                                </button>
+                                <p id="start-note" class="lobby-note"{% if can_start_round %} hidden{% endif %}>
+                                    {% if players_count %}Ждём готовности: {{ ready_count }} из {{ players_count }}{% else %}В комнате пока нет игроков{% endif %}
+                                </p>
+                            </form>
+                        {% endif %}
+
+                        {% if is_player %}
+                            <form method="post" id="confirm-ready-form" class="lobby-start"
+                                  action="{% url 'multiplayer:room_confirm_ready' code=object.token %}"{% if not object.current_series or my_room_player.is_ready %} hidden{% endif %}>
+                                {% csrf_token %}
+                                <button class="btn btn-primary btn-lg" type="submit">Я готов</button>
+                            </form>
+                            <p id="ready-confirmed-msg" class="lobby-ready"{% if not my_room_player.is_ready or object.current_game_session_id %} hidden{% endif %}>
+                                <span class="tag tag-success">Вы готовы</span>
+                                Ждём начала раунда
+                            </p>
+                            {# игрок ушёл со страницы игры или перезагрузил лобби, пока идёт раунд; новый раунд и так придёт редиректом по WS #}
+                            {% if object.current_game_session_id %}
+                                <a class="btn btn-primary btn-lg" id="return-to-game"
+                                   href="{% url 'gameplay:play' pk=object.current_game_session_id %}">Вернуться в игру</a>
+                            {% endif %}
+                        {% elif is_host and object.current_game_session_id %}
+                            {# неиграющий ведущий тоже ведёт раунд со страницы игры #}
+                            <a class="btn btn-primary btn-lg" id="return-to-game"
+                               href="{% url 'gameplay:play' pk=object.current_game_session_id %}">Вернуться в игру</a>
+                        {% endif %}
+                    </section>
+                </div>
+
+                <div class="lobby-column">
+                    {% include "multiplayer/_lobby_players.html" %}
+                    {% include "multiplayer/_lobby_history.html" %}
+                </div>
+            </div>
+
+            <div class="form-actions lobby-actions">
+                {% if is_player %}
+                    <a class="btn btn-ghost" href="{% url 'multiplayer:room_quit' code=object.token %}">{% if is_host %}Завершить участие{% else %}Выйти из комнаты{% endif %}</a>
+                {% else %}
+                    <form method="post" action="{% url 'multiplayer:room_join' code=object.token %}">
+                        {% csrf_token %}
+                        <button class="btn{% if not is_host %} btn-primary btn-lg{% endif %}" type="submit">Стать участником</button>
+                    </form>
+                {% endif %}
+                {% if is_host %}
+                    <a class="btn btn-danger" href="{% url 'multiplayer:room_close' code=object.token %}">Закрыть комнату</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    <script src="{% static 'js/room-lobby.js' %}" defer></script>
+{% endblock %}
