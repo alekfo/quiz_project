@@ -1,5 +1,5 @@
 services:
-  db:
+  quiz-db:
     image: postgres:16-alpine
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -11,7 +11,7 @@ services:
     networks:
       - internal
 
-  redis:
+  quiz-redis:
     image: redis:7-alpine
     restart: unless-stopped
     networks:
@@ -26,8 +26,8 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
-      - redis
+      - quiz-db
+      - quiz-redis
     restart: unless-stopped
     networks:
       - internal
