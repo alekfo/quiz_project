@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - internal
+
+  web:
+    build: .
+    container_name: quiz-web
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    networks:
+      - internal
+      - shared_nginx
+
+volumes:
+  postgres_data:
+    name: quiz_postgres_data
+  static_files:
+    name: quiz_static_files
+  media_files:
+    name: quiz_media_files
+
+networks:
+  internal:
+  shared_nginx:
+    external: true
+    name: prepmate_default
