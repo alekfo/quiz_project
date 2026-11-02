@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}
+    Комнаты — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    <div class="page-header">
+        <div>
+            <h1>Комнаты</h1>
+            <p class="page-subtitle">Комнаты, которые вы создали, и та, где вы сейчас играете</p>
+        </div>
+        <div class="page-actions">
+            <a class="btn btn-primary" href="{% url 'multiplayer:room_create' %}">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Создать комнату
+            </a>
+        </div>
+    </div>
+
+    {# без JS вкладки скрыты, обе секции идут подряд со своими заголовками #}
+    <div class="tabs" role="tablist" aria-label="Комнаты" data-tabs>
+        <button class="tab" type="button" role="tab" id="tab-active" aria-controls="active" aria-selected="true">
+            Активные
+            <span class="tab-count">{% if participant_room %}{{ hosted_rooms|length|add:1 }}{% else %}{{ hosted_rooms|length }}{% endif %}</span>
+        </button>
+        <button class="tab" type="button" role="tab" id="tab-finished" aria-controls="finished" aria-selected="false">
+            Завершённые <span class="tab-count">{{ finished_rooms|length }}</span>
+        </button>
+    </div>
+
+    <section class="menu-section tab-panel" id="active" role="tabpanel" aria-labelledby="tab-active">
+        <h2 class="tab-panel-title">Активные</h2>
+
+        {% if participant_room %}
+            <div class="room-group">
+                <h3>Вы участник</h3>
+                <div class="card room-current">
+                    <p class="room-current-tags">
+                        {% include "multiplayer/_room_status_tag.html" with room=participant_room %}
+                        {% if participant_room.host_id == user.id %}
+                            <span class="tag">Вы хост</span>
+                        {% endif %}
+                    </p>
+                    <p class="room-current-title">{{ participant_room.title }}</p>
+                    {% include "multiplayer/_room_meta.html" with room=participant_room %}
+                    <a class="btn btn-primary" href="{% url 'multiplayer:room_detail' code=participant_room.token %}">
+                        Вернуться в комнату
+                    </a>
+                </div>
+            </div>
+        {% endif %}
+
+        {% if hosted_rooms %}
+            <div class="room-group">
+                <h3>Вы хост</h3>
+                <ul class="room-list">
+                    {% for room in hosted_rooms %}
+                        <li>
+                            <a class="room-row" href="{% url 'multiplayer:room_detail' code=room.token %}">
+                                <span class="room-row-text">
+                                    <span class="room-row-title">{{ room.title }}</span>
+                                    {% include "multiplayer/_room_meta.html" %}
+                                </span>
+                                {% include "multiplayer/_room_status_tag.html" %}
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+
+        {% if not participant_room and not hosted_rooms %}
+            <p class="empty-state">
+                Активных комнат нет. Создайте комнату и отправьте ссылку на неё друзьям —
+                или попросите друга прислать ссылку на свою.
+            </p>
+        {% endif %}
+    </section>
+
+    <section class="menu-section tab-panel" id="finished" role="tabpanel" aria-labelledby="tab-finished">
+        <h2 class="tab-panel-title">Завершённые</h2>
+        {% if finished_rooms %}
+            <ul class="room-list">
+                {% for room in finished_rooms %}
+                    <li>
+                        <a class="room-row" href="{% url 'multiplayer:room_detail' code=room.token %}">
+                            <span class="room-row-text">
+                                <span class="room-row-title">{{ room.title }}</span>
+                                {% include "multiplayer/_room_meta.html" %}
+                            </span>
+                            {% if room.host_id == user.id %}
+                                <span class="tag">Вы хост</span>
+                            {% else %}
+                                <span class="tag tag-muted">Участник</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-state">Завершённых комнат пока нет. Здесь появятся комнаты, которые хост закрыл.</p>
+        {% endif %}
+    </section>
+
+    {# без defer: неактивная панель должна скрыться до первой отрисовки #}
+    <script src="{% static 'js/tabs.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,9 @@
+{# Ответ RoomConsumer.room_update по WebSocket: рендерится без request (нет user, csrf_token, форм). #}
+{# На странице этих блоков-обёрток нет: room_detail.html включает те же partial'ы по своим местам, #}
+{# а static/js/room-lobby.js заменяет на странице каждый блок с data-live по его id. #}
+<div id="room-status">
+    {% include "multiplayer/_lobby_status.html" %}
+    {% include "multiplayer/_lobby_series.html" %}
+    {% include "multiplayer/_lobby_players.html" %}
+    {% include "multiplayer/_lobby_history.html" %}
+</div>

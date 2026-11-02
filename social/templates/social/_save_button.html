@@ -1,0 +1,28 @@
+<div class="save-block">{% if not is_my_series %}
+    {% if already_saved %}
+        <form method="post" action="{% url 'social:unsave_series' series_id=series.pk %}"
+            hx-post="{% url 'social:unsave_series' series_id=series.pk %}"
+            hx-target="closest .save-block"
+            hx-swap="outerHTML"
+            hx-disabled-elt="find button">
+          {% csrf_token %}
+          <button class="btn" type="submit" aria-pressed="true">
+              <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg>
+              Убрать из сохранённых
+          </button>
+        </form>
+    {% else %}
+        <form method="post" action="{% url 'social:save_series' series_id=series.pk %}"
+            hx-post="{% url 'social:save_series' series_id=series.pk %}"
+            hx-target="closest .save-block"
+            hx-swap="outerHTML"
+            hx-disabled-elt="find button">
+          {% csrf_token %}
+          <button class="btn" type="submit" aria-pressed="false">
+              <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg>
+              Сохранить к себе
+          </button>
+        </form>
+    {% endif %}
+{% endif %}</div>
+{# у своей серии блок должен быть совсем пустым (без пробелов): тогда CSS .save-block:empty убирает его из ряда кнопок #}

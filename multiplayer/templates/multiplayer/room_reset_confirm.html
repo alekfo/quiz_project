@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Сменить квиз: {{ room.title }} — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    {% url 'multiplayer:room_detail' code=room.token as back_url %}
+
+    <a class="back-link" href="{{ back_url }}">← В комнату</a>
+
+    <section class="card confirm-card">
+        <h1>Сменить квиз?</h1>
+        <p class="confirm-subject">{{ room.current_series.title }}</p>
+        <p class="confirm-text">
+            Квиз уже начат: сыграно раундов — {{ completed_rounds }} из {{ rounds_in_series }}.
+            Если сменить его, он будет прерван: счёт не сохранится как текущая игра, сыгранные раунды
+            останутся только в «Истории игр». Готовность игроков сбросится.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Прервать и сменить</button>
+                <a class="btn btn-ghost" href="{{ back_url }}">Доиграть этот квиз</a>
+            </div>
+        </form>
+    </section>
+{% endblock %}

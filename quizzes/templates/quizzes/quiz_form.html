@@ -1,37 +1,95 @@
-{% extends 'quizzes/base.html' %}
+{% extends 'base.html' %}
 
+{# Один шаблон на три сценария: изменение раунда (есть object), новый раунд в квизе (series_id в URL), новый квиз #}
 {% block title %}
-   {{ page_title }}
+    {% if object %}Изменить раунд{% elif view.kwargs.series_id %}Новый раунд{% else %}Новый квиз{% endif %} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>{{ page_header }}:</h1>
-    <div>
-        <form method="POST">
-            {% csrf_token  %}
-            {{ form.as_p }}
+    {% if object %}
+        {% url 'quizzes:quizzes_details' pk=object.series_id as back_url %}
+    {% elif view.kwargs.series_id %}
+        {% url 'quizzes:quizzes_details' pk=view.kwargs.series_id as back_url %}
+    {% else %}
+        {% url 'quizzes:quizzes_list' as back_url %}
+    {% endif %}
 
+    <a class="back-link" href="{{ back_url }}">
+        {% if object or view.kwargs.series_id %}← Раунды и вопросы{% else %}← Коллекция квизов{% endif %}
+    </a>
+
+    <div class="page-header">
+        <div>
+            {% if object %}
+                <h1>Изменить раунд</h1>
+                <p class="page-subtitle">Параметры раунда и его вопросы</p>
+            {% elif view.kwargs.series_id %}
+                <h1>Новый раунд</h1>
+                <p class="page-subtitle">Раунд добавится в конец квиза</p>
+            {% else %}
+                <h1>Новый квиз</h1>
+                <p class="page-subtitle">Опишите квиз и заполните его первый раунд — остальные раунды добавите позже</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="POST" class="quiz-form">
+        {% csrf_token  %}
+        {{ form.non_field_errors }}
+
+        {# поля самого квиза есть только в форме нового квиза #}
+        {% if form.title %}
+            <section class="card form-section">
+                <h2>О квизе</h2>
+                {% include "_form_field.html" with field=form.title %}
+                {% include "_form_field.html" with field=form.description %}
+                <div class="form-grid">
+                    {% include "_form_field.html" with field=form.category %}
+                    {% include "_form_field.html" with field=form.status %}
+                </div>
+            </section>
+        {% endif %}
+
+        <section class="card form-section">
+            <h2>{% if form.title %}Первый раунд{% else %}Параметры раунда{% endif %}</h2>
+            {% include "_form_field.html" with field=form.subject %}
+            <div class="form-grid">
+                {% include "_form_field.html" with field=form.level %}
+                {% include "_form_field.html" with field=form.style %}
+                {% include "_form_field.html" with field=form.audience %}
+                {% include "_form_field.html" with field=form.time_limit_seconds %}
+                {% include "_form_field.html" with field=form.points_per_correct %}
+            </div>
+        </section>
+
+        <section class="form-questions">
+            <h2>Вопросы</h2>
             {{ question_formset.management_form }}
-            <div class="formset_errors">
+            <div class="formset-errors">
                 {{ question_formset.non_form_errors }}
             </div>
-            <p>{{ page_for_questions }}:</p>
 
             {# Сюда JS будет добавлять новые формы вопросов #}
             <div id="question-list">
                 {% for question_form in question_formset %}
-                    <div class="question-form">
-                        <p>Вопрос №{{ forloop.counter }}:</p>
-                        {{ question_form.as_p }}
-                        <button type="button" class="delete-question-btn">Удалить вопрос</button>
-                    </div>
+                    {% include "quizzes/_question_form.html" %}
                 {% endfor %}
             </div>
 
-            <button type="button" id="add-question-btn">Добавить ещё вопрос</button>
-            <button type="submit">{{ submit_label }}</button>
-        </form>
-    </div>
+            <button type="button" class="btn" id="add-question-btn">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Добавить вопрос
+            </button>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>
+                {{ submit_label }}
+            </button>
+            <a class="btn btn-ghost" href="{{ back_url }}">Отмена</a>
+        </div>
+    </form>
 
     <!--
         Заготовка пустой формы вопроса.
@@ -42,18 +100,8 @@
         и вставляем результат в #question-list.
     -->
     <template id="empty-question-template">
-        <div class="question-form">
-            <p>Новый вопрос:</p>
-            {{ question_formset.empty_form.as_p }}
-            <button type="button" class="delete-question-btn">Удалить вопрос</button>
-        </div>
+        {% include "quizzes/_question_form.html" with question_form=question_formset.empty_form %}
     </template>
-
-    <div>
-        <a href="{% url 'quizzes:quizzes_list' %}">
-            Мои квизы
-        </a>
-    </div>
 
     <script>
         (function () {

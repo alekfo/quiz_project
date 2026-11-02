@@ -1,0 +1,17 @@
+{# Список пользователей строками: аватар, ник, имя и фамилия; вся строка - ссылка на профиль. #}
+{# Параметр: user_list - пользователи. Пустое состояние выводит вызывающий шаблон. Почту не выводить. #}
+<ul class="user-list">
+    {% for person in user_list %}
+        <li>
+            <a class="user-row" href="{% url 'users:user_detail' pk=person.pk %}">
+                {% include "users/_avatar.html" with avatar_user=person %}
+                <span class="user-row-text">
+                    <span class="user-row-name">{{ person.username }}</span>
+                    {% if person.get_full_name %}
+                        <span class="user-row-fullname">{{ person.get_full_name }}</span>
+                    {% endif %}
+                </span>
+            </a>
+        </li>
+    {% endfor %}
+</ul>

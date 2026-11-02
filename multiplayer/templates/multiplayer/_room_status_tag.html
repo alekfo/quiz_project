@@ -1,0 +1,8 @@
+{# Метка статуса комнаты. Параметр: room. #}
+{% if room.status == "in_progress" %}
+    <span class="tag tag-warning">Идёт игра</span>
+{% elif room.status == "finished" %}
+    <span class="tag tag-muted">Завершена</span>
+{% else %}
+    <span class="tag tag-muted">Ожидание</span>
+{% endif %}

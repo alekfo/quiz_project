@@ -1,6 +1,18 @@
+from io import BytesIO
+from uuid import uuid4
+
+from PIL import Image
+
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
+from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import UploadedFile
 from .models import User
+from django.contrib.auth import get_user_model
+
+# Ограничения на загружаемый аватар.
+_AVATAR_MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 МБ - лимит на входящий файл
+_AVATAR_MAX_DIMENSION = 512  # пикселей по длинной стороне после ресайза
 
 # Домены одноразовой почты, через которые часто фармят бесплатные аккаунты.
 _DISPOSABLE_EMAIL_DOMAINS = frozenset({
@@ -58,3 +70,55 @@ class RegisterForm(UserCreationForm):
         if User.objects.filter(email=email).exists():
             raise forms.ValidationError('Пользователь с таким email уже зарегистрирован.')
         return email
+
+class ProfileUpdateForm(forms.ModelForm):
+    """Редактирование собственного профиля: имя, фамилия, аватар."""
+
+    class Meta:
+        model = get_user_model()
+        fields = "first_name", "last_name", "avatar"
+        widgets = {
+            'avatar': forms.ClearableFileInput(attrs={'accept': 'image/*'}),
+        }
+        labels = {
+            'first_name': 'Ваше имя',
+            'last_name': 'Ваша фамилия',
+            'avatar': 'Аватар',
+        }
+
+    def clean_avatar(self):
+        """Ограничивает размер загружаемого файла и приводит картинку к единому
+        формату/размеру (до 512x512, JPEG) - чтобы в списках и шапке не грузились
+        оригиналы в несколько мегапикселей и не копился произвольный формат файлов.
+
+        cleaned_data здесь - это либо новая загрузка (UploadedFile), либо прежнее
+        значение без изменений, либо False/''  (пользователь нажал "очистить") -
+        ресайзить и проверять размер нужно только в первом случае.
+        """
+        avatar = self.cleaned_data.get('avatar')
+        if not isinstance(avatar, UploadedFile):
+            return avatar
+
+        if avatar.size > _AVATAR_MAX_UPLOAD_BYTES:
+            raise forms.ValidationError(
+                f'Файл слишком большой: максимум {_AVATAR_MAX_UPLOAD_BYTES // (1024 * 1024)} МБ.'
+            )
+
+        # Django ImageField уже проверил выше (на уровне поля формы), что это
+        # валидное изображение (включая защиту Pillow от decompression bomb) -
+        # здесь повторно открываем тот же файл, чтобы уменьшить и перекодировать.
+        image = Image.open(avatar)
+        if image.mode in ('RGBA', 'LA', 'P'):
+            # Прозрачность не имеет смысла в JPEG - подкладываем белый фон,
+            # иначе прозрачные области почернеют.
+            rgba = image.convert('RGBA')
+            background = Image.new('RGB', rgba.size, (255, 255, 255))
+            background.paste(rgba, mask=rgba.split()[-1])
+            image = background
+        else:
+            image = image.convert('RGB')
+        image.thumbnail((_AVATAR_MAX_DIMENSION, _AVATAR_MAX_DIMENSION), Image.LANCZOS)
+
+        buffer = BytesIO()
+        image.save(buffer, format='JPEG', quality=85)
+        return ContentFile(buffer.getvalue(), name=f'{uuid4().hex}.jpg')

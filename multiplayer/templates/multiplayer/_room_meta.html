@@ -1,0 +1,7 @@
+{# Приглушённая строка о комнате: серия, игроки, дата создания. #}
+{# Параметр: room с подгруженной current_series и аннотацией players_count (multiplayer.views.RoomListView). #}
+<span class="room-meta">
+    <span>{% if room.current_series %}Квиз: {{ room.current_series.title }}{% else %}Квиз не выбран{% endif %}</span>
+    <span>Игроков: {{ room.players_count }}</span>
+    <span>Создана {{ room.created_at|date:"d.m.Y" }}</span>
+</span>

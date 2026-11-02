@@ -1,0 +1,5 @@
+{# Метка статуса комнаты в шапке лобби. Обновляется по WS (см. _room_status.html). #}
+{# data-room-status: по переходу в finished room-lobby.js перезагружает страницу - формы лобби больше не нужны. #}
+<span id="lobby-status" data-live data-room-status="{{ object.status }}">
+    {% include "multiplayer/_room_status_tag.html" with room=object %}
+</span>

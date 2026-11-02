@@ -1,17 +1,67 @@
-{% extends 'gameplay/base.html' %}
+{% extends 'base.html' %}
 
 {% block title %}
-    INDEX START
+    {{ series.title }} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <h1>{{ quiz.title }}</h1>
-    <p>{{ questions_count }} вопросов</p>
-    <p>У тебя будет {{ quiz.time_limit_seconds }} секунд на каждый вопрос</p>
-    <form method="post">
-        {%  csrf_token %}
-        <div>
-            <button type="submit">НАЧАТЬ</button>
-        </div>
-    </form>
+    {% url 'quizzes:quizzes_preview' pk=series.pk as preview_url %}
+
+    <a class="back-link" href="{{ preview_url }}">← К квизу</a>
+
+    {# экран перед первым запуском: идущий прогон вьюха сразу уводит в игру или solo_room #}
+    <article class="card quiz-preview quiz-start">
+        <p class="quiz-card-tags">
+            <span class="tag">Категория: {{ series.category }}</span>
+        </p>
+
+        <h1 class="quiz-preview-title">{{ series.title }}</h1>
+
+        {% if series.description %}
+            <details class="disclosure">
+                <summary class="btn">
+                    Описание
+                    <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </summary>
+                <p class="disclosure-body">{{ series.description }}</p>
+            </details>
+        {% endif %}
+
+        <section class="quiz-preview-rounds">
+            <h2>Раундов: {{ rounds_count }}</h2>
+            <ol class="progress-list">
+                {% for round in series.rounds.all|dictsort:"round_order" %}
+                    <li class="progress-item">
+                        <span class="progress-text">
+                            <span class="progress-subject">{{ round.subject }}</span>
+                            <span class="progress-meta">
+                                {% if round.level != "common" %}Уровень: {{ round.get_level_display }} · {% endif %}{{ round.time_limit_seconds }} с на ответ · +{{ round.points_per_correct }} за верный ответ
+                            </span>
+                        </span>
+                    </li>
+                {% endfor %}
+            </ol>
+        </section>
+
+        <ul class="start-rules">
+            <li>Раунды идут по порядку, счёт за квиз складывается из очков всех раундов.</li>
+            <li>Между раундами можно прерваться — прогресс сохранится.</li>
+            <li>Не успели ответить за отведённое время — вопрос засчитывается как пропущенный.</li>
+        </ul>
+
+        <form method="post" class="quiz-actions">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary btn-lg">
+                <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>
+                Начать
+            </button>
+            <a class="btn btn-ghost" href="{{ preview_url }}">Отмена</a>
+        </form>
+
+        {# POST создаёт прогон и ведёт в solo_room - игра начинается оттуда #}
+        <p class="quiz-preview-note">
+            После нажатия откроется комната квиза: в ней виден прогресс по раундам, а первый раунд запускается
+            отдельной кнопкой. Таймер пойдёт только с началом раунда.
+        </p>
+    </article>
 {% endblock %}

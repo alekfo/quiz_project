@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Раунды и вопросы: {{ object.title }} — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    <a class="back-link" href="{% url 'quizzes:quizzes_preview' pk=object.pk %}">← К квизу</a>
+
+    <div class="page-header">
+        <div>
+            <h1>{{ object.title }}</h1>
+            <p class="page-subtitle">Раунды и вопросы — всё содержимое квиза</p>
+        </div>
+        <div class="page-actions">
+            <a class="btn btn-primary" href="{% url 'quizzes:quizzes_create_for_series' series_id=object.pk %}">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Добавить раунд
+            </a>
+            <a class="btn" href="{% url 'ai_generator:index_for_series' series_id=object.pk %}">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>
+                    <path d="M19 16v4M17 18h4"/>
+                </svg>
+                Раунд с AI
+            </a>
+        </div>
+    </div>
+
+    <p class="quiz-card-tags series-summary">
+        <span class="tag">Категория: {{ object.category }}</span>
+        {% if object.status == "public" %}
+            <span class="tag tag-success">Публичный</span>
+        {% else %}
+            <span class="tag tag-muted">Приватный</span>
+        {% endif %}
+        <span class="tag tag-muted">Раундов: {{ nums_of_rounds }}</span>
+    </p>
+
+    {% if nums_of_rounds %}
+        <div class="round-cards">
+            {% for round in object.rounds.all|dictsort:"round_order" %}
+                <details class="card round-card"{% if forloop.first %} open{% endif %}>
+                    <summary class="round-summary">
+                        <span class="round-summary-text">
+                            <span class="round-number">Раунд {{ forloop.counter }}</span>
+                            <span class="round-subject">{{ round.subject }}</span>
+                        </span>
+                        <span class="round-summary-meta">
+                            Вопросов: {{ round.questions.all|length }}
+                            <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                        </span>
+                    </summary>
+
+                    <div class="round-body">
+                        <p class="quiz-card-tags">
+                            <span class="tag tag-muted">{{ round.get_type_display }}</span>
+                            <span class="tag tag-muted">Сложность: {{ round.get_level_display }}</span>
+                            <span class="tag tag-muted">{{ round.get_style_display }}</span>
+                            <span class="tag tag-muted">Аудитория: {{ round.get_audience_display }}</span>
+                            <span class="tag tag-muted">Время на вопрос: {{ round.time_limit_seconds }} с</span>
+                            <span class="tag tag-muted">Очков за ответ: {{ round.points_per_correct }}</span>
+                        </p>
+
+                        <div class="quiz-actions">
+                            <a class="btn" href="{% url 'quizzes:round_update' pk=round.pk %}">
+                                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M4 20h4L19 9l-4-4L4 16v4z"/>
+                                    <path d="M13.5 6.5l4 4"/>
+                                </svg>
+                                Изменить раунд
+                            </a>
+                            <a class="btn btn-danger" href="{% url 'quizzes:round_delete' pk=round.pk %}">
+                                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
+                                </svg>
+                                Удалить раунд
+                            </a>
+                        </div>
+
+                        <ol class="question-list">
+                            {% for question in round.questions.all %}
+                                <li class="question-item">
+                                    <p class="question-text">{{ question.text }}</p>
+                                    <ul class="option-list">
+                                        {% for answer in question.options.all %}
+                                            <li{% if answer.is_correct %} class="is-correct"{% endif %}>
+                                                {{ answer.text }}
+                                                {% if answer.is_correct %}
+                                                    <span class="tag tag-success">Верный</span>
+                                                {% endif %}
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% if question.fact %}
+                                        <p class="question-fact"><b>Факт:</b> {{ question.fact }}</p>
+                                    {% endif %}
+                                </li>
+                            {% empty %}
+                                <li class="empty-state">В этом раунде пока нет вопросов.</li>
+                            {% endfor %}
+                        </ol>
+                    </div>
+                </details>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="empty-state">В квизе пока нет раундов — добавьте первый вручную или сгенерируйте с помощью AI.</p>
+    {% endif %}
+
+    <section class="danger-zone">
+        <h2>Удаление квиза</h2>
+        <p>Квиз удаляется целиком, вместе со всеми раундами и вопросами. Перед удалением будет подтверждение.</p>
+        <a class="btn btn-danger" href="{% url 'quizzes:quiz_delete' pk=object.pk %}">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
+            </svg>
+            Удалить квиз
+        </a>
+    </section>
+{% endblock %}

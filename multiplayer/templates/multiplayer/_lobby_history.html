@@ -1,0 +1,37 @@
+{# Сыгранные в комнате квизы. Обновляется по WS (см. _room_status.html); открытость <details> room-lobby.js сохраняет. #}
+{# Посетителю не показывается: solo_room пускает только хоста прогона и игроков комнаты. #}
+<div id="lobby-history" class="lobby-history-slot" data-live>
+    {% if is_host or is_player %}
+        {% if completed_series_run %}
+            {# раскрывающаяся карточка: шапка-<summary> во всю ширину, как у карточек раундов #}
+            <details class="card lobby-history" id="lobby-history-details"{% if object.status == "finished" %} open{% endif %}>
+                <summary class="lobby-history-summary">
+                    <h2>История игр <span class="tab-count">{{ completed_series_run|length }}</span></h2>
+                    <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </summary>
+                <ul class="room-list lobby-history-list">
+                    {% for run in completed_series_run %}
+                        <li>
+                            <a class="room-row" href="{% url 'gameplay:solo_room' pk=run.pk %}">
+                                <span class="room-row-text">
+                                    <span class="room-row-title">{{ run.series.title }}</span>
+                                    <span class="room-meta"><span>{{ run.finished_at|date:"d.m.Y H:i" }}</span></span>
+                                </span>
+                                {% if run.status == "completed" %}
+                                    <span class="tag tag-success">Пройден</span>
+                                {% else %}
+                                    <span class="tag tag-muted">Прерван</span>
+                                {% endif %}
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </details>
+        {% elif object.status == "finished" %}
+            <section class="card lobby-card" aria-labelledby="lobby-history-title">
+                <h2 id="lobby-history-title">История игр</h2>
+                <p class="empty-state">Игр в этой комнате не было.</p>
+            </section>
+        {% endif %}
+    {% endif %}
+</div>

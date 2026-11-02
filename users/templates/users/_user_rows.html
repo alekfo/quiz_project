@@ -1,0 +1,44 @@
+{# Блок результатов страницы «Пользователи». Отдаётся целиком на HTMX-запрос поиска #}
+{# (UsersListView.get_template_names) и подменяет #user-results по outerHTML - корень должен остаться один. #}
+<div id="user-results" class="user-results">
+    {% if is_search %}
+        <h2 class="user-results-title">Найдено по запросу «{{ q }}»</h2>
+        {% if users %}
+            {% include "users/_user_row_list.html" with user_list=users %}
+        {% else %}
+            <p class="empty-state">Никого не нашли по запросу «{{ q }}». Поиск идёт по нику, имени и фамилии.</p>
+        {% endif %}
+    {% else %}
+        {% if q %}
+            <p class="search-hint">Введите хотя бы 2 символа, чтобы начать поиск.</p>
+        {% endif %}
+
+        {# без JS вкладки скрыты, обе секции идут подряд со своими заголовками #}
+        <div class="tabs" role="tablist" aria-label="Подписки и подписчики" data-tabs>
+            <button class="tab" type="button" role="tab" id="tab-following" aria-controls="following" aria-selected="true">
+                Подписки <span class="tab-count">{{ users|length }}</span>
+            </button>
+            <button class="tab" type="button" role="tab" id="tab-followers" aria-controls="followers" aria-selected="false">
+                Подписчики <span class="tab-count">{{ followers|length }}</span>
+            </button>
+        </div>
+
+        <section class="tab-panel" id="following" role="tabpanel" aria-labelledby="tab-following">
+            <h2 class="tab-panel-title">Подписки</h2>
+            {% if users %}
+                {% include "users/_user_row_list.html" with user_list=users %}
+            {% else %}
+                <p class="empty-state">Вы пока ни на кого не подписаны. Найдите авторов через поиск выше.</p>
+            {% endif %}
+        </section>
+
+        <section class="tab-panel" id="followers" role="tabpanel" aria-labelledby="tab-followers">
+            <h2 class="tab-panel-title">Подписчики</h2>
+            {% if followers %}
+                {% include "users/_user_row_list.html" with user_list=followers %}
+            {% else %}
+                <p class="empty-state">На вас пока никто не подписан.</p>
+            {% endif %}
+        </section>
+    {% endif %}
+</div>

@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {{ target_user.username }} — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    <a class="back-link" href="{% url 'users:users_list' %}">← Пользователи</a>
+    <h1>Профиль пользователя</h1>
+
+    <section class="card profile-card">
+        {% include "users/_avatar.html" with avatar_user=target_user size="lg" %}
+        <div class="profile-info">
+            <h2 class="profile-name">{{ target_user.username }}</h2>
+            {% if target_user.first_name or target_user.last_name %}
+                <p class="profile-fullname">{{ target_user.first_name }} {{ target_user.last_name }}</p>
+            {% endif %}
+            {% include "social/_follow_button.html" %}
+            {% if is_it_me %}
+                <p class="profile-note">
+                    Это ваш профиль — так его видят другие.
+                    <a href="{% url 'users:about_me' %}">Перейти в «Мой профиль»</a>
+                </p>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if not is_it_me %}
+        <section class="menu-section profile-quizzes">
+            <h2>Публичные квизы</h2>
+            {% if public_series %}
+                <ul class="quiz-grid">
+                    {% for ps in public_series %}
+                        <li class="card quiz-card">
+                            <p class="quiz-card-tags">
+                                <span class="tag">Категория: {{ ps.category }}</span>
+                                {% if ps.in_progress %}
+                                    <span class="tag tag-warning">Идёт игра</span>
+                                {% endif %}
+                            </p>
+                            <h3 class="quiz-card-title">
+                                <a class="quiz-card-link" href="{% url 'quizzes:quizzes_preview' pk=ps.pk %}">{{ ps.title }}</a>
+                            </h3>
+                            {% if ps.description %}
+                                <p class="quiz-card-description">{{ ps.description }}</p>
+                            {% endif %}
+                            <p class="quiz-card-meta">
+                                <span>Раундов: {{ ps.rounds_count }}</span>
+                                <span aria-label="Лайков: {{ ps.like_count }}">♥ {{ ps.like_count }}</span>
+                            </p>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="empty-state">У пользователя пока нет публичных квизов.</p>
+            {% endif %}
+        </section>
+    {% endif %}
+{% endblock %}

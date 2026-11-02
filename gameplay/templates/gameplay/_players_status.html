@@ -1,0 +1,25 @@
+{% comment %}
+    Кто ответил на текущий вопрос. Рендерится в play.html и в GameSessionConsumer.session_update (WS) -
+    корень #waiting-info play.js заменяет целиком. user в WS передаётся явно (render_to_string без request).
+{% endcomment %}
+<section id="waiting-info" class="players-status" aria-live="polite">
+    <h2 class="players-status-title">Ответили {{ answered_count }} из {{ participants_count }}</h2>
+    <ul class="players-status-list">
+        {% for part in current_session.participants.all %}
+            <li class="players-status-row">
+                <span class="players-status-name">
+                    {{ part.user.username }}{% if part.user_id == user.id %} <span class="lobby-you">(вы)</span>{% endif %}
+                </span>
+                {# строки ответа может не быть (вопрос ещё не открыт): «Думает» по умолчанию, при ответе её прячет CSS (:has) #}
+                {% for answer in part.participants_answers.all %}
+                    {% if answer.question_id == current_session.current_question_id %}
+                        {% if answer.answered_at or answer.is_skipped %}
+                            <span class="tag tag-success players-status-done">Ответил</span>
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+                <span class="tag tag-muted players-status-thinking">Думает</span>
+            </li>
+        {% endfor %}
+    </ul>
+</section>

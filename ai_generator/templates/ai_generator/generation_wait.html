@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{# Генерация уже идёт (страницу обновили во время ожидания, открыли вторую вкладку и т.п.). #}
+{# Страница опрашивает ai_generator:status; когда статус сменится, вьюха ответит заголовком #}
+{# HX-Redirect на review - там уже вопросы на проверку либо сообщение об ошибке. #}
+{% block title %}
+    Генерируем вопросы — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    <div class="page-header">
+        <div>
+            <h1>Генерируем вопросы</h1>
+            <p class="page-subtitle">
+                AI готовит раунд «{{ gen_request.subject }}». Страница обновится сама, когда вопросы будут готовы, —
+                обычно это занимает до минуты.
+            </p>
+        </div>
+    </div>
+
+    <div id="generation-status"
+         hx-get="{% url 'ai_generator:status' pk=gen_request.pk %}"
+         hx-trigger="every 3s"
+         hx-swap="none"></div>
+
+    {% include "ai_generator/_generation_overlay.html" with autostart=True %}
+    <script src="{% static 'js/loading-overlay.js' %}" defer></script>
+{% endblock %}

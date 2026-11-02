@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% if object.room.host_id == user.id %}Завершить участие{% else %}Выйти из комнаты{% endif %}: {{ object.room.title }} — QuizCrowd
+{% endblock %}
+
+{% block body %}
+    {% url 'multiplayer:room_detail' code=object.room.token as back_url %}
+
+    <a class="back-link" href="{{ back_url }}">← В комнату</a>
+
+    {# хост из комнаты не уходит - перестаёт быть только игроком #}
+    <section class="card confirm-card">
+        {% if object.room.host_id == user.id %}
+            <h1>Завершить участие?</h1>
+            <p class="confirm-subject">{{ object.room.title }}</p>
+            <p class="confirm-text">
+                Вы перестанете быть игроком, но останетесь хостом: сможете выбирать квиз и запускать раунды.
+                Стать участником снова можно кнопкой в комнате.
+            </p>
+        {% else %}
+            <h1>Выйти из комнаты?</h1>
+            <p class="confirm-subject">{{ object.room.title }}</p>
+            <p class="confirm-text">
+                Вы перестанете быть игроком этой комнаты, а готовность сбросится.
+                Вернуться можно по ссылке на комнату, пока хост её не закрыл.
+            </p>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">
+                    {% if object.room.host_id == user.id %}Завершить участие{% else %}Выйти из комнаты{% endif %}
+                </button>
+                <a class="btn btn-ghost" href="{{ back_url }}">Остаться</a>
+            </div>
+        </form>
+    </section>
+{% endblock %}

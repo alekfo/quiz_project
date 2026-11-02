@@ -1,29 +1,171 @@
-{% extends 'gameplay/base.html' %}
+{% extends 'base.html' %}
+{% load static %}
 
 {% block title %}
-    INDEX PLAY
+    Вопрос {{ question_number }} из {{ question_count }} — QuizCrowd
 {% endblock %}
 
 {% block body %}
-    <p>Вопрос № {{ current_question.order }}:</p>
-    <div>
-        {{ current_question.text }}
-    </div>
-    <form method="post">
-        {%  csrf_token %}
-        {% for option in current_question.options.all %}
-            <div>
-<!--                за счет того, что у всех options будет один name, html сам организует чтобы был из них выюран только один-->
-                <input type="radio" name="chosen_option_id" value="{{ option.pk }}" id="option_{{ option.pk }}">
-                <label for="option_{{ option.pk }}">
-                    {{ option.text }}
-                </label>
-            </div>
-        {% endfor %}
-        <div>
-            <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
-            <button type="submit">ОТВЕТИТЬ</button>
-        </div>
-    </form>
+    {% comment %}
+        Весь экран игры - один блок #play-main: состояние (вопрос / вердикт / ведущий) целиком выводится из контекста.
+        data-* - входные данные для static/js/play.js: id вопроса (сверка с WS), таймер, адрес WS (только мультиплеер).
+    {% endcomment %}
+    <article id="play-main" class="card play-card"
+             data-question-id="{{ current_question.pk }}"
+             {% if mode == "multiplayer" %}data-session-socket="/ws/gameplay/session/{{ current_session.pk }}/"{% endif %}
+             {% if role == "player" and not already_answered %}data-remaining="{{ remaining_seconds }}" data-time-limit="{{ current_session.quiz.time_limit_seconds }}"{% endif %}>
 
+        <header class="play-header">
+            <div class="play-progress">
+                <p class="play-step">Вопрос {{ question_number }} из {{ question_count }}</p>
+                {% if answers_progress %}
+                    <ol class="answer-dots" aria-label="Ответы по вопросам">
+                        {% for item in answers_progress %}
+                            <li class="answer-dot is-{{ item.state }}{% if forloop.counter == question_number %} is-now{% endif %}">
+                                <span class="visually-hidden">
+                                    Вопрос {{ forloop.counter }}:
+                                    {% if item.state == "correct" %}верно{% elif item.state == "wrong" %}неверно{% elif item.state == "skipped" %}пропущено{% elif item.state == "current" %}текущий{% else %}впереди{% endif %}
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ol>
+                {% endif %}
+            </div>
+
+            <div class="play-stats">
+                {% if role == "player" %}
+                    <p class="play-score">Счёт: <strong class="play-score-value">{{ score }}</strong></p>
+                    {% if streak >= 2 %}
+                        <span class="tag tag-warning">Серия: {{ streak }} подряд</span>
+                    {% endif %}
+                {% else %}
+                    <span class="tag">Ведущий</span>
+                {% endif %}
+            </div>
+        </header>
+
+        {# полоса времени - только у игрока, пока он не ответил; ширину и цвет ведёт play.js #}
+        {% if role == "player" and not already_answered %}
+            <div class="timer" id="timer">
+                <div class="timer-track" role="progressbar" aria-label="Оставшееся время, секунд"
+                     aria-valuemin="0" aria-valuemax="{{ current_session.quiz.time_limit_seconds }}" aria-valuenow="{{ remaining_seconds }}">
+                    <span class="timer-fill"></span>
+                </div>
+                <span class="timer-seconds" id="timer-seconds">{{ remaining_seconds }} с</span>
+            </div>
+        {% endif %}
+
+        <h1 class="play-question">{{ current_question.text }}</h1>
+
+        {% if role == "host_observer" %}
+            {# ведущий не отвечает: варианты без выбора, верный подсвечен. is_correct выводится только в этой ветке #}
+            <ul class="option-list">
+                {% for option in current_question.options.all %}
+                    <li class="option-card is-static{% if option.is_correct %} is-correct{% endif %}">
+                        <span class="option-key" aria-hidden="true">{{ forloop.counter }}</span>
+                        <span class="option-text">
+                            {{ option.text }}
+                            {% if option.is_correct %}<span class="tag tag-success option-note">Верный ответ</span>{% endif %}
+                        </span>
+                    </li>
+                {% endfor %}
+            </ul>
+
+        {% elif already_answered %}
+            {# пропуск у игрока бывает только по таймеру: при пропуске ведущим вопрос сразу переключается #}
+            {% if current_answer.is_correct %}
+                <div class="verdict is-correct" role="status" data-points="{{ points_gained }}">
+                    <span class="verdict-icon" aria-hidden="true">✓</span>
+                    <p class="verdict-title">Верно! <span class="verdict-points">+{{ points_gained }}</span></p>
+                </div>
+            {% elif current_answer.is_skipped %}
+                <div class="verdict is-timeout" role="status">
+                    <span class="verdict-icon" aria-hidden="true">⏱</span>
+                    <p class="verdict-title">Время вышло</p>
+                </div>
+            {% else %}
+                <div class="verdict is-wrong" role="status">
+                    <span class="verdict-icon" aria-hidden="true">✗</span>
+                    <p class="verdict-title">Неверно</p>
+                </div>
+            {% endif %}
+
+            {# верный вариант при ошибке не показываем (решение пользователя) - только выбранный #}
+            <ul class="option-list">
+                {% for option in current_question.options.all %}
+                    <li class="option-card is-static{% if option.pk == current_answer.chosen_option_id %} is-chosen{% endif %}">
+                        <span class="option-key" aria-hidden="true">{{ forloop.counter }}</span>
+                        <span class="option-text">
+                            {{ option.text }}
+                            {% if option.pk == current_answer.chosen_option_id %}<span class="tag option-note">Ваш ответ</span>{% endif %}
+                        </span>
+                    </li>
+                {% endfor %}
+            </ul>
+
+        {% else %}
+            {% comment %}
+                С HTMX ответ уходит без перезагрузки: HTMX проходит по редиректу на GET play и подменяет #play-main
+                целиком. Без JS - обычная отправка формы.
+            {% endcomment %}
+            <form method="post" id="answer-form" class="answer-form" action="{% url 'gameplay:play' pk=current_session.pk %}"
+                  hx-post="{% url 'gameplay:play' pk=current_session.pk %}" hx-target="#play-main" hx-select="#play-main"
+                  hx-swap="outerHTML" hx-sync="this:drop">
+                {% csrf_token %}
+                <fieldset class="option-list">
+                    <legend class="visually-hidden">Варианты ответа</legend>
+                    {% for option in current_question.options.all %}
+                        <label class="option-card" for="option_{{ option.pk }}">
+                            <input class="option-input" type="radio" name="chosen_option_id" value="{{ option.pk }}" id="option_{{ option.pk }}">
+                            <span class="option-key" aria-hidden="true">{{ forloop.counter }}</span>
+                            <span class="option-text">{{ option.text }}</span>
+                        </label>
+                    {% endfor %}
+                </fieldset>
+                <input type="hidden" name="current_answer_id" value="{{ current_answer.pk }}">
+                <button class="btn btn-primary btn-lg" id="submit_button" type="submit">Ответить</button>
+                <p class="play-hint">Цифры на клавиатуре — выбрать вариант, Enter — ответить</p>
+            </form>
+        {% endif %}
+
+        {# факт - после ответа как подсказка; ведущему - сразу, чтобы мог прочитать вслух #}
+        {% if current_question.fact and already_answered or current_question.fact and role == "host_observer" %}
+            <section class="play-fact">
+                <h2 class="play-fact-title">Любопытный факт</h2>
+                <p>{{ current_question.fact }}</p>
+            </section>
+        {% endif %}
+
+        {% if mode == "multiplayer" %}
+            {% include "gameplay/_players_status.html" %}
+        {% endif %}
+
+        {% if can_advance %}
+            {# у ведущего в мультиплеере, пока ответили не все, кнопка - «Пропустить ожидание» с подтверждением (play.js) #}
+            <form method="post" id="next-form" class="play-next" action="{% url 'gameplay:next_question' pk=current_session.pk %}"
+                  {% if mode == "multiplayer" %}data-host data-all-answered="{{ all_answered|yesno:'true,false' }}"
+                  data-answered="{{ answered_count }}" data-participants="{{ participants_count }}"{% endif %}>
+                {% csrf_token %}
+                <input type="hidden" name="question_id" value="{{ current_question.pk }}">
+                <button class="btn btn-primary btn-lg" id="next-button" type="submit"
+                        data-label-next="{% if is_last_question %}К результатам{% else %}Следующий вопрос{% endif %}">
+                    {% if mode == "multiplayer" and not all_answered %}
+                        Пропустить ожидание
+                    {% elif is_last_question %}
+                        К результатам
+                    {% else %}
+                        Следующий вопрос
+                    {% endif %}
+                </button>
+            </form>
+        {% elif mode == "multiplayer" and already_answered %}
+            <p class="play-waiting">Ждём, пока ведущий переключит вопрос</p>
+        {% endif %}
+
+        <p id="play-connection" class="play-connection" role="status" hidden>
+            Связь с игрой прервалась — обновите страницу, чтобы видеть ответы других игроков.
+        </p>
+    </article>
+
+    <script src="{% static 'js/play.js' %}" defer></script>
 {% endblock %}
