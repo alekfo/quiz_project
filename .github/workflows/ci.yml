@@ -42,6 +42,7 @@ jobs:
             git pull origin release
             docker compose build --no-cache web
             docker compose up -d --force-recreate web
+            docker exec prepmate-nginx-1 nginx -s reload
             docker compose logs web --tail 30
 
   # === PROD: пуш в main -> будущий прод-хостинг ===
