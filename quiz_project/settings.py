@@ -29,7 +29,8 @@ SECRET_KEY = os.environ["SECRET_KEY"]
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "false") == "True"
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS").split(',')
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if h not in ('localhost', '127.0.0.1')]
 
 CLAUDE_API_SERVICE_URL = os.environ.get('CLAUDE_API_SERVICE_URL', 'https://api.fieldlog.online/ask')
 CLAUDE_API_SERVICE_KEY = os.environ.get('SERVICE_API_KEY', '')
