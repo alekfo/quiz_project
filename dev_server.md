@@ -1,5 +1,7 @@
 # Тестовый сервер: как устроен и как работает
 
+Актуализировано 2026-11-09 по Compose/CI, SSH-диагностике и подтверждению пользователя, что оба сайта работают. Dev/staging QuizApp — ветка **release**; production-деплой main пока не включён.
+
 Учебный разбор инфраструктуры тестового сервера, на котором одновременно
 работают два Django-проекта: PrepMate (prepstats.pro) и quiz_project
 (quizcrowd.online).
@@ -28,8 +30,10 @@
 Docker Compose по умолчанию создаёт сеть <project>_default -> prepmate_default.
 В ней: prepmate-nginx-1, prepmate-web-1, prepmate-db-1.
 
-Внутри этой сети контейнеры резолвят друг друга по имени сервиса: web, db.
-Поэтому в nginx.conf для PrepMate стоит proxy_pass http://web:8000;.
+Внутри этой сети контейнеры резолвят друг друга по именам и алиасам.
+Для PrepMate в nginx.conf теперь используется proxy_pass
+http://prepmate-web-1:8000;. Имя web неоднозначно: его регистрируют
+оба приложения. Для QuizApp используется http://quiz-web:8000.
 
 ### 2.2. Сети проекта quiz_project
 
@@ -480,8 +484,9 @@ server_name. Для quizcrowd.online совпадение есть, поэтом
   docker exec prepmate-nginx-1 nginx -t
   docker exec prepmate-nginx-1 nginx -s reload
 
-  # Пересоздать nginx (если менялись volumes в compose)
-  cd ~/PrepMate && docker compose up -d --force-recreate nginx
+  # Пересоздать только nginx (изменились mounts или git заменил nginx.conf)
+  # Сначала должны работать оба web: prepmate-web-1 и quiz-web.
+  cd ~/PrepMate && docker compose up -d --no-deps --force-recreate nginx
 
 ---
 
@@ -511,10 +516,21 @@ server_name. Для quizcrowd.online совпадение есть, поэтом
    перечитывает .env. Решение: docker compose up -d --force-recreate
    web.
 
-6. Bad Request (400) при DEBUG=True без деталей — стандартный
-   handler400 в Django пытается отрендерить CSRF-токен и сам падает.
-   Решение: временно переопределить handler400 в urls.py, чтобы увидеть
-   текст исключения.
+6. Запросы PrepStats через один возвращают 400 — подтверждённая
+   2026-11-09 коллизия Docker DNS: оба приложения имеют алиас web
+   в prepmate_default. При proxy_pass http://web:8000 nginx получает
+   адреса обоих приложений и распределяет запросы между ними. QuizApp
+   отклоняет Host: prepstats.pro по ALLOWED_HOSTS. Исправление:
+   proxy_pass http://prepmate-web-1:8000 для PrepStats; для QuizApp
+   оставить http://quiz-web:8000. Не добавлять чужой домен в ALLOWED_HOSTS.
+
+7. После этого исправления 400 остались — проверяй содержимое файла
+   на хосте и в контейнере. Во время диагностики хост уже содержал
+   prepmate-web-1, контейнер продолжал видеть web; inode отличались,
+   ответы шли 400/200/400/200. Reload успешно перечитывал старый файл.
+   Пересоздание только nginx исправило проблему; пользователь подтвердил
+   работу обоих сайтов. Обычный reload после изменения IP приложения
+   и пересоздание nginx после замены mounted-файла — разные операции.
 
 ---
 
@@ -524,10 +540,102 @@ server_name. Для quizcrowd.online совпадение есть, поэтом
   чтобы Nginx не падал при старте, если upstream ещё не запущен.
 - external: true для quiz_static_files/quiz_media_files в
   prepmate/docker-compose.yml — чтобы убрать WARN про чужой volume.
-- proxy_http_version 1.1 + proxy_set_header Connection "" для
-  upstream PrepMate — если наблюдаются периодические 400 из-за
-  переиспользования keepalive-соединений с Gunicorn/gevent.
+- Уникальные сетевые алиасы приложений вместо зависимости от
+  автоматически сформированного имени prepmate-web-1. Текущие 400
+  были вызваны коллизией имени web и старым bind mount, а не
+  подтверждённой проблемой keepalive Gunicorn/gevent.
 - Вынести общий Nginx в отдельный compose-проект (infra/nginx),
   чтобы он не зависел от PrepMate. Тогда оба проекта будут клиентами
   общего Nginx, и деплой PrepMate не будет влиять на quiz_project.
+
+## 10. SSH, репозитории и действующий CI/CD
+
+Подключение: `ssh prepstats` (проверенный сервер 5.42.125.223).
+
+| Назначение | Локально | На сервере |
+|---|---|---|
+| QuizApp | `/home/aleksey/PycharmProjects/quiz_project` | `/home/alek_fo/quiz_project` |
+| PrepMate / PrepStats | `/home/aleksey/PycharmProjects/PrepMate` | `/home/alek_fo/PrepMate` |
+| Общий nginx.conf | `PrepMate/nginx/nginx.conf` | `/home/alek_fo/PrepMate/nginx/nginx.conf` |
+
+QuizApp доступен по https://quizcrowd.online, соседний PrepStats —
+https://prepstats.pro. Собственного nginx у QuizApp нет: контейнер
+prepmate-nginx-1 принимает 80/443, завершает TLS, отдаёт static/media
+обоих проектов и проксирует HTTP/WebSocket QuizApp в Daphne.
+Остановка или пересоздание этого nginx кратковременно затрагивает оба сайта.
+
+### QuizApp: release → dev/staging
+
+Источник истины — `.github/workflows/ci.yml` текущего проекта.
+Push и pull request в main/release запускают установку зависимостей,
+`python manage.py check`, `python manage.py makemigrations --check --dry-run`
+и `python manage.py test --verbosity=2`. Тесты используют отдельную БД,
+in-memory кэш и channel layer; работающий Redis им не нужен.
+
+Только **push в release**, после успешных тестов, запускает deploy-dev:
+
+```bash
+cd /home/alek_fo/quiz_project
+git pull origin release
+docker compose build --no-cache web
+docker compose up -d --force-recreate web
+docker exec prepmate-nginx-1 nginx -s reload
+docker compose logs web --tail 30
+```
+
+Entrypoint ждёт PostgreSQL и Redis, выполняет migrate и collectstatic,
+затем запускает `daphne -b 0.0.0.0 -p 8000 quiz_project.asgi:application`.
+Эти миграции — часть настроенного деплоя; Codex не запускает migrate
+вручную без отдельного поручения пользователя. Prod-job main пока
+закомментирован: merge в main не означает production-деплой QuizApp.
+
+### PrepMate: отдельный репозиторий и workflow
+
+Изменения общего nginx делаются локально в репозитории PrepMate и проходят
+его CI/CD. На момент проверки release запускает тесты, автоматический
+деплой настроен только для push в main. Этот порядок **не совпадает**
+с dev-деплоем QuizApp из release. Нельзя коммитить конфиг PrepMate
+в репозиторий QuizApp или править серверную копию в обход процесса пользователя.
+
+После доставки изменённого nginx.conf на сервер и запуска обоих приложений:
+
+```bash
+cd /home/alek_fo/PrepMate
+docker compose up -d --no-deps --force-recreate nginx
+docker exec prepmate-nginx-1 nginx -t
+docker exec prepmate-nginx-1 sh -c 'grep -n proxy_pass /etc/nginx/conf.d/default.conf'
+```
+
+Ожидаются `prepmate-web-1:8000` для PrepStats и `quiz-web:8000` для QuizApp.
+После пересоздания дополнительный reload не требуется. Если оба приложения
+уже запущены, их, PostgreSQL и Redis перезапускать для этой правки не нужно.
+
+Проверка без внешнего DNS (GET главной, без логина и регистрации):
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' --resolve prepstats.pro:443:127.0.0.1 https://prepstats.pro/
+curl -sS -o /dev/null -w '%{http_code}\n' --resolve quizcrowd.online:443:127.0.0.1 https://quizcrowd.online/
+```
+
+Успешный ответ может быть 200 или редиректом по правилам приложения;
+чередования с 400 быть не должно. HTTP-проверка не заменяет проверку WS.
+
+### Переменные окружения и AI
+
+В серверном `.env` QuizApp: DB_HOST=quiz-db, REDIS_HOST=quiz-redis,
+REDIS_PORT=6379, домен quizcrowd.online в ALLOWED_HOSTS. Имена volumes:
+quiz_postgres_data, quiz_static_files, quiz_media_files; общая сеть nginx —
+prepmate_default. Значения паролей и ключей в документацию не копировать.
+
+В текущем локальном коде основной AI-путь — BASE_AI_MODEL=deep_seek
+(это default, если переменная не задана), `_ask_deepseek` и DEEPSEEK_API_KEY.
+CLAUDE_API_SERVICE_URL/SERVICE_API_KEY нужны только альтернативному
+`_ask_claude`; автоматического fallback нет. Переход на DeepSeek на момент
+актуализации находится в незакоммиченном рабочем дереве: не считать его
+уже установленным на сервере без прохождения CI/CD.
+
+Изменение `.env` требует пересоздания web, простой restart его не перечитывает.
+Обычный deploy-dev также пересоздаёт web. Не запускать экспериментальный
+`ai_generator/deepseek_prompts.py` для диагностики деплоя: при прямом запуске
+он вызывает оба внешних API.
 

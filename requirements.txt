@@ -34,3 +34,4 @@ ujson==5.13.0
 urllib3==2.7.0
 zope.interface==8.6
 psycopg2-binary
+openai==3.46.0
