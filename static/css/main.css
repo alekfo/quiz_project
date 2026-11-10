@@ -1315,6 +1315,92 @@ footer a {
     padding: var(--space-5);
 }
 
+/* Превью — сведения о квизе, соло-комната — рабочий экран прохождения. */
+.quiz-overview {
+    width: 100%;
+    max-width: none;
+}
+
+.quiz-overview-grid,
+.series-dashboard-grid {
+    display: grid;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+.quiz-overview-grid > *,
+.series-dashboard-grid > * {
+    min-width: 0;
+}
+
+.quiz-play-guide {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    align-self: start;
+}
+
+.quiz-play-guide h2 {
+    margin: 0;
+    font-size: var(--font-md);
+}
+
+.quiz-play-guide .start-rules {
+    padding: 0 0 0 var(--space-4);
+}
+
+.quiz-overview .quiz-actions form,
+.series-dashboard .quiz-actions form {
+    margin: 0;
+}
+
+.series-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    width: 100%;
+    padding: var(--space-5);
+}
+
+.series-dashboard-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.series-dashboard-header .series-room-step {
+    margin: 0;
+}
+
+.series-dashboard .next-round {
+    align-self: start;
+    padding: var(--space-5);
+    gap: var(--space-3);
+    border-left: var(--space-1) solid var(--color-accent);
+}
+
+.series-finish {
+    margin: 0;
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 1024px) {
+    .quiz-overview-grid {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    }
+
+    .series-dashboard-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: start;
+    }
+}
+
 .quiz-preview-title,
 .quiz-preview-author {
     margin: 0;
@@ -1343,20 +1429,7 @@ footer a {
     margin: 0;
 }
 
-.round-list {
-    display: grid;
-    gap: var(--space-1);
-    margin: 0;
-    padding-left: var(--space-5);
-    overflow-wrap: anywhere;
-}
-
-.round-list li::marker {
-    color: var(--color-accent);
-    font-weight: 600;
-}
-
-/* правила перед стартом квиза (gameplay/start.html) */
+/* правила игры на превью квиза */
 .start-rules {
     display: grid;
     gap: var(--space-1);
@@ -1412,8 +1485,7 @@ footer a {
     margin: 0;
 }
 
-.next-round .quiz-preview-note,
-.quiz-start .quiz-preview-note {
+.next-round .quiz-preview-note {
     font-style: italic;
 }
 
@@ -2447,7 +2519,7 @@ html:not(.js) #add-question-btn {
     overflow-wrap: anywhere;
 }
 
-/* .progress-meta - параметры раунда одной строкой (start.html) */
+/* .progress-meta — параметры раунда на превью и в соло-комнате */
 .progress-points,
 .progress-meta {
     font-size: var(--font-sm);
@@ -2975,7 +3047,8 @@ html:not(.js) #add-question-btn {
     color: var(--color-text-muted);
 }
 
-.lobby-history[open] .disclosure-chevron {
+.lobby-history[open] > .lobby-history-summary .disclosure-chevron,
+.lobby-game[open] > .lobby-game-summary .disclosure-chevron {
     transform: rotate(180deg);
 }
 
@@ -2987,6 +3060,101 @@ html:not(.js) #add-question-btn {
 
 .lobby-history-list {
     margin-top: var(--space-4);
+}
+
+.lobby-game {
+    border-top: 1px solid var(--color-border);
+}
+
+.lobby-game-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+    list-style: none;
+    cursor: pointer;
+}
+
+.lobby-game-summary::-webkit-details-marker {
+    display: none;
+}
+
+.lobby-game-summary .room-row-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.lobby-game-summary > .tag,
+.lobby-game-summary > .disclosure-chevron {
+    flex: none;
+}
+
+.lobby-game-summary:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: var(--space-1);
+    border-radius: var(--radius-sm);
+}
+
+.lobby-game-body {
+    display: grid;
+    gap: var(--space-3);
+    padding-bottom: var(--space-4);
+}
+
+.lobby-game-body h3 {
+    margin: 0;
+    font-size: var(--font-md);
+}
+
+.history-round-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.history-round {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.history-round-link {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: var(--tap-size);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-accent-soft);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+}
+
+.history-round-link:hover {
+    background: var(--color-accent-soft-hover);
+}
+
+.history-round-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: var(--space-1);
+}
+
+.history-round-link > :first-child {
+    min-width: 0;
+}
+
+.history-round-name {
+    display: block;
+}
+
+.history-score {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
 }
 
 .lobby-card .empty-state {

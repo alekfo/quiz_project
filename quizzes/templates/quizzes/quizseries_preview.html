@@ -7,7 +7,7 @@
 {% block body %}
     <a class="back-link" href="{% url 'quizzes:quizzes_list' %}">← Коллекция квизов</a>
 
-    <article class="card quiz-preview">
+    <article class="card quiz-preview quiz-overview">
         <p class="quiz-card-tags">
             <span class="tag">Категория: {{ series.category }}</span>
             {% if is_my_series %}
@@ -39,29 +39,53 @@
             <span>Автор: <a href="{% url 'users:user_detail' pk=series.user_id %}">{{ series.user.username }}</a></span>
         </p>
 
-        <section class="quiz-preview-rounds">
-            <h2>Раундов: {{ nums_of_rounds }}</h2>
-            {% if nums_of_rounds %}
-                <ol class="round-list">
-                    {% for round in series.rounds.all|dictsort:"round_order" %}
-                        <li>{{ round.subject }}</li>
-                    {% endfor %}
-                </ol>
-            {% else %}
-                <p class="empty-state">В этом квизе пока нет раундов — играть не во что.</p>
-            {% endif %}
-        </section>
+        <div class="quiz-overview-grid">
+            <section class="quiz-preview-rounds" aria-labelledby="overview-rounds-title">
+                <h2 id="overview-rounds-title">Раундов: {{ nums_of_rounds }}</h2>
+                {% if nums_of_rounds %}
+                    <ol class="progress-list">
+                        {% for round in series.rounds.all|dictsort:"round_order" %}
+                            <li class="progress-item">
+                                <span class="progress-text">
+                                    <span class="progress-subject">{{ round.subject }}</span>
+                                    <span class="progress-meta">{% if round.level != "common" %}Уровень: {{ round.get_level_display }} · {% endif %}{{ round.time_limit_seconds }} с на ответ · +{{ round.points_per_correct }} за верный ответ</span>
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ol>
+                {% else %}
+                    <p class="empty-state">В этом квизе пока нет раундов — играть не во что.</p>
+                {% endif %}
+            </section>
+
+            <aside class="quiz-play-guide" aria-labelledby="play-guide-title">
+                <h2 id="play-guide-title">Как играть</h2>
+                <ul class="start-rules">
+                    <li>Проходите раунды по порядку — очки складываются в общий счёт.</li>
+                    <li>Между раундами можно прерваться: прогресс сохранится.</li>
+                    <li>Не успели ответить вовремя — вопрос засчитывается как пропущенный.</li>
+                </ul>
+                <p class="quiz-preview-note">«Играть» откроет соло-комнату. Первый раунд запускается отдельно — до этого таймер не идёт.</p>
+            </aside>
+        </div>
 
         <div class="quiz-actions">
             {% if nums_of_rounds %}
-                <a class="btn btn-primary btn-lg" href="{% url 'gameplay:start' pk=series.pk %}">
-                    <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>
-                    {% if has_run_in_progress %}Продолжить{% else %}Играть{% endif %}
-                </a>
+                <form method="post" action="{% url 'gameplay:start' pk=series.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary btn-lg"{% if is_player and not has_run_in_progress %} disabled{% endif %}>
+                        <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>
+                        {% if has_run_in_progress %}Продолжить{% else %}Играть{% endif %}
+                    </button>
+                </form>
             {% endif %}
             {% include "social/_like_button.html" %}
             {% include "social/_save_button.html" %}
         </div>
+
+        {% if is_player and not has_run_in_progress %}
+            <p class="quiz-preview-note">Вы участвуете в комнате. Чтобы начать соло-квиз, сначала выйдите из неё.</p>
+        {% endif %}
 
         {% if has_run_in_progress and nums_of_rounds %}
             <p class="quiz-preview-note">Вы начали этот квиз и ещё не закончили — игра продолжится с того же места.</p>

@@ -77,16 +77,15 @@ class StartViewTests(SoloTestCase):
         self.client.logout()
         self.assertLoginRequired(self.client.get(reverse("gameplay:start", kwargs={"pk": series.pk})))
 
-    def test_get_renders_start_page_for_foreign_public_series(self):
+    def test_get_is_not_allowed_and_creates_nothing(self):
         series = make_series(make_user("author"), status="public", rounds=3)
         response = self.client.get(reverse("gameplay:start", kwargs={"pk": series.pk}))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["rounds_count"], 3)
+        self.assertEqual(response.status_code, 405)
+        self.assertFalse(SeriesRun.objects.exists())
 
     def test_foreign_private_series_cannot_be_started(self):
         series = make_series(make_user("author"), status="private")
         url = reverse("gameplay:start", kwargs={"pk": series.pk})
-        self.assertEqual(self.client.get(url).status_code, 404)
         self.assertEqual(self.client.post(url).status_code, 404)
         self.assertFalse(SeriesRun.objects.exists())
 
@@ -99,6 +98,9 @@ class StartViewTests(SoloTestCase):
         )
         self.assertEqual((run.mode, run.created_by, run.status, run.current_round_index, run.room),
                          ("solo", self.user, "in_progress", 0, None))
+        self.assertFalse(GameSession.objects.exists())
+        self.assertFalse(GameParticipant.objects.exists())
+        self.assertFalse(GameAnswer.objects.exists())
 
     def test_first_round_index_is_taken_from_real_round_order(self):
         """После удаления первого раунда серия начинается не с round_order=0."""
@@ -122,26 +124,71 @@ class StartViewTests(SoloTestCase):
         series = make_series(self.user, rounds=0)
         url = reverse("gameplay:start", kwargs={"pk": series.pk})
         preview = reverse("quizzes:quizzes_preview", kwargs={"pk": series.pk})
-        for method in (self.client.get, self.client.post):
-            with self.subTest(method=method.__name__):
-                response = method(url)
-                self.assertRedirects(response, preview, fetch_redirect_response=False)
-                # сообщения копятся в сессии, пока страницу с ними не открыли, -
-                # поэтому проверяем уровень, а не количество
-                levels = {m.level_tag for m in get_messages(response.wsgi_request)}
-                self.assertEqual(levels, {"error"})
+        response = self.client.post(url)
+        self.assertRedirects(response, preview, fetch_redirect_response=False)
+        self.assertEqual({m.level_tag for m in get_messages(response.wsgi_request)}, {"error"})
         self.assertFalse(SeriesRun.objects.exists())
 
-    def test_get_redirects_to_run_or_round_in_progress(self):
+    def test_post_redirects_to_run_or_round_in_progress(self):
         series = make_series(self.user)
         url = reverse("gameplay:start", kwargs={"pk": series.pk})
         run = self.start_run(series)
         self.assertRedirects(
-            self.client.get(url), reverse("gameplay:solo_room", kwargs={"pk": run.pk}),
+            self.client.post(url), reverse("gameplay:solo_room", kwargs={"pk": run.pk}),
             fetch_redirect_response=False,
         )
         session = self.start_round(run)
-        self.assertRedirects(self.client.get(url), play_url(session), fetch_redirect_response=False)
+        self.assertRedirects(self.client.post(url), play_url(session), fetch_redirect_response=False)
+
+    def test_public_series_of_another_author_can_be_started(self):
+        run = self.start_run(make_series(make_user("author"), status="public"))
+        self.assertEqual(run.created_by, self.user)
+
+    def test_room_membership_blocks_new_solo_even_for_another_series(self):
+        host = make_user("host")
+        room = Room.objects.create(title="Комната", token="busyroom", host=host)
+        RoomPlayer.objects.create(room=room, user=self.user)
+        series = make_series(self.user)
+        for status in ("waiting", "in_progress"):
+            with self.subTest(status=status):
+                Room.objects.filter(pk=room.pk).update(status=status)
+                response = self.client.post(reverse("gameplay:start", kwargs={"pk": series.pk}))
+                self.assertRedirects(response, reverse("quizzes:quizzes_preview", kwargs={"pk": series.pk}),
+                                     fetch_redirect_response=False)
+                self.assertFalse(SeriesRun.objects.exists())
+                self.assertTrue(list(get_messages(response.wsgi_request)))
+
+    def test_finished_room_membership_does_not_block_solo(self):
+        room = Room.objects.create(title="Комната", token="oldroom", host=self.user, status="finished")
+        RoomPlayer.objects.create(room=room, user=self.user)
+        self.assertEqual(self.start_run(make_series(self.user)).mode, "solo")
+
+    def test_host_observer_cannot_resume_multiplayer_as_solo(self):
+        series = make_series(self.user)
+        room = Room.objects.create(title="Комната", token="hostroom", host=self.user)
+        run = SeriesRun.objects.create(series=series, created_by=self.user, mode="multiplayer", room=room)
+        for active_round in (False, True):
+            with self.subTest(active_round=active_round):
+                if active_round:
+                    GameSession.objects.create(quiz=series.rounds.get(), created_by=self.user,
+                                               mode="multiplayer", room=room, series_run=run)
+                response = self.client.post(reverse("gameplay:start", kwargs={"pk": series.pk}))
+                self.assertRedirects(response, reverse("quizzes:quizzes_preview", kwargs={"pk": series.pk}),
+                                     fetch_redirect_response=False)
+                self.assertEqual(SeriesRun.objects.count(), 1)
+                self.assertFalse(GameParticipant.objects.exists())
+
+    def test_finished_runs_allow_a_new_run(self):
+        series = make_series(self.user)
+        for status in ("completed", "abandoned"):
+            with self.subTest(status=status):
+                old = self.start_run(series)
+                old.status = status
+                old.save(update_fields=["status"])
+                new = self.start_run(series)
+                self.assertNotEqual(old.pk, new.pk)
+                new.status = "completed"
+                new.save(update_fields=["status"])
 
 
 class SoloRoomTests(SoloTestCase):
@@ -158,10 +205,10 @@ class SoloRoomTests(SoloTestCase):
         self.assertFalse(response.context["is_completed"])
         self.assertEqual(response.context["completed_sessions"], [])
 
-    def test_stranger_gets_403(self):
+    def test_stranger_gets_404(self):
         self.client.force_login(make_user("stranger"))
-        self.assertEqual(self.client.get(self.url).status_code, 403)
-        self.assertEqual(self.client.post(self.url).status_code, 403)
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+        self.assertEqual(self.client.post(self.url).status_code, 404)
         self.assertFalse(GameSession.objects.exists())
 
     def test_post_creates_session_with_participant_for_current_round(self):
@@ -189,7 +236,24 @@ class SoloRoomTests(SoloTestCase):
                 self.assertEqual(self.client.post(self.url).status_code, 403)
         self.assertFalse(GameSession.objects.exists())
 
-    def test_room_player_can_read_but_not_start_multiplayer_run(self):
+    def test_finished_and_abandoned_run_offer_post_replay(self):
+        start = reverse("gameplay:start", kwargs={"pk": self.series.pk})
+        for status in ("completed", "abandoned"):
+            with self.subTest(status=status):
+                SeriesRun.objects.filter(pk=self.run.pk).update(status=status)
+                response = self.client.get(self.url)
+                self.assertContains(response, f'<form method="post" action="{start}">')
+                self.assertNotContains(response, f'href="{start}"')
+                self.assertContains(response, "Играть снова")
+
+    def test_deleted_round_offers_cleanup_post(self):
+        self.series.rounds.get(round_order=0).delete()
+        response = self.client.get(self.url)
+        self.assertContains(response, "Раунд недоступен")
+        self.assertContains(response, "Завершить прерванное прохождение")
+        self.assertNotContains(response, "Начать раунд")
+
+    def test_multiplayer_run_is_not_a_solo_room(self):
         host = make_user("host")
         room = Room.objects.create(title="Комната", token="roomtoken", host=host)
         RoomPlayer.objects.create(room=room, user=self.user)
@@ -198,9 +262,19 @@ class SoloRoomTests(SoloTestCase):
             status="completed",
         )
         url = reverse("gameplay:solo_room", kwargs={"pk": run.pk})
-        self.assertEqual(self.client.get(url).status_code, 200)
-        SeriesRun.objects.filter(pk=run.pk).update(status="in_progress")
-        self.assertEqual(self.client.post(url).status_code, 403)
+        for viewer in (self.user, host):
+            self.client.force_login(viewer)
+            for status in ("completed", "in_progress"):
+                SeriesRun.objects.filter(pk=run.pk).update(status=status)
+                self.assertEqual(self.client.get(url).status_code, 404)
+                self.assertEqual(self.client.post(url).status_code, 404)
+
+    def test_existing_solo_can_continue_after_room_membership(self):
+        room = Room.objects.create(title="Комната", token="existingroom", host=make_user("host"))
+        RoomPlayer.objects.create(room=room, user=self.user)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        session = self.start_round(self.run)
+        self.assertRedirects(self.answer_and_advance(session), play_url(session), fetch_redirect_response=False)
 
     def test_post_when_current_round_was_deleted_redirects_to_preview(self):
         """Раунд удалили уже после старта прогона: сессия не создаётся, прогон прерывается."""

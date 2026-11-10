@@ -16,12 +16,14 @@ from django.conf import settings
 from django.utils import timezone
 from django.db.models import Count, Exists, OuterRef, Q
 from django.views.decorators.http import require_http_methods, require_POST
+from django.contrib.auth import get_user_model
 
 from .models import Room, RoomPlayer
 from .forms import RoomSeriesForm
 from gameplay.models import GameSession, GameParticipant, SeriesRun
-from gameplay.services import get_series_progress
+from gameplay.services import get_series_progress, get_room_history
 
+User = get_user_model()
 logger = logging.getLogger(__name__)
 
 def _generate_room_token():
@@ -52,6 +54,12 @@ def _get_room_context(context: dict, room: Room, user: settings.AUTH_USER_MODEL)
     #передаем форму для выбора серии
     if context["is_host"]:
         context["series_form"] = RoomSeriesForm(instance=room, user=user)
+
+    #передаем историю прогонов по данной команте в общий контекст для is_host или is_player
+    if context["is_host"] or context["is_player"]:
+        context["games_history"] = get_room_history(room, user)
+    else:
+        context["games_history"] = []
 
     context["is_first_round"] = room.current_series_run is None
 
@@ -182,45 +190,55 @@ class RoomDetailView(LoginRequiredMixin, DetailView):
                                   "game_sessions__quiz",
                                   "current_series_run__game_sessions__quiz",
                                   "series_runs__series",
+                                  "series_runs__game_sessions__quiz",
+                                  "series_runs__game_sessions__participants__user",
                                   "current_series_run__series__rounds"))
 
 @login_required
 @require_POST
 def room_join(request: HttpRequest, code: str):
-    # проверяем, не участвует ли пользователь УЖЕ в какой-то комнате
-    active_room = Room.objects.filter(
-        room_players__user=request.user,
-        status__in=["waiting", "in_progress"]
-    ).exclude(token=code).first()
-    if active_room:
-        # active_room_link = f"{request.scheme}://{request.get_host()}/multiplayer/rooms/{active_room.token}/"
-        active_room_link = request.build_absolute_uri(
-            reverse("multiplayer:room_detail", kwargs={"code": active_room.token})
-        )
-        messages.error(request, f"Вы уже являетесь участником другой активной комнаты: {active_room_link}")
-        return redirect("multiplayer:room_detail", code=code)
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=request.user.pk)
+        # проверяем, не участвует ли пользователь УЖЕ в какой-то комнате
+        active_room = Room.objects.filter(
+            room_players__user=user,
+            status__in=["waiting", "in_progress"]
+        ).exclude(token=code).first()
+        if active_room:
+            # active_room_link = f"{request.scheme}://{request.get_host()}/multiplayer/rooms/{active_room.token}/"
+            active_room_link = request.build_absolute_uri(
+                reverse("multiplayer:room_detail", kwargs={"code": active_room.token})
+            )
+            messages.error(request, f"Вы уже являетесь участником другой активной комнаты: {active_room_link}")
+            return redirect("multiplayer:room_detail", code=code)
 
-    # если активных сессий не найдено, проверяем, не является ли текущая комната завершенной
-    room = get_object_or_404(Room, token=code)
-    if room.status == "finished":
-        messages.error(request, "Комната уже не активна")
-        return redirect("multiplayer:room_detail", code=code)
+        # если активных сессий не найдено, проверяем, не является ли текущая комната завершенной
+        room = get_object_or_404(Room, token=code)
+        if room.status == "finished":
+            messages.error(request, "Комната уже не активна")
+            return redirect("multiplayer:room_detail", code=code)
 
-    # если все окей - регистрируем пользователя в комнате как участника
-    try:
-        with transaction.atomic():
-            RoomPlayer.objects.create(room=room, user=request.user)
-            # on_commit, а не прямой вызов: WS-консьюмер (RoomConsumer)
-            # читает Room из БД через отдельное соединение — без on_commit
-            # он может успеть выполнить запрос раньше, чем эта транзакция
-            # закоммитится, и не увидеть только что созданного RoomPlayer.
-            # С on_commit колбэк _notify_room откладывается и реально
-            # выполняется только после успешного коммита этой транзакции.
-            transaction.on_commit(lambda: _notify_room(room))
-    except IntegrityError:
-        messages.error(request, "Вы уже участвуете в этой комнате")
-    url = reverse("multiplayer:room_detail", kwargs={"code": code})
-    return redirect(url)
+        #проверяем нет ли незавершенной SeriesRun у данного пользователя
+        series_run_in_progress = SeriesRun.objects.filter(mode="solo", created_by=user, status="in_progress").exists()
+        if series_run_in_progress:
+            messages.error(request, "У вас есть незавершённый соло-квиз. Доиграйте его, прежде чем вступать в комнату")
+            return redirect("multiplayer:room_detail", code=code)
+
+        # если все окей - регистрируем пользователя в комнате как участника
+        try:
+            with transaction.atomic():
+                RoomPlayer.objects.create(room=room, user=user)
+                # on_commit, а не прямой вызов: WS-консьюмер (RoomConsumer)
+                # читает Room из БД через отдельное соединение — без on_commit
+                # он может успеть выполнить запрос раньше, чем эта транзакция
+                # закоммитится, и не увидеть только что созданного RoomPlayer.
+                # С on_commit колбэк _notify_room откладывается и реально
+                # выполняется только после успешного коммита этой транзакции.
+                transaction.on_commit(lambda: _notify_room(room))
+        except IntegrityError:
+            messages.error(request, "Вы уже участвуете в этой комнате")
+        url = reverse("multiplayer:room_detail", kwargs={"code": code})
+        return redirect(url)
 
 class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
     model = RoomPlayer

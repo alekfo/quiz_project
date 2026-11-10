@@ -95,9 +95,6 @@
                 {% if session.room %}
                     <a class="btn btn-primary btn-lg" href="{% url 'multiplayer:room_detail' code=session.room.token %}">Вернуться в комнату</a>
                 {% endif %}
-                {% if session.series_run %}
-                    <a class="btn btn-ghost" href="{% url 'gameplay:solo_room' pk=session.series_run_id %}{% if curr_participant %}?gained={{ curr_participant.score }}{% endif %}">Прогресс квиза</a>
-                {% endif %}
             {% elif session.series_run %}
                 <a class="btn btn-primary btn-lg" href="{% url 'gameplay:solo_room' pk=session.series_run_id %}{% if curr_participant %}?gained={{ curr_participant.score }}{% endif %}">
                     {% if session.series_run.status == "in_progress" %}К следующему раунду{% else %}К итогам квиза{% endif %}
