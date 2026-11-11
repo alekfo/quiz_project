@@ -1378,10 +1378,29 @@ footer a {
 }
 
 .series-dashboard .next-round {
-    align-self: start;
+    align-self: stretch;
     padding: var(--space-5);
     gap: var(--space-3);
     border-left: var(--space-1) solid var(--color-accent);
+}
+
+.series-dashboard .next-round > form {
+    margin-top: auto;
+}
+
+.series-dashboard .next-round-label {
+    font-size: var(--font-md);
+}
+
+.series-dashboard .next-round-title {
+    font-size: var(--font-xl);
+    line-height: 1.25;
+}
+
+.series-dashboard .next-round .progress-meta {
+    font-size: var(--font-md);
+    line-height: 1.6;
+    margin-bottom: var(--space-5);
 }
 
 .series-finish {
@@ -1392,12 +1411,16 @@ footer a {
 
 @media (min-width: 1024px) {
     .quiz-overview-grid {
-        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
 
     .series-dashboard-grid {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        align-items: start;
+        align-items: stretch;
+    }
+
+    .series-dashboard .next-round-title {
+        font-size: var(--font-2xl);
     }
 }
 
@@ -1490,6 +1513,48 @@ footer a {
 }
 
 /* результат раунда (gameplay/result.html) */
+.round-result {
+    width: 100%;
+    max-width: none;
+}
+
+.result-layout {
+    display: grid;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+.result-layout > * {
+    min-width: 0;
+}
+
+@media (min-width: 1024px) {
+    .result-layout.has-answers {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .result-layout.has-answers .result-heading {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .result-layout.has-answers .result-summary {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .result-layout.has-answers .result-answers {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    .result-layout.has-answers .result-players {
+        grid-column: 1 / -1;
+        grid-row: 3;
+    }
+}
+
 .round-result-series {
     margin: var(--space-1) 0 0;
     color: var(--color-text-muted);
@@ -1991,8 +2056,29 @@ html:not(.js) #add-question-btn {
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
-    max-width: var(--card-width);
+    width: 100%;
+    max-width: none;
     padding: var(--space-5);
+}
+
+.play-layout {
+    display: grid;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+.play-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+@media (min-width: 1024px) {
+    .play-card[data-session-socket] .play-layout {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        align-items: start;
+    }
 }
 
 /* шапка: слева номер вопроса и точки ответов, справа счёт и серия */
@@ -2095,22 +2181,25 @@ html:not(.js) #add-question-btn {
 }
 
 .timer.is-danger {
-    --timer-color: var(--color-error);
+    --timer-color: color-mix(in srgb, var(--color-error) 75%, var(--color-on-status));
 }
 
 .timer-track {
     flex: 1 1 auto;
-    height: var(--space-2);
+    height: var(--space-4);
     overflow: hidden;
     background: var(--color-track);
     border-radius: var(--radius-full);
+    box-shadow: inset 0 1px 3px var(--color-overlay-shadow);
 }
 
 .timer-fill {
     display: block;
     width: 100%;
     height: 100%;
-    background: var(--timer-color);
+    background: linear-gradient(to bottom,
+        color-mix(in srgb, var(--timer-color) 80%, var(--color-on-status)),
+        var(--timer-color));
     border-radius: inherit;
     transition: width 0.25s linear, background-color 0.6s ease;
 }
@@ -2417,8 +2506,34 @@ html:not(.js) #add-question-btn {
         animation: play-flash 1s ease-out;
     }
 
-    .timer.is-ending .timer-fill {
-        animation: timer-pulse 0.8s ease-in-out infinite;
+    .timer.is-warning,
+    .timer.is-danger {
+        --timer-pulse-duration: 1.6s;
+        --timer-glow-size: var(--space-3);
+        --timer-glow-spread: var(--space-1);
+        --timer-glow-color: color-mix(in srgb, var(--timer-color) 45%, transparent);
+    }
+
+    .timer.is-danger {
+        --timer-pulse-duration: 1s;
+        --timer-glow-size: var(--space-5);
+        --timer-glow-spread: var(--space-1);
+        --timer-glow-color: color-mix(in srgb, var(--timer-color) 50%, transparent);
+    }
+
+    .timer.is-ending {
+        --timer-pulse-duration: 0.7s;
+        --timer-glow-size: var(--space-6);
+    }
+
+    .timer.is-warning .timer-track,
+    .timer.is-danger .timer-track {
+        animation: timer-glow var(--timer-pulse-duration) ease-in-out infinite;
+    }
+
+    .timer.is-warning .timer-fill,
+    .timer.is-danger .timer-fill {
+        animation: timer-pulse var(--timer-pulse-duration) ease-in-out infinite;
     }
 }
 
@@ -2443,7 +2558,16 @@ html:not(.js) #add-question-btn {
 }
 
 @keyframes timer-pulse {
-    50% { opacity: 0.45; }
+    50% { filter: brightness(1.12); }
+}
+
+@keyframes timer-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 transparent;
+    }
+    50% {
+        box-shadow: 0 0 var(--timer-glow-size) var(--timer-glow-spread) var(--timer-glow-color);
+    }
 }
 
 /* --- прогресс серии (gameplay/_series_progress.html): лобби и соло-комната --- */

@@ -221,7 +221,7 @@ def room_join(request: HttpRequest, code: str):
         #проверяем нет ли незавершенной SeriesRun у данного пользователя
         series_run_in_progress = SeriesRun.objects.filter(mode="solo", created_by=user, status="in_progress").exists()
         if series_run_in_progress:
-            messages.error(request, "У вас есть незавершённый соло-квиз. Доиграйте его, прежде чем вступать в комнату")
+            messages.error(request, "У вас есть незавершённый соло-квиз. Доиграйте его, прежде чем стать участником игры в комнате")
             return redirect("multiplayer:room_detail", code=code)
 
         # если все окей - регистрируем пользователя в комнате как участника

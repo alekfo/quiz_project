@@ -44,6 +44,8 @@
             </div>
         </header>
 
+        <div class="play-layout">
+        <div class="play-content">
         {# полоса времени - только у игрока, пока он не ответил; ширину и цвет ведёт play.js #}
         {% if role == "player" and not already_answered %}
             <div class="timer" id="timer">
@@ -136,9 +138,11 @@
             </section>
         {% endif %}
 
+        </div>
         {% if mode == "multiplayer" %}
             {% include "gameplay/_players_status.html" %}
         {% endif %}
+        </div>
 
         {% if can_advance %}
             {# у ведущего в мультиплеере, пока ответили не все, кнопка - «Пропустить ожидание» с подтверждением (play.js) #}
