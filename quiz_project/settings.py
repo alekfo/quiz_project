@@ -104,10 +104,22 @@ CHANNEL_LAYERS = {
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 if DEBUG:
+    # SQLite допускает только одну транзакцию записи одновременно.
+    # IMMEDIATE резервирует право записи при входе во внешний atomic(),
+    # а не при первой записи. Это предотвращает конфликт перехода от чтения
+    # к записи при одновременных GET play, создающих GameAnswer.
+    # Другие записи в тот же файл БД (даже из других комнат или конструктора)
+    # ожидают завершения транзакции; timeout ограничивает ожидание 20 секундами.
+    # select_for_update() в SQLite не действует. Чтения могут выполняться
+    # параллельно, но их блокировка зависит от режима журнала и стадии записи.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
+            'OPTIONS': {
+              'transaction_mode': 'IMMEDIATE',
+              'timeout': 20,
+            },
         }
     }
 else:

@@ -76,7 +76,10 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["nums_of_rounds"] = self.object.rounds.count()
-        context["has_run_in_progress"] = SeriesRun.objects.filter(series=self.object, mode="solo", created_by=self.request.user, status="in_progress").exists()
+        context["active_solo_run"] = (SeriesRun.objects
+                                          .filter(series=self.object, mode="solo", created_by=self.request.user, status="in_progress")
+                                          .first())
+        context["has_run_in_progress"] = context["active_solo_run"] is not None
 
         #отдельный флаг конфликта для превью - показываем что идет мультиплеер и сейчас соло начать нельзя
         context["is_player"] = is_room_player(self.request.user)

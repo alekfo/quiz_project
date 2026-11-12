@@ -12,7 +12,7 @@ from django.db.models import F, Q
 from django.contrib.auth.decorators import login_required
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.contrib.auth import get_user_model
 
 from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
@@ -349,57 +349,71 @@ def start(request: HttpRequest, pk: int):
 
 @login_required
 def solo_room(request: HttpRequest, pk: int):
-    user = request.user
 
-    series_run = get_object_or_404(
-        SeriesRun.objects.select_related("series", "created_by", "room").prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants", "room__room_players__user"),
-        pk=pk,
-        mode="solo",
-        created_by=user
-    )
-
+    # ==========POST часть===================
     if request.method == "POST":
-        if series_run.status in ["completed", "abandoned"] or series_run.created_by_id != request.user.id or series_run.mode != "solo":
-            raise PermissionDenied
-        curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(pk=request.user.pk)  # блокируем пользователя (чтобы везде он заблокировался)
+            series_run = get_object_or_404(
+                SeriesRun.objects
+                .select_related("series", "created_by", "room")
+                .prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants", "room__room_players__user")
+                .select_for_update(of=("self",)),
+                pk=pk,
+                mode="solo",
+                created_by=request.user
+            )
+            if series_run.status != "in_progress":
+                raise PermissionDenied
+            curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
 
-        if curr_quiz is None:
-            #текущий раунд удалён - прогон прерываем ("abandoned", как при смене серии/закрытии комнаты),
-            #иначе он навсегда остался бы in_progress и start() каждый раз возвращал бы в эту же комнату
-            series_run.status = "abandoned"
-            series_run.finished_at = timezone.now()
-            series_run.save(update_fields=["status", "finished_at"])
-            messages.error(request, "Похоже раунд был удален. Прохождение прервано, квиз можно начать заново")
-            url = reverse("quizzes:quizzes_preview", kwargs={"pk": series_run.series.pk})
-            return redirect(url)
+            if curr_quiz is None:
+                #текущий раунд удалён - прогон прерываем ("abandoned", как при смене серии/закрытии комнаты),
+                #иначе он навсегда остался бы in_progress и start() каждый раз возвращал бы в эту же комнату
+                series_run.status = "abandoned"
+                series_run.finished_at = timezone.now()
+                series_run.save(update_fields=["status", "finished_at"])
+                messages.error(request, "Похоже раунд был удален. Прохождение прервано, квиз можно начать заново")
+                url = reverse("quizzes:quizzes_preview", kwargs={"pk": series_run.series.pk})
+                return redirect(url)
 
-        user = request.user
-        # проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
-        try:
-            with transaction.atomic():
-                session = GameSession.objects.create(
-                    quiz=curr_quiz,
+            # проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
+            try:
+                with transaction.atomic():
+                    session = GameSession.objects.create(
+                        quiz=curr_quiz,
+                        mode="solo",
+                        created_by=user,
+                        series_run=series_run,
+                        current_question=curr_quiz.questions.first()
+                    )
+                    participant = GameParticipant.objects.create(
+                        session=session,
+                        user=user
+                    )
+                    logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, curr_quiz.pk,
+                                session.created_by.username)
+            except IntegrityError:
+                session = get_object_or_404 (
+                    GameSession,
+                    series_run=series_run,
                     mode="solo",
                     created_by=user,
-                    series_run=series_run,
-                    current_question=curr_quiz.questions.first()
+                    status="in_progress"
                 )
-                participant = GameParticipant.objects.create(
-                    session=session,
-                    user=user
-                )
-                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, curr_quiz.pk,
-                            session.created_by.username)
-        except IntegrityError:
-            session = get_object_or_404 (
-                GameSession,
-                series_run=series_run,
-                mode="solo",
-                created_by=user,
-                status="in_progress"
-            )
-        url = reverse("gameplay:play", kwargs={"pk": session.pk})
-        return redirect(url)
+            url = reverse("gameplay:play", kwargs={"pk": session.pk})
+            return redirect(url)
+
+    #==========GET часть===================
+    series_run = get_object_or_404(
+        SeriesRun.objects.select_related("series", "created_by", "room").prefetch_related("series__rounds",
+                                                                                          "game_sessions__quiz",
+                                                                                          "game_sessions__participants",
+                                                                                          "room__room_players__user"),
+        pk=pk,
+        mode="solo",
+        created_by=request.user
+    )
 
     #проверяем, нет ли активной game_sessions
     game_session_in_progress = next((g for g in series_run.game_sessions.all() if g.status == "in_progress"), None)
@@ -413,6 +427,8 @@ def solo_room(request: HttpRequest, pk: int):
 
 @login_required
 def play(request: HttpRequest, pk: int):
+
+    # ===================POST часть ==========================
     if request.method == "POST":
         #достаем все необходимое из POST
         option = None
@@ -428,9 +444,29 @@ def play(request: HttpRequest, pk: int):
             # получаем сессию для редиректа на gameplay:play
             # используем select_for_update для того, чтобы заблокировать запись в БД для других операций
             session = get_object_or_404(
-                GameSession.objects.select_for_update(of=("self",)).select_related("quiz"),
+                GameSession.objects
+                .select_for_update(of=("self",))
+                .select_related("quiz"),
                 pk=pk
             )
+
+            #проверяем на участие
+            is_game_part = GameParticipant.objects.filter(
+                session=session,
+                user=request.user
+            ).exists()
+            if not is_game_part:
+                raise PermissionDenied
+
+            if session.status == "completed":
+                url = reverse("gameplay:result", kwargs={"pk": session.pk})
+                return redirect(url)
+
+            if session.status == "abandoned" and session.mode == "solo" and session.series_run_id:
+                url = reverse("gameplay:solo_room", kwargs={"pk": session.series_run_id})
+                return redirect(url)
+            elif session.status != "in_progress":
+                raise PermissionDenied
 
             #получаем, обновляем и сохраняем GameAnswer
             answer = _update_gameAnswer(current_answer_pk, option, session, request)
@@ -442,35 +478,46 @@ def play(request: HttpRequest, pk: int):
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
 
-    session = get_object_or_404(
-        GameSession.objects.select_related(
-            "quiz",# time_limit_seconds, points_per_correct
-            "room",# host_id — роль и can_advance
-            "current_question",# текст вопроса, факт; без него — отдельный запрос
-            "series_run",# нужен _check_and_make_complete
-        ).prefetch_related(
-            "participants__user",# имена в списке игроков
-            "participants__participants_answers",# статистика, прогресс, серия
-            "quiz__questions__options",# список вопросов и варианты
-        ),
-        pk=pk)
+    #===================GET часть ==========================
+    with transaction.atomic():
+        User.objects.select_for_update().get(pk=request.user.pk) #чтобы избежать конкуренции с finish_solo
+        session = get_object_or_404(
+            GameSession.objects.select_related(
+                "quiz",# time_limit_seconds, points_per_correct
+                "room",# host_id — роль и can_advance
+                "current_question",# текст вопроса, факт; без него — отдельный запрос
+                "series_run",# нужен _check_and_make_complete
+            ).prefetch_related(
+                "participants__user",# имена в списке игроков
+                "participants__participants_answers",# статистика, прогресс, серия
+                "quiz__questions__options",# список вопросов и варианты
+            )
+            .select_for_update(of=("self",)),
+            pk=pk)
 
-    if session.status == "completed":
-        url = reverse("gameplay:result", kwargs={"pk": session.pk})
-        return redirect(url)
+        #получаем роль пользователя в текущей сессии
+        role, participant = get_role(session, request.user.id)
+        if role == "undefined":
+            raise PermissionDenied
 
-    #получаем роль пользователя в текущей сессии
-    role, participant = get_role(session, request.user.id)
-    if role == "undefined":
-        raise PermissionDenied
+        if session.status == "completed":
+            url = reverse("gameplay:result", kwargs={"pk": session.pk})
+            return redirect(url)
 
-    return _play_multiplayer_or_solo(request, session, participant, role)
+        if session.status == "abandoned":
+            if session.mode != "solo" or session.series_run_id is None:
+                raise PermissionDenied
+            url = reverse("gameplay:solo_room", kwargs={"pk": session.series_run_id})
+            return redirect(url)
+
+        return _play_multiplayer_or_solo(request, session, participant, role)
 
 @login_required
 @require_POST
 def next_question(request: HttpRequest, pk: int):
 
     with transaction.atomic():
+        User.objects.select_for_update().get(pk=request.user.pk) #чтобы избежать конкуренции с finish_solo
         session = get_object_or_404(
             (GameSession.objects
              .select_for_update(of=("self",))
@@ -478,10 +525,6 @@ def next_question(request: HttpRequest, pk: int):
              .prefetch_related("participants", "participants__participants_answers")),
             pk=pk
         )
-
-        if session.status != "in_progress":
-            url = reverse("gameplay:result", kwargs={"pk": session.pk})
-            return redirect(url)
 
         role, participant = get_role(session, request.user.id)
         is_host = session.room_id is not None and session.room.host_id == request.user.id
@@ -491,6 +534,17 @@ def next_question(request: HttpRequest, pk: int):
             raise PermissionDenied
         if session.mode == "multiplayer" and not is_host:
             raise PermissionDenied
+
+        if session.status == "completed":
+            url = reverse("gameplay:result", kwargs={"pk": session.pk})
+            return redirect(url)
+
+        if session.status == "abandoned":
+            if session.mode != "solo" or session.series_run_id is None:
+                raise PermissionDenied
+            url = reverse("gameplay:solo_room", kwargs={"pk": session.series_run.pk})
+            return redirect(url)
+
 
         curr_question = session.current_question
         if curr_question is None:  # вопросы кончились, но раунд не закрыт
@@ -534,7 +588,6 @@ def next_question(request: HttpRequest, pk: int):
     url = reverse("gameplay:play", kwargs={"pk": session.pk})
     return redirect(url)
 
-
 @login_required
 def result(request: HttpRequest, pk: int):
     session = get_object_or_404(
@@ -577,3 +630,83 @@ def result(request: HttpRequest, pk: int):
         "correct_answer_count": correct_answer_count,
     }
     return render(request, "gameplay/result.html", context=context)
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def finish_solo(request: HttpRequest, pk: int):
+
+    # ===============POST часть======================
+    if request.method == "POST":
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(pk=request.user.pk) # блокируем пользователя (чтобы везде он заблокировался)
+            finished_at = timezone.now()
+            series_run = get_object_or_404(
+                SeriesRun.objects
+                .select_related("series")
+                .select_for_update(of=("self",)), #за счет of=("self",) не распространяется на запросы из select_related
+                pk=pk,
+                mode="solo",
+                created_by=user
+            )
+            if series_run.status != "in_progress":
+                messages.error(request, "Соло игра уже была завершена")
+                url = reverse("quizzes:quizzes_preview", kwargs={"pk": series_run.series.pk})
+                return redirect(url)
+
+            #list() выполняет запрос — в этот момент строки сессий блокируются за счет select_for_update
+            #Блокировки прогона и сессий удерживаются до завершения общей транзакции
+            # Здесь .filter() делает новый запрос, поэтому мы не подгружаем в prefetch_related("game_sessions")
+            # это необходимо чтобы с помщью select_for_update заблокировать все сессии прогона
+            active_sessions = list(
+                series_run.game_sessions
+                .filter(mode="solo", status="in_progress")
+                .order_by("pk")
+                .select_for_update(of=("self",))
+            )
+            #меняем статус у всех невершенных сессий
+            for act_sess in active_sessions:
+                act_sess.status = "abandoned"
+                act_sess.finished_at = finished_at
+                act_sess.save(update_fields=["status", "finished_at"])
+
+            #ставим время у всех участников активных сессий
+            GameParticipant.objects.filter(
+                session__in=active_sessions,
+                finished_at__isnull=True,
+            ).update(finished_at=finished_at)
+
+            #меняем статус самого пргона
+            series_run.status = "abandoned"
+            series_run.finished_at = finished_at
+            series_run.current_round_index = None
+            series_run.save(update_fields=["status", "finished_at", "current_round_index"])
+
+            messages.success(request, "Соло-прохождение завершено. Результаты завершённых раундов сохранен")
+            url = reverse("quizzes:quizzes_preview", kwargs={"pk": series_run.series.pk})
+            return redirect(url)
+
+    #===============GET часть======================
+    #получаем отдельно series_run, чтобы не блокировать строку series_run в GET
+    series_run = get_object_or_404(
+        SeriesRun.objects
+        .select_related("series")
+        .prefetch_related("game_sessions", "series__rounds")
+        .annotate(rounds_count=Count("series__rounds")),
+        pk=pk,
+        mode="solo",
+        created_by=request.user
+    )
+    if series_run.status != "in_progress":
+        messages.error(request, "Соло игра уже была завершена")
+        url = reverse("quizzes:quizzes_preview", kwargs={"pk": series_run.series.pk})
+        return redirect(url)
+
+    game_sessions = series_run.game_sessions.all()
+    context = {
+        "series_run": series_run,
+        "completed_rounds": sum(gs.status == "completed" for gs in game_sessions),
+        "rounds_count": series_run.rounds_count,
+        "has_active_round": any(gs.status == "in_progress" for gs in game_sessions)
+    }
+
+    return render(request, "gameplay/finish_solo_confirm.html", context=context)

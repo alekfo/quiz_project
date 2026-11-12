@@ -6,6 +6,7 @@ app_name = "gameplay"
 urlpatterns = [
     path('quiz/<int:pk>/start/', views.start, name='start'),
     path('quiz/<int:pk>/solo_room/', views.solo_room, name='solo_room'),
+    path('quiz/<int:pk>/finish_solo/', views.finish_solo, name='finish_solo'),
     path('session/<int:pk>/play/', views.play, name='play'),
     path('session/<int:pk>/next/', views.next_question, name='next_question'),
     path('session/<int:pk>/result/', views.result, name='result'),

@@ -41,6 +41,10 @@
                             </button>
                         </form>
                         <p class="quiz-preview-note">Таймер запустится после начала раунда.</p>
+                        <a class="btn btn-danger" href="{% url 'gameplay:finish_solo' pk=series_run.pk %}">
+                            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
+                            Завершить прохождение
+                        </a>
                     </section>
                 {% elif is_completed %}
                     <section class="next-round" aria-labelledby="series-finish-title">
@@ -62,10 +66,10 @@
                     <section class="next-round">
                         <h2 class="next-round-title">Раунд недоступен</h2>
                         <p class="quiz-preview-note">Возможно, автор изменил квиз. Вернитесь к его описанию.</p>
-                        <form method="post">
-                            {% csrf_token %}
-                            <button type="submit" class="btn">Завершить прерванное прохождение</button>
-                        </form>
+                        <a class="btn btn-danger" href="{% url 'gameplay:finish_solo' pk=series_run.pk %}">
+                            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
+                            Завершить прохождение
+                        </a>
                     </section>
                 {% endif %}
 

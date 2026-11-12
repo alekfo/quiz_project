@@ -83,7 +83,7 @@
                                 {{ participant.user.username }}{% if participant == curr_participant %} <span class="lobby-you">(вы)</span>{% endif %}
                             </span>
                             {% if participant.finished_at %}
-                                <span class="score-value">{{ participant.score }}</span>
+                                <span class="score-value">Очки: {{ participant.score }}</span>
                             {% else %}
                                 <span class="tag tag-warning">Ещё играет</span>
                             {% endif %}

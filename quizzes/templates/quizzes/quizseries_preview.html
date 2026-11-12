@@ -79,6 +79,12 @@
                     </button>
                 </form>
             {% endif %}
+            {% if active_solo_run %}
+                <a class="btn btn-danger" href="{% url 'gameplay:finish_solo' pk=active_solo_run.pk %}">
+                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
+                    Завершить прохождение
+                </a>
+            {% endif %}
             {% include "social/_like_button.html" %}
             {% include "social/_save_button.html" %}
         </div>

@@ -3090,6 +3090,30 @@ html:not(.js) #add-question-btn {
     gap: var(--space-2);
 }
 
+/* Двойной пульс доступного действия; WS меняет hidden/disabled автоматически. */
+@media (prefers-reduced-motion: no-preference) {
+    #confirm-ready-form:not([hidden]) .btn:not(:disabled):not([aria-disabled="true"]),
+    #start-form:not([hidden]) #start-button:not(:disabled):not([aria-disabled="true"]) {
+        transform-origin: left center;
+        animation: lobby-action-pulse 2.8s ease-in-out infinite;
+    }
+}
+
+@keyframes lobby-action-pulse {
+    0%, 32%, 64%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 0%, transparent);
+    }
+    14%, 46% {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--color-accent) 45%, transparent);
+    }
+    26%, 58% {
+        transform: scale(1.02);
+        box-shadow: 0 0 0 var(--space-3) color-mix(in srgb, var(--color-accent) 0%, transparent);
+    }
+}
+
 .lobby-note {
     margin: 0;
     color: var(--color-text-muted);
