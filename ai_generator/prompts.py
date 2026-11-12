@@ -1,4 +1,5 @@
 import json
+from openai import OpenAI, APIConnectionError, APIStatusError, APITimeoutError
 import logging
 import re
 import time
@@ -8,8 +9,43 @@ import requests
 
 from django.conf import settings
 
+logger = logging.getLogger(__name__)
 
-def _ask(prompt: str, _retries: int = 2) -> str:
+def _ask_deepseek(prompt: str, _retries: int = 2) -> str:
+
+    for attempt in range(_retries + 1):
+        t0 = time.monotonic()
+        try:
+            client = OpenAI(
+                api_key=settings.DEEPSEEK_API_KEY,
+                base_url="https://api.deepseek.com",
+            )
+
+            response = client.chat.completions.create(
+                model="deepseek-flash",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                stream=False,
+                extra_body={"thinking": {"type": "disabled"}}  # <-- отключаем размышления
+            )
+        except (APIConnectionError, APIStatusError, APITimeoutError) as e:
+            if attempt < _retries:
+                time.sleep(2 ** attempt)
+                continue
+            logger.warning("Превышено количсество попыток запроса к API DeepSeek")
+            raise
+        elapsed = time.monotonic() - t0
+        text = response.choices[0].message.content
+        if text.strip():
+            logger.info("Успешно получен сырой текст от API DeepSeek")
+            return text
+        if attempt < _retries:
+            time.sleep(2 ** attempt)
+    raise RuntimeError("Claude API returned empty response after retries")
+
+def _ask_claude(prompt: str, _retries: int = 2) -> str:
     """Отправляет промпт в Claude через HTTP-прокси. До 3 попыток с экспоненциальной паузой.
 
     Повторяет запрос при сетевых ошибках и при пустом ответе.
@@ -30,10 +66,12 @@ def _ask(prompt: str, _retries: int = 2) -> str:
             if attempt < _retries:
                 time.sleep(2 ** attempt)
                 continue
+            logger.warning("Превышено количсество попыток запроса к API Claude")
             raise
         elapsed = time.monotonic() - t0
         text = response.json().get("response", "")
         if text.strip():
+            logger.info("Успешно получен сырой текст от API Claude")
             return text
         if attempt < _retries:
             time.sleep(2 ** attempt)
@@ -80,8 +118,7 @@ def generate_quiz_questions(instruction_data: dict) -> dict:
 
     level = _LEVEL_INSTRUCTIONS.get(quiz_level, '')
 
-
-    text = _ask(f"""Ты эксперт по составлению вопросов к викторинам. Даю тебе вводные инструкции на генерацию вопросов викторины.
+    prompt_text = f"""Ты эксперт по составлению вопросов к викторинам. Даю тебе вводные инструкции на генерацию вопросов викторины.
                         Наименование квиза: {quiz_title}
                         Категория квиза: {quiz_category}
                         Тема вопросов квиза: {quiz_subject}
@@ -106,6 +143,10 @@ def generate_quiz_questions(instruction_data: dict) -> dict:
                             {{...}},
                             {{'id': {quiz_questions}, 'question': 'сам вопрос', 'options': [вариант0, .., вариант3], 'correct_answer_index': 'индекс правильного ответа из списка options', 'fact': 'какой-нибудь факт в стиле вопроса ({question_style})'}},
                           ]
-                        }}""")
+                        }}"""
+
+
+    text = _ask_deepseek(prompt_text) if settings.BASE_AI_MODEL == "deep_seek" else _ask_claude(prompt_text)
     result = _parse_json(text)
+    logger.info("Успешно отпарсен ответ от BASE_AI_MODEL (%s)", settings.BASE_AI_MODEL)
     return result

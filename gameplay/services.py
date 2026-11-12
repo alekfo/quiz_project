@@ -1,7 +1,10 @@
+from typing import List
+
 from django.db.models import Sum
 from django.contrib.auth import get_user_model
 
 from gameplay.models import GameParticipant, SeriesRun, GameSession
+from multiplayer.models import Room, RoomPlayer
 
 User = get_user_model()
 
@@ -97,3 +100,64 @@ def get_role(session: GameSession, user_id) -> tuple[str, GameParticipant | None
     else:
         role = "undefined"
     return role, participant
+
+def is_room_player(user: User) -> bool:
+    """
+    если пользователь является участником игры в активной комнате - True,
+    иначе - False
+    """
+    self_players = RoomPlayer.objects.filter(user=user).select_related("room")
+    is_player = any(1 for i_player in self_players.all() if i_player.room.status != "finished")
+    return is_player
+
+def get_room_history(room: Room, user: User) -> List[dict]:
+    games_history = []
+
+    #формируем список завершенных прогонов для данной комнаты и сортируем по started_at и pk
+    completed_series_run = [
+        sr
+        for sr in room.series_runs.all()
+        if sr.status in ["completed", "abandoned"]
+    ]
+    sorted_series_run = sorted(completed_series_run, key=lambda x: (x.started_at, x.pk), reverse=True)
+
+    for run in sorted_series_run:
+        #для каждого прогона формируем список ЗАВЕРШЕННЫЙ сессий и сортируем по session.quiz.round_order, затем pk.
+        completed_sessions = [
+            gs
+            for gs in run.game_sessions.all()
+            if gs.status == "completed"
+        ]
+        sorted_sessions = sorted(completed_sessions, key=lambda x: (x.quiz.round_order, x.pk))
+        rounds = []
+        temp_leaderboard_dict = {}
+        for sess in sorted_sessions:
+            game_parts = sess.participants.all()
+
+            #определяем can_view_result для сессии
+            can_view_result = user.id == room.host_id or any(1 for gp in game_parts if gp.user_id == user.id)
+
+            #формируем ключ rounds для конечного словаря по текущему run
+            rounds.append({"session": sess, "can_view_result": can_view_result})
+
+            #формируем врменный словарь из participants и их очков за каждую сессию
+            for gp in game_parts:
+                temp_leaderboard_dict.setdefault(gp.user, 0)
+                temp_leaderboard_dict[gp.user] += gp.score
+
+        #формируем конечный список games_history по текущей run
+        leaderboard = sorted(
+            temp_leaderboard_dict.items(),
+            key=lambda item: (-item[1], item[0].pk),
+        )
+        games_history.append(
+            {
+                "run": run,
+                "rounds": rounds,
+                "leaderboard": leaderboard,
+            }
+        )
+
+    return games_history
+
+

@@ -33,13 +33,13 @@ def api_response(text: str) -> mock.Mock:
 
 @mock.patch("ai_generator.prompts.time.sleep")
 @mock.patch("ai_generator.prompts.requests.post")
-class AskTests(SimpleTestCase):
-    """prompts._ask - обёртка над HTTP-прокси к Claude: повторы и обработка пустого ответа."""
+class AskClaudeTests(SimpleTestCase):
+    """prompts._ask_claude - обёртка над HTTP-прокси к Claude: повторы и обработка пустого ответа."""
 
     def test_returns_text_and_sends_prompt_with_api_key(self, post, sleep):
         post.return_value = api_response("ответ")
         with self.settings(CLAUDE_API_SERVICE_URL="https://proxy.example/ask", CLAUDE_API_SERVICE_KEY="secret"):
-            self.assertEqual(prompts._ask("вопрос"), "ответ")
+            self.assertEqual(prompts._ask_claude("вопрос"), "ответ")
         post.assert_called_once_with(
             "https://proxy.example/ask", json={"prompt": "вопрос"}, headers={"X-API-Key": "secret"}, timeout=90,
         )
@@ -47,14 +47,14 @@ class AskTests(SimpleTestCase):
 
     def test_retries_on_network_error_and_then_succeeds(self, post, sleep):
         post.side_effect = [requests.ConnectionError("down"), api_response("ответ")]
-        self.assertEqual(prompts._ask("вопрос"), "ответ")
+        self.assertEqual(prompts._ask_claude("вопрос"), "ответ")
         self.assertEqual(post.call_count, 2)
         sleep.assert_called_once_with(1)
 
     def test_network_error_is_raised_after_all_retries(self, post, sleep):
         post.side_effect = requests.ConnectionError("down")
         with self.assertRaises(requests.RequestException):
-            prompts._ask("вопрос")
+            prompts._ask_claude("вопрос")
         self.assertEqual(post.call_count, 3)
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
 
@@ -62,13 +62,83 @@ class AskTests(SimpleTestCase):
         failed = mock.Mock()
         failed.raise_for_status.side_effect = requests.HTTPError("500")
         post.side_effect = [failed, api_response("ответ")]
-        self.assertEqual(prompts._ask("вопрос"), "ответ")
+        self.assertEqual(prompts._ask_claude("вопрос"), "ответ")
 
     def test_empty_response_raises_runtime_error_after_retries(self, post, sleep):
         post.return_value = api_response("   ")
         with self.assertRaises(RuntimeError):
-            prompts._ask("вопрос")
+            prompts._ask_claude("вопрос")
         self.assertEqual(post.call_count, 3)
+
+
+@mock.patch("ai_generator.prompts.time.sleep")
+@mock.patch("ai_generator.prompts.OpenAI")
+class AskDeepSeekTests(BaseTestCase):
+    @staticmethod
+    def response(text):
+        return mock.Mock(choices=[mock.Mock(message=mock.Mock(content=text))])
+
+    def test_returns_text_and_sends_prompt_with_api_key(self, client, sleep):
+        create = client.return_value.chat.completions.create
+        create.return_value = self.response("ответ")
+        with self.settings(DEEPSEEK_API_KEY="test-deepseek-key"):
+            self.assertEqual(prompts._ask_deepseek("вопрос"), "ответ")
+        client.assert_called_once_with(
+            api_key="test-deepseek-key", base_url="https://api.deepseek.com",
+        )
+        create.assert_called_once_with(
+            model="deepseek-flash",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "вопрос"},
+            ],
+            stream=False,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        sleep.assert_not_called()
+
+    def test_retries_sdk_errors_and_then_succeeds(self, client, sleep):
+        errors = [
+            prompts.APIConnectionError(request=mock.Mock()),
+            prompts.APITimeoutError(request=mock.Mock()),
+            prompts.APIStatusError(
+                "unavailable", response=mock.Mock(status_code=503, headers={}), body=None,
+            ),
+        ]
+        create = client.return_value.chat.completions.create
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                create.reset_mock()
+                sleep.reset_mock()
+                create.side_effect = [error, self.response("ответ")]
+                self.assertEqual(prompts._ask_deepseek("вопрос"), "ответ")
+                self.assertEqual(create.call_count, 2)
+                sleep.assert_called_once_with(1)
+
+    def test_sdk_error_is_raised_after_all_retries(self, client, sleep):
+        error = prompts.APIConnectionError(request=mock.Mock())
+        create = client.return_value.chat.completions.create
+        create.side_effect = error
+        with self.assertRaises(prompts.APIConnectionError) as raised:
+            prompts._ask_deepseek("вопрос")
+        self.assertIs(raised.exception, error)
+        self.assertEqual(create.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+
+    def test_empty_response_is_retried_and_then_succeeds(self, client, sleep):
+        create = client.return_value.chat.completions.create
+        create.side_effect = [self.response("   "), self.response("ответ")]
+        self.assertEqual(prompts._ask_deepseek("вопрос"), "ответ")
+        self.assertEqual(create.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    def test_empty_response_raises_runtime_error_after_retries(self, client, sleep):
+        create = client.return_value.chat.completions.create
+        create.return_value = self.response("   ")
+        with self.assertRaises(RuntimeError):
+            prompts._ask_deepseek("вопрос")
+        self.assertEqual(create.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
 
 
 class ParseJsonTests(SimpleTestCase):
@@ -86,16 +156,33 @@ class ParseJsonTests(SimpleTestCase):
 
 class GenerateQuizQuestionsTests(SimpleTestCase):
     def test_builds_prompt_from_parameters_and_parses_answer(self):
-        with mock.patch("ai_generator.prompts._ask", return_value=f"```json\n{json.dumps(FAKE_RESULT)}\n```") as ask:
-            result = prompts.generate_quiz_questions({
-                "quiz_title": "Мой квиз", "quiz_category": "Наука", "quiz_subject": "Чёрные дыры",
-                "quiz_questions": 7, "quiz_level": "pro", "quiz_audience": "teens", "question_style": "humorous",
-            })
-        self.assertEqual(result, FAKE_RESULT)
-        prompt = ask.call_args.args[0]
-        for fragment in ("Мой квиз", "Наука", "Чёрные дыры", "Сгенерируй 7 вопросов", "Уровень сложности вопросов: Pro"):
-            with self.subTest(fragment=fragment):
-                self.assertIn(fragment, prompt)
+        for provider in ("deep_seek", "claude"):
+            with self.subTest(provider=provider), self.settings(BASE_AI_MODEL=provider):
+                with mock.patch("ai_generator.prompts._ask_deepseek") as deepseek, \
+                        mock.patch("ai_generator.prompts._ask_claude") as claude:
+                    ask, unused = (deepseek, claude) if provider == "deep_seek" else (claude, deepseek)
+                    ask.return_value = f"```json\n{json.dumps(FAKE_RESULT)}\n```"
+                    result = prompts.generate_quiz_questions({
+                        "quiz_title": "Мой квиз", "quiz_category": "Наука", "quiz_subject": "Чёрные дыры",
+                        "quiz_questions": 7, "quiz_level": "pro", "quiz_audience": "teens",
+                        "question_style": "humorous",
+                    })
+                self.assertEqual(result, FAKE_RESULT)
+                unused.assert_not_called()
+                ask.assert_called_once()
+                prompt = ask.call_args.args[0]
+                for fragment in ("Мой квиз", "Наука", "Чёрные дыры", "Сгенерируй 7 вопросов",
+                                 "Уровень сложности вопросов: Pro", "teens", "humorous"):
+                    with self.subTest(fragment=fragment):
+                        self.assertIn(fragment, prompt)
+
+    def test_deepseek_failure_does_not_fall_back_to_claude(self):
+        with self.settings(BASE_AI_MODEL="deep_seek"):
+            with mock.patch("ai_generator.prompts._ask_deepseek", side_effect=RuntimeError("unavailable")), \
+                    mock.patch("ai_generator.prompts._ask_claude") as claude:
+                with self.assertRaises(RuntimeError):
+                    prompts.generate_quiz_questions({})
+                claude.assert_not_called()
 
 
 class QuestionsToInitialTests(SimpleTestCase):

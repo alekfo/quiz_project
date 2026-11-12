@@ -73,7 +73,7 @@ class QuizSeriesQuerySet(models.QuerySet):
             # таким образом для шаблонов любого незалогиненного пользователя на стартовой странице будет доступна переменная in_progress=False
             return self.annotate(in_progress=models.Value(False, output_field=models.BooleanField()))
         SeriesRun = apps.get_model("gameplay", "SeriesRun")  # чтобы избежать циклического импорта
-        runs = SeriesRun.objects.filter(series=OuterRef("pk"), created_by=user, status="in_progress") #OuterRef - ссылка на внешний пк основного запроса, т.к данная строка - это подзапрос
+        runs = SeriesRun.objects.filter(series=OuterRef("pk"), mode="solo", created_by=user, status="in_progress") #OuterRef - ссылка на внешний пк основного запроса, т.к данная строка - это подзапрос
         return self.annotate(in_progress=Exists(runs)) #тут мы говорим базе: «в этом конкретном запросе, кроме обычных колонок серии, посчитай и верни ещё одно значение и назови его in_progress» (типа ) SELECT id, title, ..., EXISTS(SELECT ...) AS in_progress
 
 class QuizSeries(models.Model):

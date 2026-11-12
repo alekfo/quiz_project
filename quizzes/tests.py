@@ -289,6 +289,34 @@ class SeriesInProgressTests(BaseTestCase):
         response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
         self.assertIs(response.context["has_run_in_progress"], False)
 
+    def test_multiplayer_run_is_not_personal_solo_progress(self):
+        SeriesRun.objects.create(series=self.series, mode="multiplayer", created_by=self.reader)
+        self.assertIs(self.in_progress_for(self.reader), False)
+        self.client.force_login(self.reader)
+        response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
+        self.assertIs(response.context["has_run_in_progress"], False)
+
+    def test_preview_starts_solo_with_post_form(self):
+        self.client.force_login(self.reader)
+        response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
+        start = reverse("gameplay:start", kwargs={"pk": self.series.pk})
+        self.assertContains(response, f'<form method="post" action="{start}">')
+        self.assertContains(response, 'name="csrfmiddlewaretoken"')
+        self.assertNotContains(response, f'href="{start}"')
+        self.assertContains(response, "с на ответ")
+        self.assertContains(response, "Как играть")
+
+    def test_room_player_cannot_start_new_solo_from_preview(self):
+        from multiplayer.models import Room, RoomPlayer
+
+        room = Room.objects.create(title="Комната", token="previewroom", host=self.author)
+        RoomPlayer.objects.create(room=room, user=self.reader)
+        self.client.force_login(self.reader)
+        response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
+        self.assertTrue(response.context["is_player"])
+        self.assertContains(response, 'class="btn btn-primary btn-lg" disabled')
+        self.assertContains(response, "сначала выйдите из неё")
+
 
 class SeriesReadAccessTests(BaseTestCase):
     """Список/превью/детали: кто какую серию видит."""
