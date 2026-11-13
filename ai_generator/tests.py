@@ -17,7 +17,6 @@ from .models import GenerationRequest
 from .views import GENERATION_STALE_AFTER, _questions_to_initial
 
 FAKE_RESULT = {
-    "quiz_title": "Космос",
     "questions": [
         {"id": 1, "question": "Q1", "options": ["a", "b", "c", "d"], "correct_answer_index": "1", "fact": "F1"},
         {"id": 2, "question": "Q2", "options": ["e", "f", "g", "h"], "correct_answer_index": 3, "fact": ""},
@@ -163,16 +162,16 @@ class GenerateQuizQuestionsTests(SimpleTestCase):
                     ask, unused = (deepseek, claude) if provider == "deep_seek" else (claude, deepseek)
                     ask.return_value = f"```json\n{json.dumps(FAKE_RESULT)}\n```"
                     result = prompts.generate_quiz_questions({
-                        "quiz_title": "Мой квиз", "quiz_category": "Наука", "quiz_subject": "Чёрные дыры",
-                        "quiz_questions": 7, "quiz_level": "pro", "quiz_audience": "teens",
-                        "question_style": "humorous",
+                        "quiz_title": "Мой квиз", "quiz_category": "Наука", "round_subject": "Чёрные дыры",
+                        "round_questions": 7, "round_level": "pro", "round_audience": "teens",
+                        "round_style": "humorous", "round_description_for_ai": "Акцент на открытиях",
                     })
                 self.assertEqual(result, FAKE_RESULT)
                 unused.assert_not_called()
                 ask.assert_called_once()
                 prompt = ask.call_args.args[0]
                 for fragment in ("Мой квиз", "Наука", "Чёрные дыры", "Сгенерируй 7 вопросов",
-                                 "Уровень сложности вопросов: Pro", "teens", "humorous"):
+                                 "Уровень сложности вопросов: Pro", "teens", "humorous", "Акцент на открытиях"):
                     with self.subTest(fragment=fragment):
                         self.assertIn(fragment, prompt)
 
@@ -213,6 +212,7 @@ class AiGeneratorViewTestCase(BaseTestCase):
     def round_params(self, **kwargs) -> dict:
         data = {
             "subject": "Чёрные дыры", "questions": "2", "level": "pro", "audience": "teens",
+            "round_description_for_ai": "Акцент на открытиях",
             "style": "humorous", "time_limit_seconds": "25", "points_per_correct": "3",
         }
         data.update(kwargs)
@@ -225,6 +225,7 @@ class AiGeneratorViewTestCase(BaseTestCase):
 
     def make_gen_request(self, status="completed", user=None, **kwargs) -> GenerationRequest:
         kwargs.setdefault("result", FAKE_RESULT if status in ("completed", "saved", "discarded") else None)
+        kwargs.setdefault("round_description_for_ai", "Акцент на открытиях")
         return GenerationRequest.objects.create(
             user=user or self.user, title="AI квиз", subject="Чёрные дыры", category=self.category,
             description="Описание", questions=2, level="pro", audience="teens", style="humorous",
@@ -262,6 +263,43 @@ class GenerationRequestModelTests(AiGeneratorViewTestCase):
 class IndexViewTests(AiGeneratorViewTestCase):
     url = reverse("ai_generator:index")
 
+    def test_scoring_and_description_for_both_generation_forms(self):
+        series = make_series(self.user)
+        for existing_series in (False, True):
+            url = reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk}) if existing_series else self.url
+            for dynamic in (False, True):
+                with self.subTest(existing_series=existing_series, dynamic=dynamic):
+                    description = "я" * 255
+                    params = self.round_params if existing_series else self.series_params
+                    data = params(round_description_for_ai=description)
+                    if dynamic:
+                        data["dynamic_scoring_mode"] = "on"
+                        data.pop("points_per_correct")
+                    response, generate = self.generate(data, url=url)
+                    gen_request = GenerationRequest.objects.latest("pk")
+                    self.assertRedirects(response, self.review_url(gen_request), fetch_redirect_response=False)
+                    self.assertEqual(gen_request.dynamic_scoring_mode, dynamic)
+                    self.assertEqual(gen_request.points_per_correct, 1 if dynamic else 3)
+                    self.assertEqual(gen_request.round_description_for_ai, description)
+                    self.assertEqual(generate.call_args.args[0]["round_description_for_ai"], description)
+                    gen_request.status = "discarded"
+                    gen_request.save(update_fields=["status"])
+
+    def test_invalid_round_parameters_do_not_call_provider(self):
+        series = make_series(self.user)
+        for existing_series in (False, True):
+            url = reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk}) if existing_series else self.url
+            params = self.round_params if existing_series else self.series_params
+            for field, value in (("points_per_correct", ""), ("points_per_correct", "0"),
+                                 ("points_per_correct", "101"), ("round_description_for_ai", ""),
+                                 ("round_description_for_ai", "я" * 256)):
+                with self.subTest(existing_series=existing_series, field=field, value=value):
+                    response, generate = self.generate(params(**{field: value}), url=url)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn(field, response.context["form"].errors)
+                    generate.assert_not_called()
+                    self.assertFalse(GenerationRequest.objects.exists())
+
     def test_login_required(self):
         self.client.logout()
         self.assertLoginRequired(self.client.get(self.url))
@@ -274,6 +312,8 @@ class IndexViewTests(AiGeneratorViewTestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertIn("title", response.context["form"].fields)
+        self.assertContains(response, 'name="round_description_for_ai"')
+        self.assertContains(response, 'name="dynamic_scoring_mode"')
 
     def test_get_for_existing_series_has_only_round_fields(self):
         series = make_series(self.user)
@@ -281,6 +321,8 @@ class IndexViewTests(AiGeneratorViewTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("title", response.context["form"].fields)
         self.assertIn("subject", response.context["form"].fields)
+        self.assertContains(response, 'name="round_description_for_ai"')
+        self.assertContains(response, 'name="dynamic_scoring_mode"')
 
     def test_foreign_series_is_404_and_does_not_call_claude(self):
         series = make_series(make_user("stranger"), status="public")
@@ -298,8 +340,9 @@ class IndexViewTests(AiGeneratorViewTestCase):
 
         # в Claude уходит название категории, а не её pk
         self.assertEqual(generate.call_args.args[0], {
-            "quiz_title": "AI квиз", "quiz_category": "Наука", "quiz_subject": "Чёрные дыры",
-            "quiz_questions": 2, "quiz_level": "pro", "quiz_audience": "teens", "question_style": "humorous",
+            "quiz_title": "AI квиз", "quiz_category": "Наука", "round_subject": "Чёрные дыры",
+            "round_questions": 2, "round_level": "pro", "round_audience": "teens", "round_style": "humorous",
+            "round_description_for_ai": "Акцент на открытиях",
         })
         self.assertEqual(
             (gen_request.user, gen_request.title, gen_request.category, gen_request.series, gen_request.status,
@@ -549,6 +592,17 @@ class ReviewAndStatusViewTests(AiGeneratorViewTestCase):
 class ReviewPagesTests(AiGeneratorViewTestCase):
     """Страницы, которые отдаёт review(): вопросы на проверку и экран ожидания."""
 
+    def test_review_shows_selected_scoring_mode(self):
+        for dynamic in (False, True):
+            with self.subTest(dynamic=dynamic):
+                response = self.client.get(self.review_url(self.make_gen_request(dynamic_scoring_mode=dynamic)))
+                if dynamic:
+                    self.assertContains(response, "Выбран динамический подсчёт очков")
+                    self.assertNotContains(response, "Очков за ответ:")
+                else:
+                    self.assertContains(response, "Очков за ответ: 6")
+                    self.assertNotContains(response, "Выбран динамический подсчёт очков")
+
     def test_completed_request_renders_question_formset(self):
         gen_request = self.make_gen_request(status="completed")
         response = self.client.get(self.review_url(gen_request))
@@ -622,6 +676,19 @@ class SaveViewTests(AiGeneratorViewTestCase):
                 data[f"form-{i}-{name}"] = value
         data.update(extra)
         return data
+
+    def test_dynamic_scoring_is_preserved_when_saving_new_or_existing_series(self):
+        for existing_series in (False, True):
+            with self.subTest(existing_series=existing_series):
+                series = make_series(self.user) if existing_series else None
+                gen_request = self.make_gen_request(dynamic_scoring_mode=True, series=series)
+                response = self.client.post(reverse("ai_generator:save", kwargs={"pk": gen_request.pk}),
+                                            self.formset_data())
+                self.assertEqual(response.status_code, 302)
+                quiz = Quiz.objects.latest("pk")
+                self.assertTrue(quiz.dynamic_scoring_mode)
+                if series:
+                    self.assertEqual(quiz.series_id, series.pk)
 
     def test_saves_new_series_with_ai_round(self):
         response = self.client.post(self.url, self.formset_data())

@@ -160,6 +160,7 @@ class Quiz(models.Model):
     audience = models.CharField(max_length=20, choices=AUDIENCE_CHOICES, default='common')
     time_limit_seconds = models.IntegerField(default=50)
     points_per_correct = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(100)])
+    dynamic_scoring_mode = models.BooleanField(default=False) #при True очки будут счиаться от скорости ответа
     round_order = models.PositiveIntegerField(default=0)
 
     def __str__(self):
