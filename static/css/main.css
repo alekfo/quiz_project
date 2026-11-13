@@ -178,6 +178,12 @@ textarea:focus-visible {
     border-color: var(--color-accent);
 }
 
+form[data-loading-overlay="generation-overlay"] input:disabled {
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+}
+
 input[type="checkbox"],
 input[type="radio"] {
     width: 1.25rem;

@@ -56,7 +56,6 @@ def _index_url(gen_request: GenerationRequest) -> str:
 def _review_context(gen_request: GenerationRequest, formset) -> dict:
     """Общий контекст temp_ai_quiz.html для review() и для save() с невалидным formset'ом."""
     return {
-        "res": gen_request.result,   # сырые данные для "шапки" (тема, уровень и т.д.)
         "formset": formset,          # редактируемые пользователем вопросы
         "gen_request": gen_request,  # по gen_request.pk строятся адреса save/discard
         "series_id": gen_request.series_id,
@@ -66,7 +65,7 @@ def _questions_to_initial(questions: list[dict]) -> list[dict]:
     """
     Адаптер между форматом ответа Claude и форматом, который ожидает QuestionForm.
 
-    Claude (см. prompts.generate_quiz_questions) возвращает вопрос так:
+    AI (см. prompts.generate_quiz_questions) возвращает вопрос так:
         {"question": "...", "options": ["a", "b", "c", "d"],
          "correct_answer_index": "..", "fact": "..."}
 
@@ -152,6 +151,7 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
     if request.method == "POST":
         form = form_class(request.POST)
         if form.is_valid():
+
             if series:
                 title = series.title
                 category = series.category_id
@@ -166,11 +166,12 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
             instruction_data = {
                 "quiz_title": title,
                 "quiz_category": Category.objects.get(pk=category).title,
-                "quiz_subject": form.cleaned_data.get("subject", ""),
-                "quiz_questions": form.cleaned_data.get("questions"),
-                "quiz_level": form.cleaned_data.get("level", ""),
-                "quiz_audience": form.cleaned_data.get("audience", ""),
-                "question_style": form.cleaned_data.get("style", ""),
+                "round_subject": form.cleaned_data.get("subject", ""),
+                "round_description_for_ai": form.cleaned_data.get("round_description_for_ai", ""),
+                "round_questions": form.cleaned_data.get("questions"),
+                "round_level": form.cleaned_data.get("level", ""),
+                "round_audience": form.cleaned_data.get("audience", ""),
+                "round_style": form.cleaned_data.get("style", ""),
             }
             # Запись создаётся ДО вызова Claude и сразу коммитится (отдельный atomic -
             # чтобы IntegrityError не ломал внешнюю транзакцию): с этого момента её
@@ -182,15 +183,17 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
                         user=request.user,
                         title=title,
                         description=description,
-                        subject=instruction_data.get("quiz_subject", ""),
+                        subject=instruction_data.get("round_subject", ""),
+                        round_description_for_ai=instruction_data.get("round_description_for_ai", ""),
                         category_id=category,
                         series=series,
-                        questions=instruction_data.get("quiz_questions", 0),
-                        level=instruction_data.get("quiz_level", ""),
-                        audience=instruction_data.get("quiz_audience", ""),
-                        style=instruction_data.get("question_style", ""),
+                        questions=instruction_data.get("round_questions", 0),
+                        level=instruction_data.get("round_level", ""),
+                        audience=instruction_data.get("round_audience", ""),
+                        style=instruction_data.get("round_style", ""),
                         time_limit_seconds=form.cleaned_data.get("time_limit_seconds", 50),
                         points_per_correct=form.cleaned_data.get("points_per_correct", 1),
+                        dynamic_scoring_mode=form.cleaned_data.get("dynamic_scoring_mode", False),
                         status="in_progress",
                         quiz_status=quiz_status
                     )

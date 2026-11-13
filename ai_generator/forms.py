@@ -35,35 +35,51 @@ def get_all_categories() -> List[tuple]:
 
     return CATEGORY_CHOICES
 
+class GenerationRequestFormWithSeries_id(forms.Form):
 
-class GenerationRequestForm(forms.Form):
+    # общие поля квиз/раунд (без создания серии)
+    subject = forms.CharField(label="Тема раунда", max_length=50)
+    round_description_for_ai = forms.CharField(label="Подробности раунда для AI", max_length=255, required=True, widget=forms.Textarea(attrs={"rows": 4}))
+    questions = forms.IntegerField(label="Количество вопросов в раунде", min_value=1)
+    level = forms.ChoiceField(label="Уровень сложности вопросов", choices=LEVEL_CHOICES)
+    audience = forms.ChoiceField(label="Целевая аудитория раунда", choices=AUDIENCE_CHOICES)
+    style = forms.ChoiceField(label="Стиль вопросов раунда", choices=STYLE_CHOICES)
+    time_limit_seconds = forms.IntegerField(label="Отведенное время на ответ (в секундах)")
+    points_per_correct = forms.IntegerField(label="Количество очков за правильный ответ", min_value=1, max_value=100, initial=1, required=False)
+    dynamic_scoring_mode =forms.BooleanField(label="Количество очков за правильный ответ зависит от скорости ответа", required=False)
 
-    #поля при создании квиза
+    def clean(self):
+        """
+        Проверка: если пользователь запонлил чек-бокс dynamic_scoring_mode,
+        то проставляем у points_per_correct 1, а если не заполнил dynamic_scoring_mode
+        и points_per_correct is None - ошибка валидации
+        """
+
+        cleaned_data = super().clean()
+
+        dynamic_scoring_mode = cleaned_data.get("dynamic_scoring_mode")
+        points_per_correct = cleaned_data.get("points_per_correct")
+
+        if dynamic_scoring_mode:
+            cleaned_data["points_per_correct"] = 1
+        elif points_per_correct is None:
+            self.add_error(
+                "points_per_correct",
+                "Укажите количество очков за правильный ответ. Или выберите режим динамического подсчета очков",
+            )
+        return cleaned_data
+
+class GenerationRequestForm(GenerationRequestFormWithSeries_id):
+
+    #поля при создании квиза (серии)
     title = forms.CharField(label="Наименование квиза", max_length=50)
     category = forms.ChoiceField(label="Категория квиза", choices=get_all_categories)
     description = forms.CharField(label="Описание квиза", max_length=255, required=False, widget=forms.Textarea(attrs={"rows": 4}))
     quiz_status = forms.ChoiceField(label="Уровень доступности квиза", choices=QuizSeries.STATUS_CHOICES)
 
-    #общие поля квиз/раунд
-    subject = forms.CharField(label="Тема раунда", max_length=50)
-    questions = forms.IntegerField(label="Количество вопросов в раунде", min_value=1)
-    level = forms.ChoiceField(label="Уровень сложности вопросов", choices=LEVEL_CHOICES)
-    audience = forms.ChoiceField(label="Целевая аудитория раунда", choices=AUDIENCE_CHOICES)
-    style = forms.ChoiceField(label="Стиль вопросов раунда", choices=STYLE_CHOICES)
-    time_limit_seconds = forms.IntegerField(label="Отведенное время на ответ (в секундах)")
-    points_per_correct = forms.IntegerField(label="Количество очков за правильный ответ", min_value=1, max_value=100, initial=1)
-
-class GenerationRequestFormWithSeries_id(forms.Form):
-
-    # общие поля квиз/раунд
-    subject = forms.CharField(label="Тема раунда", max_length=50)
-    questions = forms.IntegerField(label="Количество вопросов в раунде", min_value=1)
-    level = forms.ChoiceField(label="Уровень сложности вопросов", choices=LEVEL_CHOICES)
-    audience = forms.ChoiceField(label="Целевая аудитория раунда", choices=AUDIENCE_CHOICES)
-    style = forms.ChoiceField(label="Стиль вопросов раунда", choices=STYLE_CHOICES)
-    time_limit_seconds = forms.IntegerField(label="Отведенное время на ответ (в секундах)")
-    points_per_correct = forms.IntegerField(label="Количество очков за правильный ответ", min_value=1, max_value=100, initial=1)
-
+    #т.к мы наследуем поля у GenerationRequestFormWithSeries_id, то в форме по умолчанию пойду поля от родителя,
+    # но благодаря field_order сначала пойдут поля из field_order а потом остальные (от родителя)
+    field_order = ["title", "category", "description", "quiz_status"]
 
 class QuestionForm(forms.Form):
     """
