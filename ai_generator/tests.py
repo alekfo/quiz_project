@@ -17,7 +17,6 @@ from .models import GenerationRequest
 from .views import GENERATION_STALE_AFTER, _questions_to_initial
 
 FAKE_RESULT = {
-    "quiz_title": "Космос",
     "questions": [
         {"id": 1, "question": "Q1", "options": ["a", "b", "c", "d"], "correct_answer_index": "1", "fact": "F1"},
         {"id": 2, "question": "Q2", "options": ["e", "f", "g", "h"], "correct_answer_index": 3, "fact": ""},
@@ -33,13 +32,13 @@ def api_response(text: str) -> mock.Mock:
 
 @mock.patch("ai_generator.prompts.time.sleep")
 @mock.patch("ai_generator.prompts.requests.post")
-class AskTests(SimpleTestCase):
-    """prompts._ask - обёртка над HTTP-прокси к Claude: повторы и обработка пустого ответа."""
+class AskClaudeTests(SimpleTestCase):
+    """prompts._ask_claude - обёртка над HTTP-прокси к Claude: повторы и обработка пустого ответа."""
 
     def test_returns_text_and_sends_prompt_with_api_key(self, post, sleep):
         post.return_value = api_response("ответ")
         with self.settings(CLAUDE_API_SERVICE_URL="https://proxy.example/ask", CLAUDE_API_SERVICE_KEY="secret"):
-            self.assertEqual(prompts._ask("вопрос"), "ответ")
+            self.assertEqual(prompts._ask_claude("вопрос"), "ответ")
         post.assert_called_once_with(
             "https://proxy.example/ask", json={"prompt": "вопрос"}, headers={"X-API-Key": "secret"}, timeout=90,
         )
@@ -47,14 +46,14 @@ class AskTests(SimpleTestCase):
 
     def test_retries_on_network_error_and_then_succeeds(self, post, sleep):
         post.side_effect = [requests.ConnectionError("down"), api_response("ответ")]
-        self.assertEqual(prompts._ask("вопрос"), "ответ")
+        self.assertEqual(prompts._ask_claude("вопрос"), "ответ")
         self.assertEqual(post.call_count, 2)
         sleep.assert_called_once_with(1)
 
     def test_network_error_is_raised_after_all_retries(self, post, sleep):
         post.side_effect = requests.ConnectionError("down")
         with self.assertRaises(requests.RequestException):
-            prompts._ask("вопрос")
+            prompts._ask_claude("вопрос")
         self.assertEqual(post.call_count, 3)
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
 
@@ -62,13 +61,83 @@ class AskTests(SimpleTestCase):
         failed = mock.Mock()
         failed.raise_for_status.side_effect = requests.HTTPError("500")
         post.side_effect = [failed, api_response("ответ")]
-        self.assertEqual(prompts._ask("вопрос"), "ответ")
+        self.assertEqual(prompts._ask_claude("вопрос"), "ответ")
 
     def test_empty_response_raises_runtime_error_after_retries(self, post, sleep):
         post.return_value = api_response("   ")
         with self.assertRaises(RuntimeError):
-            prompts._ask("вопрос")
+            prompts._ask_claude("вопрос")
         self.assertEqual(post.call_count, 3)
+
+
+@mock.patch("ai_generator.prompts.time.sleep")
+@mock.patch("ai_generator.prompts.OpenAI")
+class AskDeepSeekTests(BaseTestCase):
+    @staticmethod
+    def response(text):
+        return mock.Mock(choices=[mock.Mock(message=mock.Mock(content=text))])
+
+    def test_returns_text_and_sends_prompt_with_api_key(self, client, sleep):
+        create = client.return_value.chat.completions.create
+        create.return_value = self.response("ответ")
+        with self.settings(DEEPSEEK_API_KEY="test-deepseek-key"):
+            self.assertEqual(prompts._ask_deepseek("вопрос"), "ответ")
+        client.assert_called_once_with(
+            api_key="test-deepseek-key", base_url="https://api.deepseek.com",
+        )
+        create.assert_called_once_with(
+            model="deepseek-flash",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "вопрос"},
+            ],
+            stream=False,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        sleep.assert_not_called()
+
+    def test_retries_sdk_errors_and_then_succeeds(self, client, sleep):
+        errors = [
+            prompts.APIConnectionError(request=mock.Mock()),
+            prompts.APITimeoutError(request=mock.Mock()),
+            prompts.APIStatusError(
+                "unavailable", response=mock.Mock(status_code=503, headers={}), body=None,
+            ),
+        ]
+        create = client.return_value.chat.completions.create
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                create.reset_mock()
+                sleep.reset_mock()
+                create.side_effect = [error, self.response("ответ")]
+                self.assertEqual(prompts._ask_deepseek("вопрос"), "ответ")
+                self.assertEqual(create.call_count, 2)
+                sleep.assert_called_once_with(1)
+
+    def test_sdk_error_is_raised_after_all_retries(self, client, sleep):
+        error = prompts.APIConnectionError(request=mock.Mock())
+        create = client.return_value.chat.completions.create
+        create.side_effect = error
+        with self.assertRaises(prompts.APIConnectionError) as raised:
+            prompts._ask_deepseek("вопрос")
+        self.assertIs(raised.exception, error)
+        self.assertEqual(create.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+
+    def test_empty_response_is_retried_and_then_succeeds(self, client, sleep):
+        create = client.return_value.chat.completions.create
+        create.side_effect = [self.response("   "), self.response("ответ")]
+        self.assertEqual(prompts._ask_deepseek("вопрос"), "ответ")
+        self.assertEqual(create.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    def test_empty_response_raises_runtime_error_after_retries(self, client, sleep):
+        create = client.return_value.chat.completions.create
+        create.return_value = self.response("   ")
+        with self.assertRaises(RuntimeError):
+            prompts._ask_deepseek("вопрос")
+        self.assertEqual(create.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
 
 
 class ParseJsonTests(SimpleTestCase):
@@ -86,16 +155,33 @@ class ParseJsonTests(SimpleTestCase):
 
 class GenerateQuizQuestionsTests(SimpleTestCase):
     def test_builds_prompt_from_parameters_and_parses_answer(self):
-        with mock.patch("ai_generator.prompts._ask", return_value=f"```json\n{json.dumps(FAKE_RESULT)}\n```") as ask:
-            result = prompts.generate_quiz_questions({
-                "quiz_title": "Мой квиз", "quiz_category": "Наука", "quiz_subject": "Чёрные дыры",
-                "quiz_questions": 7, "quiz_level": "pro", "quiz_audience": "teens", "question_style": "humorous",
-            })
-        self.assertEqual(result, FAKE_RESULT)
-        prompt = ask.call_args.args[0]
-        for fragment in ("Мой квиз", "Наука", "Чёрные дыры", "Сгенерируй 7 вопросов", "Уровень сложности вопросов: Pro"):
-            with self.subTest(fragment=fragment):
-                self.assertIn(fragment, prompt)
+        for provider in ("deep_seek", "claude"):
+            with self.subTest(provider=provider), self.settings(BASE_AI_MODEL=provider):
+                with mock.patch("ai_generator.prompts._ask_deepseek") as deepseek, \
+                        mock.patch("ai_generator.prompts._ask_claude") as claude:
+                    ask, unused = (deepseek, claude) if provider == "deep_seek" else (claude, deepseek)
+                    ask.return_value = f"```json\n{json.dumps(FAKE_RESULT)}\n```"
+                    result = prompts.generate_quiz_questions({
+                        "quiz_title": "Мой квиз", "quiz_category": "Наука", "round_subject": "Чёрные дыры",
+                        "round_questions": 7, "round_level": "pro", "round_audience": "teens",
+                        "round_style": "humorous", "round_description_for_ai": "Акцент на открытиях",
+                    })
+                self.assertEqual(result, FAKE_RESULT)
+                unused.assert_not_called()
+                ask.assert_called_once()
+                prompt = ask.call_args.args[0]
+                for fragment in ("Мой квиз", "Наука", "Чёрные дыры", "Сгенерируй 7 вопросов",
+                                 "Уровень сложности вопросов: Pro", "teens", "humorous", "Акцент на открытиях"):
+                    with self.subTest(fragment=fragment):
+                        self.assertIn(fragment, prompt)
+
+    def test_deepseek_failure_does_not_fall_back_to_claude(self):
+        with self.settings(BASE_AI_MODEL="deep_seek"):
+            with mock.patch("ai_generator.prompts._ask_deepseek", side_effect=RuntimeError("unavailable")), \
+                    mock.patch("ai_generator.prompts._ask_claude") as claude:
+                with self.assertRaises(RuntimeError):
+                    prompts.generate_quiz_questions({})
+                claude.assert_not_called()
 
 
 class QuestionsToInitialTests(SimpleTestCase):
@@ -126,6 +212,7 @@ class AiGeneratorViewTestCase(BaseTestCase):
     def round_params(self, **kwargs) -> dict:
         data = {
             "subject": "Чёрные дыры", "questions": "2", "level": "pro", "audience": "teens",
+            "round_description_for_ai": "Акцент на открытиях",
             "style": "humorous", "time_limit_seconds": "25", "points_per_correct": "3",
         }
         data.update(kwargs)
@@ -138,6 +225,7 @@ class AiGeneratorViewTestCase(BaseTestCase):
 
     def make_gen_request(self, status="completed", user=None, **kwargs) -> GenerationRequest:
         kwargs.setdefault("result", FAKE_RESULT if status in ("completed", "saved", "discarded") else None)
+        kwargs.setdefault("round_description_for_ai", "Акцент на открытиях")
         return GenerationRequest.objects.create(
             user=user or self.user, title="AI квиз", subject="Чёрные дыры", category=self.category,
             description="Описание", questions=2, level="pro", audience="teens", style="humorous",
@@ -175,6 +263,43 @@ class GenerationRequestModelTests(AiGeneratorViewTestCase):
 class IndexViewTests(AiGeneratorViewTestCase):
     url = reverse("ai_generator:index")
 
+    def test_scoring_and_description_for_both_generation_forms(self):
+        series = make_series(self.user)
+        for existing_series in (False, True):
+            url = reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk}) if existing_series else self.url
+            for dynamic in (False, True):
+                with self.subTest(existing_series=existing_series, dynamic=dynamic):
+                    description = "я" * 255
+                    params = self.round_params if existing_series else self.series_params
+                    data = params(round_description_for_ai=description)
+                    if dynamic:
+                        data["dynamic_scoring_mode"] = "on"
+                        data.pop("points_per_correct")
+                    response, generate = self.generate(data, url=url)
+                    gen_request = GenerationRequest.objects.latest("pk")
+                    self.assertRedirects(response, self.review_url(gen_request), fetch_redirect_response=False)
+                    self.assertEqual(gen_request.dynamic_scoring_mode, dynamic)
+                    self.assertEqual(gen_request.points_per_correct, 1 if dynamic else 3)
+                    self.assertEqual(gen_request.round_description_for_ai, description)
+                    self.assertEqual(generate.call_args.args[0]["round_description_for_ai"], description)
+                    gen_request.status = "discarded"
+                    gen_request.save(update_fields=["status"])
+
+    def test_invalid_round_parameters_do_not_call_provider(self):
+        series = make_series(self.user)
+        for existing_series in (False, True):
+            url = reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk}) if existing_series else self.url
+            params = self.round_params if existing_series else self.series_params
+            for field, value in (("points_per_correct", ""), ("points_per_correct", "0"),
+                                 ("points_per_correct", "101"), ("round_description_for_ai", ""),
+                                 ("round_description_for_ai", "я" * 256)):
+                with self.subTest(existing_series=existing_series, field=field, value=value):
+                    response, generate = self.generate(params(**{field: value}), url=url)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn(field, response.context["form"].errors)
+                    generate.assert_not_called()
+                    self.assertFalse(GenerationRequest.objects.exists())
+
     def test_login_required(self):
         self.client.logout()
         self.assertLoginRequired(self.client.get(self.url))
@@ -187,6 +312,8 @@ class IndexViewTests(AiGeneratorViewTestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertIn("title", response.context["form"].fields)
+        self.assertContains(response, 'name="round_description_for_ai"')
+        self.assertContains(response, 'name="dynamic_scoring_mode"')
 
     def test_get_for_existing_series_has_only_round_fields(self):
         series = make_series(self.user)
@@ -194,6 +321,8 @@ class IndexViewTests(AiGeneratorViewTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("title", response.context["form"].fields)
         self.assertIn("subject", response.context["form"].fields)
+        self.assertContains(response, 'name="round_description_for_ai"')
+        self.assertContains(response, 'name="dynamic_scoring_mode"')
 
     def test_foreign_series_is_404_and_does_not_call_claude(self):
         series = make_series(make_user("stranger"), status="public")
@@ -211,8 +340,9 @@ class IndexViewTests(AiGeneratorViewTestCase):
 
         # в Claude уходит название категории, а не её pk
         self.assertEqual(generate.call_args.args[0], {
-            "quiz_title": "AI квиз", "quiz_category": "Наука", "quiz_subject": "Чёрные дыры",
-            "quiz_questions": 2, "quiz_level": "pro", "quiz_audience": "teens", "question_style": "humorous",
+            "quiz_title": "AI квиз", "quiz_category": "Наука", "round_subject": "Чёрные дыры",
+            "round_questions": 2, "round_level": "pro", "round_audience": "teens", "round_style": "humorous",
+            "round_description_for_ai": "Акцент на открытиях",
         })
         self.assertEqual(
             (gen_request.user, gen_request.title, gen_request.category, gen_request.series, gen_request.status,
@@ -462,6 +592,17 @@ class ReviewAndStatusViewTests(AiGeneratorViewTestCase):
 class ReviewPagesTests(AiGeneratorViewTestCase):
     """Страницы, которые отдаёт review(): вопросы на проверку и экран ожидания."""
 
+    def test_review_shows_selected_scoring_mode(self):
+        for dynamic in (False, True):
+            with self.subTest(dynamic=dynamic):
+                response = self.client.get(self.review_url(self.make_gen_request(dynamic_scoring_mode=dynamic)))
+                if dynamic:
+                    self.assertContains(response, "Блиц-раунд")
+                    self.assertNotContains(response, "Очков за ответ:")
+                else:
+                    self.assertContains(response, "Очков за ответ: 6")
+                    self.assertNotContains(response, "Выбран динамический подсчёт очков")
+
     def test_completed_request_renders_question_formset(self):
         gen_request = self.make_gen_request(status="completed")
         response = self.client.get(self.review_url(gen_request))
@@ -535,6 +676,19 @@ class SaveViewTests(AiGeneratorViewTestCase):
                 data[f"form-{i}-{name}"] = value
         data.update(extra)
         return data
+
+    def test_dynamic_scoring_is_preserved_when_saving_new_or_existing_series(self):
+        for existing_series in (False, True):
+            with self.subTest(existing_series=existing_series):
+                series = make_series(self.user) if existing_series else None
+                gen_request = self.make_gen_request(dynamic_scoring_mode=True, series=series)
+                response = self.client.post(reverse("ai_generator:save", kwargs={"pk": gen_request.pk}),
+                                            self.formset_data())
+                self.assertEqual(response.status_code, 302)
+                quiz = Quiz.objects.latest("pk")
+                self.assertTrue(quiz.dynamic_scoring_mode)
+                if series:
+                    self.assertEqual(quiz.series_id, series.pk)
 
     def test_saves_new_series_with_ai_round(self):
         response = self.client.post(self.url, self.formset_data())

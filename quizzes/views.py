@@ -12,6 +12,7 @@ from django.db.models import Count
 from .models import Quiz, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId, QuizSeriesUpdateForm
 from gameplay.models import SeriesRun
+from gameplay.services import is_room_player
 from multiplayer.models import Room
 from social.services import get_like_context, get_save_context
 
@@ -75,7 +76,14 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["nums_of_rounds"] = self.object.rounds.count()
-        context["has_run_in_progress"] = SeriesRun.objects.filter(series=self.object, created_by=self.request.user, status="in_progress").exists()
+        context["active_solo_run"] = (SeriesRun.objects
+                                          .filter(series=self.object, mode="solo", created_by=self.request.user, status="in_progress")
+                                          .first())
+        context["has_run_in_progress"] = context["active_solo_run"] is not None
+
+        #отдельный флаг конфликта для превью - показываем что идет мультиплеер и сейчас соло начать нельзя
+        context["is_player"] = is_room_player(self.request.user)
+
         context.update(get_like_context(self.request.user, self.object))
         context.update(get_save_context(self.request.user, self.object))
         return context
@@ -224,7 +232,7 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
                     is_correct=(i_option == correct_index),
                     order=i_option
                 )
-        logger.info("Новый квиз №%s создан вручную пользователем user=%s", self.object.pk, self.request.user.username)
+        logger.info("Новый раунд №%s создан вручную пользователем user=%s", self.object.pk, self.request.user.username)
         return HttpResponseRedirect(self.get_success_url())
 
     def forms_invalid(self, form, question_formset):

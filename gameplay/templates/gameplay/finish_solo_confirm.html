@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block title %}Завершить соло-прохождение — QuizCrowd{% endblock %}
+
+{% block body %}
+    {% url 'gameplay:solo_room' pk=series_run.pk as back_url %}
+    <a class="back-link" href="{{ back_url }}">← К прохождению</a>
+
+    <section class="card confirm-card" aria-labelledby="finish-solo-title">
+        <h1 id="finish-solo-title">Завершить соло-прохождение?</h1>
+        <p class="confirm-subject">{{ series_run.series.title }}</p>
+        <p class="confirm-text">Завершено раундов: {{ completed_rounds }} из {{ rounds_count }}.</p>
+        <p class="confirm-text">Продолжить это прохождение будет нельзя. Результаты завершённых раундов сохранятся — квиз можно будет начать заново.</p>
+        {% if has_active_round %}
+            <p class="confirm-text">Текущий раунд будет прерван. Его очки не войдут в общий итог.</p>
+        {% endif %}
+        <form method="post" action="{% url 'gameplay:finish_solo' pk=series_run.pk %}">
+            {% csrf_token %}
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">
+                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
+                    Завершить прохождение
+                </button>
+                <a class="btn btn-ghost" href="{{ back_url }}">Отмена</a>
+            </div>
+        </form>
+    </section>
+{% endblock %}

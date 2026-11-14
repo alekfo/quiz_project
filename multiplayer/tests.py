@@ -1,4 +1,5 @@
 from datetime import timedelta
+import json
 
 from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
@@ -11,7 +12,8 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from gameplay.models import GameParticipant, GameSession, SeriesRun
-from quiz_project.testing import TEST_SETTINGS, BaseTestCase, make_series, make_user
+from gameplay.services import get_room_history
+from quiz_project.testing import TEST_SETTINGS, BaseTestCase, make_round, make_series, make_user
 from quizzes.models import QuizSeries
 from social.models import SavedQuizSeries
 
@@ -315,7 +317,10 @@ class RoomDetailTests(RoomTestCase):
             created_by=self.host, status="completed",
         )
         self.make_run(make_series(self.host, title="C"))
-        self.assertCountEqual(self.detail(self.client).context["completed_series_run"], [abandoned, completed])
+        self.assertCountEqual(
+            [game["run"] for game in self.detail(self.client).context["games_history"]],
+            [abandoned, completed],
+        )
 
     def test_finished_room_still_renders(self):
         Room.objects.filter(pk=self.room.pk).update(status="finished")
@@ -327,6 +332,24 @@ class RoomDetailTests(RoomTestCase):
 
 
 class JoinAndQuitTests(RoomTestCase):
+    def test_unfinished_solo_blocks_join_even_between_rounds(self):
+        solo = SeriesRun.objects.create(series=make_series(self.guest), mode="solo", created_by=self.guest)
+        response = self.guest_client.post(room_url("room_join", self.room))
+        self.assertRedirects(response, room_url("room_detail", self.room), fetch_redirect_response=False)
+        self.assertFalse(RoomPlayer.objects.filter(user=self.guest).exists())
+        solo.refresh_from_db()
+        self.assertEqual(solo.status, "in_progress")
+        self.assertTrue(list(get_messages(response.wsgi_request)))
+
+    def test_finished_or_abandoned_solo_does_not_block_join(self):
+        for status in ("completed", "abandoned"):
+            with self.subTest(status=status):
+                SeriesRun.objects.create(series=make_series(self.guest), mode="solo",
+                                         created_by=self.guest, status=status)
+                self.guest_client.post(room_url("room_join", self.room))
+                self.assertTrue(RoomPlayer.objects.filter(room=self.room, user=self.guest).exists())
+                RoomPlayer.objects.filter(room=self.room, user=self.guest).delete()
+
     def join(self, room):
         return self.guest_client.post(room_url("room_join", room))
 
@@ -380,6 +403,93 @@ class JoinAndQuitTests(RoomTestCase):
         self.add_player(self.host)
         self.assertEqual(self.guest_client.post(room_url("room_quit", self.room)).status_code, 404)
         self.assertEqual(RoomPlayer.objects.count(), 1)
+
+
+class RoomHistoryTests(RoomTestCase):
+    def setUp(self):
+        super().setUp()
+        self.add_player(self.guest)
+        self.second = make_user("second")
+        series = make_series(self.host, rounds=3)
+        self.run = SeriesRun.objects.create(series=series, mode="multiplayer", room=self.room,
+                                            created_by=self.host, status="completed")
+        self.sessions = []
+        for index, quiz in enumerate(series.rounds.order_by("round_order")):
+            session = GameSession.objects.create(quiz=quiz, mode="multiplayer", room=self.room,
+                                                 series_run=self.run, created_by=self.host,
+                                                 status="completed" if index < 2 else "in_progress")
+            self.sessions.append(session)
+            GameParticipant.objects.create(session=session, user=self.second, score=20)
+            if index == 0:
+                GameParticipant.objects.create(session=session, user=self.guest, score=40)
+
+    def history(self, client=None):
+        return (client or self.client).get(room_url("room_detail", self.room)).context["games_history"]
+
+    def test_history_uses_completed_rounds_and_sums_scores_with_stable_ties(self):
+        [entry] = self.history()
+        self.assertEqual(entry["run"], self.run)
+        self.assertEqual([row["session"] for row in entry["rounds"]], self.sessions[:2])
+        self.assertTrue(all(row["can_view_result"] for row in entry["rounds"]))
+        self.assertEqual(entry["leaderboard"], [(self.guest, 40), (self.second, 40)])
+        self.assertNotIn(self.host, [user for user, _ in entry["leaderboard"]])
+
+    def test_guest_only_gets_links_for_rounds_they_played(self):
+        [entry] = self.history(self.guest_client)
+        self.assertEqual([row["can_view_result"] for row in entry["rounds"]], [True, False])
+
+    def test_visitor_gets_no_history(self):
+        visitor = Client()
+        visitor.force_login(make_user("visitor"))
+        self.assertEqual(self.history(visitor), [])
+
+    def test_newest_first_and_empty_abandoned_run(self):
+        abandoned = SeriesRun.objects.create(series=make_series(self.host), mode="multiplayer",
+                                              room=self.room, created_by=self.host, status="abandoned")
+        active = SeriesRun.objects.create(series=make_series(self.host), mode="multiplayer",
+                                          room=self.room, created_by=self.host)
+        entries = self.history()
+        self.assertEqual([entry["run"] for entry in entries], [abandoned, self.run])
+        self.assertEqual(entries[0]["rounds"], [])
+        self.assertEqual(entries[0]["leaderboard"], [])
+        self.assertNotIn(active, [entry["run"] for entry in entries])
+
+    def test_prefetched_history_requires_no_extra_queries(self):
+        room = self.client.get(room_url("room_detail", self.room)).context["object"]
+        with self.assertNumQueries(0):
+            history = get_room_history(room, self.host)
+        self.assertEqual(len(history), 1)
+
+    def test_history_links_only_to_allowed_results_and_never_to_solo_room(self):
+        response = self.guest_client.get(room_url("room_detail", self.room))
+        allowed = reverse("gameplay:result", kwargs={"pk": self.sessions[0].pk})
+        forbidden = reverse("gameplay:result", kwargs={"pk": self.sessions[1].pk})
+        self.assertContains(response, f'href="{allowed}"')
+        self.assertNotContains(response, f'href="{forbidden}"')
+        self.assertContains(response, f'id="lobby-game-{self.run.pk}"')
+        self.assertContains(response, "Вы не участвовали")
+        self.assertNotContains(response, "solo_room")
+
+    def test_websocket_history_matches_full_page(self):
+        consumer = RoomConsumer()
+        consumer.scope = {"user": self.host}
+        consumer.room_code = self.room.token
+        sent = []
+        consumer.send = lambda text_data=None, **kwargs: sent.append(json.loads(text_data))
+        consumer.room_update({"type": "room.update"})
+        response = self.client.get(room_url("room_detail", self.room))
+        for session in self.sessions[:2]:
+            target = reverse("gameplay:result", kwargs={"pk": session.pk})
+            self.assertIn(f'href="{target}"', sent[0]["html"])
+            self.assertContains(response, f'href="{target}"')
+        self.assertNotIn("solo_room", sent[0]["html"])
+
+    def test_multiplayer_result_returns_to_room_without_solo_link(self):
+        for client in (self.client, self.guest_client):
+            response = client.get(reverse("gameplay:result", kwargs={"pk": self.sessions[0].pk}))
+            self.assertContains(response, room_url("room_detail", self.room))
+            self.assertNotContains(response, "solo_room")
+            self.assertNotContains(response, "Прогресс квиза")
 
 
 class SeriesSelectionTests(RoomTestCase):
@@ -528,6 +638,30 @@ class ConfirmReadyTests(RoomTestCase):
 
     def test_non_player_gets_404(self):
         self.assertEqual(self.guest_client.post(room_url("room_confirm_ready", self.room)).status_code, 404)
+
+
+class BlitzLobbyTests(RoomTestCase):
+    def test_labels_before_and_after_start_for_full_and_live_fragments(self):
+        series = make_series(self.host, rounds=0)
+        make_round(series, dynamic_scoring_mode=True)
+        make_round(series, round_order=1, points_per_correct=7)
+        self.room.current_series = series
+        self.room.save()
+        for started in (False, True):
+            if started:
+                self.make_run(series)
+            response = self.client.get(room_url("room_detail", self.room))
+            consumer = RoomConsumer()
+            consumer.scope = {"user": self.host}
+            consumer.room_code = self.room.token
+            sent = []
+            consumer.send = lambda text_data=None, **kwargs: sent.append(json.loads(text_data))
+            consumer.room_update({"type": "room.update"})
+            for source, html in (("page", response.content.decode()), ("websocket", sent[0]["html"])):
+                with self.subTest(started=started, source=source):
+                    self.assertIn("Блиц-раунд", html)
+                    self.assertIn("+7 за верный ответ", html)
+                    self.assertNotIn("+1 за верный ответ", html)
 
 
 class RoomStartTests(RoomTestCase):

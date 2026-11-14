@@ -178,6 +178,12 @@ textarea:focus-visible {
     border-color: var(--color-accent);
 }
 
+form[data-loading-overlay="generation-overlay"] input:disabled {
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+}
+
 input[type="checkbox"],
 input[type="radio"] {
     width: 1.25rem;
@@ -1315,6 +1321,115 @@ footer a {
     padding: var(--space-5);
 }
 
+/* Превью — сведения о квизе, соло-комната — рабочий экран прохождения. */
+.quiz-overview {
+    width: 100%;
+    max-width: none;
+}
+
+.quiz-overview-grid,
+.series-dashboard-grid {
+    display: grid;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+.quiz-overview-grid > *,
+.series-dashboard-grid > * {
+    min-width: 0;
+}
+
+.quiz-play-guide {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    align-self: start;
+}
+
+.quiz-play-guide h2 {
+    margin: 0;
+    font-size: var(--font-md);
+}
+
+.quiz-play-guide .start-rules {
+    padding: 0 0 0 var(--space-4);
+}
+
+.quiz-overview .quiz-actions form,
+.series-dashboard .quiz-actions form {
+    margin: 0;
+}
+
+.series-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    width: 100%;
+    padding: var(--space-5);
+}
+
+.series-dashboard-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.series-dashboard-header .series-room-step {
+    margin: 0;
+}
+
+.series-dashboard .next-round {
+    align-self: stretch;
+    padding: var(--space-5);
+    gap: var(--space-3);
+    border-left: var(--space-1) solid var(--color-accent);
+}
+
+.series-dashboard .next-round > form {
+    margin-top: auto;
+}
+
+.series-dashboard .next-round-label {
+    font-size: var(--font-md);
+}
+
+.series-dashboard .next-round-title {
+    font-size: var(--font-xl);
+    line-height: 1.25;
+}
+
+.series-dashboard .next-round .progress-meta {
+    font-size: var(--font-md);
+    line-height: 1.6;
+    margin-bottom: var(--space-5);
+}
+
+.series-finish {
+    margin: 0;
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 1024px) {
+    .quiz-overview-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .series-dashboard-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: stretch;
+    }
+
+    .series-dashboard .next-round-title {
+        font-size: var(--font-2xl);
+    }
+}
+
 .quiz-preview-title,
 .quiz-preview-author {
     margin: 0;
@@ -1343,20 +1458,7 @@ footer a {
     margin: 0;
 }
 
-.round-list {
-    display: grid;
-    gap: var(--space-1);
-    margin: 0;
-    padding-left: var(--space-5);
-    overflow-wrap: anywhere;
-}
-
-.round-list li::marker {
-    color: var(--color-accent);
-    font-weight: 600;
-}
-
-/* правила перед стартом квиза (gameplay/start.html) */
+/* правила игры на превью квиза */
 .start-rules {
     display: grid;
     gap: var(--space-1);
@@ -1412,12 +1514,53 @@ footer a {
     margin: 0;
 }
 
-.next-round .quiz-preview-note,
-.quiz-start .quiz-preview-note {
+.next-round .quiz-preview-note {
     font-style: italic;
 }
 
 /* результат раунда (gameplay/result.html) */
+.round-result {
+    width: 100%;
+    max-width: none;
+}
+
+.result-layout {
+    display: grid;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+.result-layout > * {
+    min-width: 0;
+}
+
+@media (min-width: 1024px) {
+    .result-layout.has-answers {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .result-layout.has-answers .result-heading {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .result-layout.has-answers .result-summary {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .result-layout.has-answers .result-answers {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    .result-layout.has-answers .result-players {
+        grid-column: 1 / -1;
+        grid-row: 3;
+    }
+}
+
 .round-result-series {
     margin: var(--space-1) 0 0;
     color: var(--color-text-muted);
@@ -1919,8 +2062,29 @@ html:not(.js) #add-question-btn {
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
-    max-width: var(--card-width);
+    width: 100%;
+    max-width: none;
     padding: var(--space-5);
+}
+
+.play-layout {
+    display: grid;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+.play-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+@media (min-width: 1024px) {
+    .play-card[data-session-socket] .play-layout {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        align-items: start;
+    }
 }
 
 /* шапка: слева номер вопроса и точки ответов, справа счёт и серия */
@@ -2023,22 +2187,25 @@ html:not(.js) #add-question-btn {
 }
 
 .timer.is-danger {
-    --timer-color: var(--color-error);
+    --timer-color: color-mix(in srgb, var(--color-error) 75%, var(--color-on-status));
 }
 
 .timer-track {
     flex: 1 1 auto;
-    height: var(--space-2);
+    height: var(--space-4);
     overflow: hidden;
     background: var(--color-track);
     border-radius: var(--radius-full);
+    box-shadow: inset 0 1px 3px var(--color-overlay-shadow);
 }
 
 .timer-fill {
     display: block;
     width: 100%;
     height: 100%;
-    background: var(--timer-color);
+    background: linear-gradient(to bottom,
+        color-mix(in srgb, var(--timer-color) 80%, var(--color-on-status)),
+        var(--timer-color));
     border-radius: inherit;
     transition: width 0.25s linear, background-color 0.6s ease;
 }
@@ -2345,8 +2512,34 @@ html:not(.js) #add-question-btn {
         animation: play-flash 1s ease-out;
     }
 
-    .timer.is-ending .timer-fill {
-        animation: timer-pulse 0.8s ease-in-out infinite;
+    .timer.is-warning,
+    .timer.is-danger {
+        --timer-pulse-duration: 1.6s;
+        --timer-glow-size: var(--space-3);
+        --timer-glow-spread: var(--space-1);
+        --timer-glow-color: color-mix(in srgb, var(--timer-color) 45%, transparent);
+    }
+
+    .timer.is-danger {
+        --timer-pulse-duration: 1s;
+        --timer-glow-size: var(--space-5);
+        --timer-glow-spread: var(--space-1);
+        --timer-glow-color: color-mix(in srgb, var(--timer-color) 50%, transparent);
+    }
+
+    .timer.is-ending {
+        --timer-pulse-duration: 0.7s;
+        --timer-glow-size: var(--space-6);
+    }
+
+    .timer.is-warning .timer-track,
+    .timer.is-danger .timer-track {
+        animation: timer-glow var(--timer-pulse-duration) ease-in-out infinite;
+    }
+
+    .timer.is-warning .timer-fill,
+    .timer.is-danger .timer-fill {
+        animation: timer-pulse var(--timer-pulse-duration) ease-in-out infinite;
     }
 }
 
@@ -2371,7 +2564,16 @@ html:not(.js) #add-question-btn {
 }
 
 @keyframes timer-pulse {
-    50% { opacity: 0.45; }
+    50% { filter: brightness(1.12); }
+}
+
+@keyframes timer-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 transparent;
+    }
+    50% {
+        box-shadow: 0 0 var(--timer-glow-size) var(--timer-glow-spread) var(--timer-glow-color);
+    }
 }
 
 /* --- прогресс серии (gameplay/_series_progress.html): лобби и соло-комната --- */
@@ -2447,7 +2649,7 @@ html:not(.js) #add-question-btn {
     overflow-wrap: anywhere;
 }
 
-/* .progress-meta - параметры раунда одной строкой (start.html) */
+/* .progress-meta — параметры раунда на превью и в соло-комнате */
 .progress-points,
 .progress-meta {
     font-size: var(--font-sm);
@@ -2894,6 +3096,30 @@ html:not(.js) #add-question-btn {
     gap: var(--space-2);
 }
 
+/* Двойной пульс доступного действия; WS меняет hidden/disabled автоматически. */
+@media (prefers-reduced-motion: no-preference) {
+    #confirm-ready-form:not([hidden]) .btn:not(:disabled):not([aria-disabled="true"]),
+    #start-form:not([hidden]) #start-button:not(:disabled):not([aria-disabled="true"]) {
+        transform-origin: left center;
+        animation: lobby-action-pulse 2.8s ease-in-out infinite;
+    }
+}
+
+@keyframes lobby-action-pulse {
+    0%, 32%, 64%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 0%, transparent);
+    }
+    14%, 46% {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--color-accent) 45%, transparent);
+    }
+    26%, 58% {
+        transform: scale(1.02);
+        box-shadow: 0 0 0 var(--space-3) color-mix(in srgb, var(--color-accent) 0%, transparent);
+    }
+}
+
 .lobby-note {
     margin: 0;
     color: var(--color-text-muted);
@@ -2975,7 +3201,8 @@ html:not(.js) #add-question-btn {
     color: var(--color-text-muted);
 }
 
-.lobby-history[open] .disclosure-chevron {
+.lobby-history[open] > .lobby-history-summary .disclosure-chevron,
+.lobby-game[open] > .lobby-game-summary .disclosure-chevron {
     transform: rotate(180deg);
 }
 
@@ -2987,6 +3214,101 @@ html:not(.js) #add-question-btn {
 
 .lobby-history-list {
     margin-top: var(--space-4);
+}
+
+.lobby-game {
+    border-top: 1px solid var(--color-border);
+}
+
+.lobby-game-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+    list-style: none;
+    cursor: pointer;
+}
+
+.lobby-game-summary::-webkit-details-marker {
+    display: none;
+}
+
+.lobby-game-summary .room-row-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.lobby-game-summary > .tag,
+.lobby-game-summary > .disclosure-chevron {
+    flex: none;
+}
+
+.lobby-game-summary:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: var(--space-1);
+    border-radius: var(--radius-sm);
+}
+
+.lobby-game-body {
+    display: grid;
+    gap: var(--space-3);
+    padding-bottom: var(--space-4);
+}
+
+.lobby-game-body h3 {
+    margin: 0;
+    font-size: var(--font-md);
+}
+
+.history-round-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.history-round {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.history-round-link {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: var(--tap-size);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-accent-soft);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+}
+
+.history-round-link:hover {
+    background: var(--color-accent-soft-hover);
+}
+
+.history-round-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: var(--space-1);
+}
+
+.history-round-link > :first-child {
+    min-width: 0;
+}
+
+.history-round-name {
+    display: block;
+}
+
+.history-score {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
 }
 
 .lobby-card .empty-state {

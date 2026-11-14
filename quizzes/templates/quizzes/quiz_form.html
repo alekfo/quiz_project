@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {# Один шаблон на три сценария: изменение раунда (есть object), новый раунд в квизе (series_id в URL), новый квиз #}
 {% block title %}
@@ -60,6 +61,7 @@
                 {% include "_form_field.html" with field=form.time_limit_seconds %}
                 {% include "_form_field.html" with field=form.points_per_correct %}
             </div>
+            {% include "_dynamic_scoring_field.html" %}
         </section>
 
         <section class="form-questions">
@@ -103,6 +105,7 @@
         {% include "quizzes/_question_form.html" with question_form=question_formset.empty_form %}
     </template>
 
+    <script src="{% static 'js/ai-generation-form.js' %}" defer></script>
     <script>
         (function () {
             const questionList = document.getElementById('question-list');

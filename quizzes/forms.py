@@ -56,19 +56,42 @@ QuestionFormSet = forms.inlineformset_factory(
     )
 
 class QuizFormWithSeriesId(forms.ModelForm):
+    points_per_correct = forms.IntegerField(label="Количество очков за правильный ответ", min_value=1, max_value=100,
+                                            initial=1, required=False)
 
     class Meta:
         model = Quiz
-        fields = ["subject", "level", "style", "audience", "time_limit_seconds", "points_per_correct"]
+        fields = ["subject", "level", "style", "audience", "time_limit_seconds", "points_per_correct", "dynamic_scoring_mode"]
         labels = {
-            "subject": "Тема раунда",
+            "subject": "Тема вопросов раунда",
             "level": "Уровень сложности вопросов раунда",
             "style": "Стиль вопросов раунда",
-            "audience": "Аудитория раунда",
+            "audience": "Аудитория вопросов раунда",
             "time_limit_seconds": "Отведенное время на ответ (в секундах)",
-            "points_per_correct": "Количество очков за правильный ответ"
+            "points_per_correct": "Количество очков за правильный ответ",
+            "dynamic_scoring_mode": "Блиц-раунд",
 
         }
+
+    def clean(self):
+        """
+        Проверка: если пользователь запонлнил чек-бокс dynamic_scoring_mode,
+        то проставляем у points_per_correct 1, а если не заполнил dynamic_scoring_mode
+        и points_per_correct is None - ошибка валидации
+        """
+        cleaned_data = super().clean()
+
+        dynamic_scoring_mode = cleaned_data.get("dynamic_scoring_mode")
+        points_per_correct = cleaned_data.get("points_per_correct")
+
+        if dynamic_scoring_mode:
+            cleaned_data["points_per_correct"] = 1
+        elif points_per_correct is None:
+            self.add_error(
+                "points_per_correct",
+                "Укажите количество очков за правильный ответ. Или выберите режим динамического подсчета очков (Блиц-раунд)",
+            )
+        return cleaned_data
 
 class QuizForm(QuizFormWithSeriesId):
     """
@@ -86,7 +109,7 @@ class QuizForm(QuizFormWithSeriesId):
     status = forms.ChoiceField(label="Уровень доступности квиза", choices=QuizSeries.STATUS_CHOICES)
 
     field_order = ["title", "category", "description", "status",
-                   "subject", "level", "style", "audience", "time_limit_seconds", "points_per_correct"]
+                   "subject", "level", "style", "audience", "time_limit_seconds", "points_per_correct", "dynamic_scoring_mode"]
 
 
 class QuizSeriesUpdateForm(forms.ModelForm):
