@@ -55,13 +55,7 @@
                 {% include "_form_field.html" with field=form.time_limit_seconds %}
                 {% include "_form_field.html" with field=form.points_per_correct %}
             </div>
-            <div class="form-field">
-                <label for="{{ form.dynamic_scoring_mode.id_for_label }}">
-                    {{ form.dynamic_scoring_mode }}
-                    {{ form.dynamic_scoring_mode.label }}
-                </label>
-                {{ form.dynamic_scoring_mode.errors }}
-            </div>
+            {% include "_dynamic_scoring_field.html" %}
         </section>
 
         <div class="form-actions">

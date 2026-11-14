@@ -16,7 +16,7 @@ from django.views.decorators.http import require_POST, require_http_methods
 from django.contrib.auth import get_user_model
 
 from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
-from quizzes.models import AnswerOption, QuizSeries
+from quizzes.models import AnswerOption, QuizSeries, Quiz
 from multiplayer.views import _notify_room
 from .services import get_series_progress, get_answer_stats, get_role, is_room_player
 
@@ -35,6 +35,33 @@ def _notify_session(session: GameSession) -> None:
         {"type": "session.update"},
     )
 
+def _get_points_awarded(quiz: Quiz, elapsed: int) -> int:
+    """
+    Функция для расчета очков за конкретный GameAnswer.
+    В зависимости от затраченного времени на ответ elapsed в секундах
+    вычисляется скоростной процент speed_procentage, который зависит от
+    заданного в модели Quiz time_limit_seconds. Чем ниже процент - тем быстрее
+    игрок ответил на вопрос.
+    Возвращаем int значение очков, которое в дальнейшем присовится в answ.points_awarded
+    """
+
+    #исходные настройки для дальнейшей корректировки
+    max_points = 4
+    middle_points = 2
+    min_points = 1
+
+    if quiz.dynamic_scoring_mode:
+        #вычисляем скорость ответа: чем ниже процент, тем больше points
+        speed_percentage = elapsed / quiz.time_limit_seconds * 100
+        if speed_percentage <= 30:
+            return max_points
+        elif speed_percentage <= 70:
+            return middle_points
+        else:
+            return min_points
+    else:
+        return quiz.points_per_correct
+
 def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, request: HttpRequest) -> GameAnswer:
     """
     Получаем GameAnswer по pk, обновляем его данные по AnswerOption, сохраняем
@@ -49,19 +76,21 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
         participant__user=request.user,
         participant__session=session
     )
+    quiz = session.quiz
+    time_limit_seconds = quiz.time_limit_seconds
 
     #проверяем не пришел ли ответ на вопрос, который уже переключен
     if answ.question_id != session.current_question_id:
         raise PermissionDenied
 
-    #вычисляем время, затраченное на вопрос для дальнейшего определения is_skipped
+    if answ.answered_at or answ.is_skipped:
+        raise PermissionDenied("На этот вопрос уже отвечали или он был пропущен")
+
+    #вычисляем время, затраченное на вопрос для дальнейшего определения is_skipped и points_awarded
     elapsed = (timezone.now() - answ.shown_at).total_seconds()
 
     #определяем наличие таймаута
-    timed_out = elapsed > session.quiz.time_limit_seconds
-
-    if answ.answered_at or answ.is_skipped:
-        raise PermissionDenied("На этот вопрос уже отвечали или он был пропущен")
+    timed_out = elapsed > time_limit_seconds
 
     if opt and opt.question_id != answ.question_id:
         raise PermissionDenied
@@ -70,11 +99,17 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
         answ.is_skipped = opt is None or timed_out
         answ.is_correct = opt is not None and opt.is_correct and not timed_out
         answ.answered_at = timezone.now()
+
+        #если ответ правильный - вычисляем новое значение points_awarded, иначе - останется прежним по умолчанию
+        if answ.is_correct:
+            points_awarded = _get_points_awarded(quiz, elapsed)
+            answ.points_awarded = points_awarded
+
         answ.save()
         transaction.on_commit(lambda: _notify_session(session))
     return answ
 
-def _update_total_score(sess: GameSession, req: HttpRequest) -> GameParticipant:
+def _update_total_score(sess: GameSession, req: HttpRequest, answer: GameAnswer) -> GameParticipant:
     """
     Функция для изменения score у текущего GameParticipant
     :param session: текущая сессия
@@ -84,7 +119,7 @@ def _update_total_score(sess: GameSession, req: HttpRequest) -> GameParticipant:
 
     participant = get_object_or_404(GameParticipant, session=sess, user=req.user)
     #меняем значение score прямо в БД (на вермя выполнения update другие транзакции не доступны)
-    GameParticipant.objects.filter(pk=participant.pk).update(score=F('score') + sess.quiz.points_per_correct)
+    GameParticipant.objects.filter(pk=participant.pk).update(score=F('score') + answer.points_awarded)
     #нужно синхронизировать participant с БД, т.к мы меняли score в обход него
     participant.refresh_from_db(fields=["score"])
     return participant
@@ -191,7 +226,8 @@ def _play_multiplayer_or_solo(request: HttpRequest, session: GameSession, partic
         # max(0, ...) - если игрок провозился дольше лимита, time_limit_seconds - elapsed
         # уйдёт в минус; на экране должно быть "0", а не отрицательное число
         remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
-        points_gained = session.quiz.points_per_correct if current_answer.is_correct else 0
+
+        points_gained = current_answer.points_awarded if current_answer.is_correct else 0
 
     #вспомогательные переменные и is_last_question
     questions = list(session.quiz.questions.all())  # уже по order, из prefetch
@@ -473,7 +509,7 @@ def play(request: HttpRequest, pk: int):
 
             #если answer is correct - обновляем score
             if answer.is_correct:
-                participant = _update_total_score(session, request)
+                participant = _update_total_score(session, request, answer)
 
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
@@ -681,7 +717,7 @@ def finish_solo(request: HttpRequest, pk: int):
             series_run.current_round_index = None
             series_run.save(update_fields=["status", "finished_at", "current_round_index"])
 
-            messages.success(request, "Соло-прохождение завершено. Результаты завершённых раундов сохранен")
+            messages.success(request, "Соло-прохождение завершено. Результаты завершённых раундов сохранены")
             url = reverse("quizzes:quizzes_preview", kwargs={"pk": series_run.series.pk})
             return redirect(url)
 

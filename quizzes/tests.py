@@ -453,6 +453,40 @@ class QuizCreateViewTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("question_formset", response.context)
 
+    def test_manual_create_forms_save_blitz_without_fixed_points(self):
+        series = make_series(self.user, rounds=0)
+        scenarios = (
+            (reverse("quizzes:quizzes_create"), self.series_data(dynamic_scoring_mode="on")),
+            (reverse("quizzes:quizzes_create_for_series", kwargs={"series_id": series.pk}),
+             round_data(dynamic_scoring_mode="on")),
+        )
+        for url, data in scenarios:
+            with self.subTest(url=url):
+                page = self.client.get(url)
+                self.assertContains(page, 'name="dynamic_scoring_mode"')
+                self.assertContains(page, 'js/ai-generation-form.js')
+                data.pop("points_per_correct")
+                data.update(question_formset_data([{}, {}]))
+                response = self.client.post(url, data)
+                self.assertEqual(response.status_code, 302)
+                quiz = Quiz.objects.latest("pk")
+                self.assertTrue(quiz.dynamic_scoring_mode)
+                self.assertEqual(quiz.points_per_correct, 1)
+
+    def test_preview_and_details_mark_blitz_and_regular_rounds(self):
+        series = make_series(self.user, rounds=0)
+        make_round(series, dynamic_scoring_mode=True)
+        make_round(series, round_order=1, points_per_correct=7)
+        for name in ("quizzes_preview", "quizzes_details"):
+            with self.subTest(name=name):
+                response = self.client.get(reverse(f"quizzes:{name}", kwargs={"pk": series.pk}))
+                self.assertContains(response, "Блиц-раунд", count=1)
+                self.assertContains(response, "очки за скорость")
+                self.assertNotContains(response, "+1 за верный ответ")
+                self.assertNotContains(response, "Очков за ответ: 1")
+                self.assertContains(response, "Очков за ответ: 7" if name == "quizzes_details"
+                                    else "+7 за верный ответ")
+
     def test_creates_series_round_questions_and_options(self):
         data = self.series_data()
         data.update(question_formset_data([{"correct_index": "2"}, {"correct_index": "0"}]))
@@ -575,6 +609,34 @@ class RoundUpdateViewTests(BaseTestCase):
         first_form = response.context["question_formset"].forms[0]
         self.assertEqual(first_form.fields["option_1"].initial, "Вариант 0")
         self.assertEqual(first_form.fields["correct_index"].initial, 0)
+
+    def test_switch_round_between_blitz_and_regular(self):
+        for dynamic in (True, False):
+            with self.subTest(dynamic=dynamic):
+                data = round_data()
+                if dynamic:
+                    data["dynamic_scoring_mode"] = "on"
+                    data.pop("points_per_correct")
+                data.update(self.existing_questions_data())
+                self.assertEqual(self.client.post(self.url, data).status_code, 302)
+                self.round.refresh_from_db()
+                self.assertEqual(self.round.dynamic_scoring_mode, dynamic)
+                self.assertEqual(self.round.points_per_correct, 1 if dynamic else 3)
+                page = self.client.get(self.url)
+                self.assertEqual(page.context["form"]["dynamic_scoring_mode"].value(), dynamic)
+                self.assertContains(page, 'js/ai-generation-form.js')
+
+    def test_turning_off_blitz_requires_fixed_points(self):
+        self.round.dynamic_scoring_mode = True
+        self.round.save(update_fields=["dynamic_scoring_mode"])
+        data = round_data()
+        data.pop("points_per_correct")
+        data.update(self.existing_questions_data())
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("points_per_correct", response.context["form"].errors)
+        self.round.refresh_from_db()
+        self.assertTrue(self.round.dynamic_scoring_mode)
 
     def test_updates_round_fields_and_rebuilds_options(self):
         data = round_data(subject="Новая тема", time_limit_seconds="15", points_per_correct="7")

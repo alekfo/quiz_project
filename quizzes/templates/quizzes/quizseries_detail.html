@@ -59,7 +59,7 @@
                             <span class="tag tag-muted">{{ round.get_style_display }}</span>
                             <span class="tag tag-muted">Аудитория: {{ round.get_audience_display }}</span>
                             <span class="tag tag-muted">Время на вопрос: {{ round.time_limit_seconds }} с</span>
-                            <span class="tag tag-muted">Очков за ответ: {{ round.points_per_correct }}</span>
+                            <span class="tag tag-muted">{% include "_round_scoring.html" with round=round detail=True only %}</span>
                         </p>
 
                         <div class="quiz-actions">

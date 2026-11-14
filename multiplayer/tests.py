@@ -13,7 +13,7 @@ from django.urls import reverse
 
 from gameplay.models import GameParticipant, GameSession, SeriesRun
 from gameplay.services import get_room_history
-from quiz_project.testing import TEST_SETTINGS, BaseTestCase, make_series, make_user
+from quiz_project.testing import TEST_SETTINGS, BaseTestCase, make_round, make_series, make_user
 from quizzes.models import QuizSeries
 from social.models import SavedQuizSeries
 
@@ -638,6 +638,30 @@ class ConfirmReadyTests(RoomTestCase):
 
     def test_non_player_gets_404(self):
         self.assertEqual(self.guest_client.post(room_url("room_confirm_ready", self.room)).status_code, 404)
+
+
+class BlitzLobbyTests(RoomTestCase):
+    def test_labels_before_and_after_start_for_full_and_live_fragments(self):
+        series = make_series(self.host, rounds=0)
+        make_round(series, dynamic_scoring_mode=True)
+        make_round(series, round_order=1, points_per_correct=7)
+        self.room.current_series = series
+        self.room.save()
+        for started in (False, True):
+            if started:
+                self.make_run(series)
+            response = self.client.get(room_url("room_detail", self.room))
+            consumer = RoomConsumer()
+            consumer.scope = {"user": self.host}
+            consumer.room_code = self.room.token
+            sent = []
+            consumer.send = lambda text_data=None, **kwargs: sent.append(json.loads(text_data))
+            consumer.room_update({"type": "room.update"})
+            for source, html in (("page", response.content.decode()), ("websocket", sent[0]["html"])):
+                with self.subTest(started=started, source=source):
+                    self.assertIn("Блиц-раунд", html)
+                    self.assertIn("+7 за верный ответ", html)
+                    self.assertNotIn("+1 за верный ответ", html)
 
 
 class RoomStartTests(RoomTestCase):

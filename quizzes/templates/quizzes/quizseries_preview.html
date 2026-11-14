@@ -48,7 +48,7 @@
                             <li class="progress-item">
                                 <span class="progress-text">
                                     <span class="progress-subject">{{ round.subject }}</span>
-                                    <span class="progress-meta">{% if round.level != "common" %}Уровень: {{ round.get_level_display }} · {% endif %}{{ round.time_limit_seconds }} с на ответ · +{{ round.points_per_correct }} за верный ответ</span>
+                                    <span class="progress-meta">{% if round.level != "common" %}Уровень: {{ round.get_level_display }} · {% endif %}{{ round.time_limit_seconds }} с на ответ · {% include "_round_scoring.html" with round=round only %}</span>
                                 </span>
                             </li>
                         {% endfor %}
