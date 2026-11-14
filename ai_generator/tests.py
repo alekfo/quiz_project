@@ -597,7 +597,7 @@ class ReviewPagesTests(AiGeneratorViewTestCase):
             with self.subTest(dynamic=dynamic):
                 response = self.client.get(self.review_url(self.make_gen_request(dynamic_scoring_mode=dynamic)))
                 if dynamic:
-                    self.assertContains(response, "Выбран динамический подсчёт очков")
+                    self.assertContains(response, "Блиц-раунд")
                     self.assertNotContains(response, "Очков за ответ:")
                 else:
                     self.assertContains(response, "Очков за ответ: 6")

@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
@@ -605,6 +606,115 @@ class SoloFlowTests(SoloTestCase):
         self.client.logout()
         self.assertLoginRequired(self.client.get(play_url(session)))
         self.assertLoginRequired(self.client.get(result_url(session)))
+
+
+class BlitzScoringTests(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = make_user("blitz-player")
+        self.host = make_user("blitz-host")
+        self.client.force_login(self.user)
+
+    def make_game(self, mode="solo", dynamic=True, limit=100):
+        series = make_series(self.user, rounds=0)
+        quiz = make_round(series, dynamic_scoring_mode=dynamic, time_limit_seconds=limit,
+                          points_per_correct=7)
+        room = None
+        if mode == "multiplayer":
+            room = Room.objects.create(title="Блиц", token=f"blitz{series.pk}", host=self.host)
+            RoomPlayer.objects.create(room=room, user=self.user)
+        run = SeriesRun.objects.create(series=series, mode=mode, created_by=self.user, room=room)
+        question = quiz.questions.get(order=0)
+        session = GameSession.objects.create(
+            quiz=quiz, mode=mode, created_by=self.user, room=room, series_run=run,
+            current_question=question,
+        )
+        participant = GameParticipant.objects.create(session=session, user=self.user, score=5)
+        answer = GameAnswer.objects.create(participant=participant, question=question)
+        return session, participant, answer
+
+    def submit(self, session, answer, elapsed, pick=correct_option):
+        now = timezone.now()
+        GameAnswer.objects.filter(pk=answer.pk).update(shown_at=now - timedelta(seconds=elapsed))
+        data = {"current_answer_id": answer.pk}
+        if pick is not None:
+            data["chosen_option_id"] = pick(answer.question).pk
+        with patch("gameplay.views.timezone.now", return_value=now):
+            return self.client.post(play_url(session), data)
+
+    def test_awards_at_exact_time_boundaries_in_both_modes(self):
+        for mode in ("solo", "multiplayer"):
+            for elapsed, expected in ((0, 4), (30, 4), (30.01, 2), (70, 2),
+                                      (70.01, 1), (100, 1), (100.01, 0)):
+                with self.subTest(mode=mode, elapsed=elapsed):
+                    session, participant, answer = self.make_game(mode)
+                    response = self.submit(session, answer, elapsed)
+                    self.assertEqual(response.status_code, 302)
+                    answer.refresh_from_db()
+                    participant.refresh_from_db()
+                    self.assertEqual(answer.points_awarded, expected)
+                    self.assertEqual(participant.score, 5 + expected)
+                    self.assertEqual(answer.is_correct, elapsed <= 100)
+                    self.assertEqual(answer.is_skipped, elapsed > 100)
+                    verdict = self.client.get(play_url(session))
+                    self.assertEqual(verdict.context["points_gained"], expected)
+                    if expected:
+                        self.assertContains(verdict, f'data-points="{expected}"')
+                        self.assertContains(verdict, f'class="verdict-points">+{expected}</span>')
+
+    def test_thresholds_scale_with_round_time_limit(self):
+        for elapsed, expected in ((6, 4), (6.01, 2), (14, 2), (14.01, 1)):
+            with self.subTest(elapsed=elapsed):
+                session, participant, answer = self.make_game(limit=20)
+                self.submit(session, answer, elapsed)
+                answer.refresh_from_db()
+                self.assertEqual(answer.points_awarded, expected)
+
+    def test_wrong_answers_and_skips_award_zero_in_both_modes(self):
+        for mode in ("solo", "multiplayer"):
+            for pick in (wrong_option, None):
+                with self.subTest(mode=mode, pick=pick):
+                    session, participant, answer = self.make_game(mode)
+                    self.assertEqual(self.submit(session, answer, 1, pick).status_code, 302)
+                    answer.refresh_from_db()
+                    participant.refresh_from_db()
+                    self.assertEqual((answer.points_awarded, participant.score), (0, 5))
+                    self.assertFalse(answer.is_correct)
+
+    def test_regular_round_saves_fixed_award_in_both_modes(self):
+        for mode in ("solo", "multiplayer"):
+            with self.subTest(mode=mode):
+                session, participant, answer = self.make_game(mode, dynamic=False)
+                self.submit(session, answer, 80)
+                answer.refresh_from_db()
+                participant.refresh_from_db()
+                self.assertEqual((answer.points_awarded, participant.score), (7, 12))
+
+    def test_repeat_submission_and_reload_preserve_award_in_both_modes(self):
+        for mode in ("solo", "multiplayer"):
+            with self.subTest(mode=mode):
+                session, participant, answer = self.make_game(mode)
+                self.submit(session, answer, 10)
+                self.assertEqual(self.submit(session, answer, 90).status_code, 403)
+                # Даже изменение настроек раунда не пересчитывает уже выданные очки.
+                Quiz.objects.filter(pk=session.quiz_id).update(points_per_correct=99, dynamic_scoring_mode=False)
+                for _ in range(2):
+                    response = self.client.get(play_url(session))
+                    self.assertEqual(response.context["points_gained"], 4)
+                    self.assertEqual(response.context["score"], 9)
+                answer.refresh_from_db()
+                participant.refresh_from_db()
+                self.assertEqual((answer.points_awarded, participant.score), (4, 9))
+
+    def test_solo_room_marks_blitz_and_regular_rounds(self):
+        series = make_series(self.user, rounds=0)
+        make_round(series, dynamic_scoring_mode=True)
+        make_round(series, round_order=1, points_per_correct=7)
+        run = SeriesRun.objects.create(series=series, mode="solo", created_by=self.user)
+        response = self.client.get(reverse("gameplay:solo_room", kwargs={"pk": run.pk}))
+        self.assertContains(response, "Блиц-раунд", count=2)
+        self.assertContains(response, "+7 за верный ответ")
+        self.assertNotContains(response, "+1 за верный ответ")
 
 
 class AnswerRulesTests(SoloTestCase):

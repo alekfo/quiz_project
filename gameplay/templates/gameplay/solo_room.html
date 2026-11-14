@@ -31,7 +31,7 @@
                         <p class="next-round-label">Следующий раунд</p>
                         <h2 id="next-round-title" class="next-round-title">{{ current_round.subject }}</h2>
                         <p class="progress-meta">
-                            {% if current_round.level != "common" %}Уровень: {{ current_round.get_level_display }} · {% endif %}{{ current_round.time_limit_seconds }} с на ответ · +{{ current_round.points_per_correct }} за верный ответ
+                            {% if current_round.level != "common" %}Уровень: {{ current_round.get_level_display }} · {% endif %}{{ current_round.time_limit_seconds }} с на ответ · {% include "_round_scoring.html" with round=current_round only %}
                         </p>
                         <form method="post">
                             {% csrf_token %}

@@ -13,7 +13,7 @@
                         <li class="progress-item">
                             <span class="progress-text">
                                 <span class="progress-subject">{{ round.subject }}</span>
-                                <span class="progress-points">+{{ round.points_per_correct }} за верный ответ</span>
+                                <span class="progress-points">{% include "_round_scoring.html" with round=round only %}</span>
                             </span>
                         </li>
                     {% endfor %}

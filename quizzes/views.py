@@ -232,7 +232,7 @@ class QuizCreateView(LoginRequiredMixin, CreateView):
                     is_correct=(i_option == correct_index),
                     order=i_option
                 )
-        logger.info("Новый квиз №%s создан вручную пользователем user=%s", self.object.pk, self.request.user.username)
+        logger.info("Новый раунд №%s создан вручную пользователем user=%s", self.object.pk, self.request.user.username)
         return HttpResponseRedirect(self.get_success_url())
 
     def forms_invalid(self, form, question_formset):

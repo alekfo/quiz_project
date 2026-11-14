@@ -46,11 +46,11 @@ class GenerationRequestFormWithSeries_id(forms.Form):
     style = forms.ChoiceField(label="Стиль вопросов раунда", choices=STYLE_CHOICES)
     time_limit_seconds = forms.IntegerField(label="Отведенное время на ответ (в секундах)")
     points_per_correct = forms.IntegerField(label="Количество очков за правильный ответ", min_value=1, max_value=100, initial=1, required=False)
-    dynamic_scoring_mode =forms.BooleanField(label="Количество очков за правильный ответ зависит от скорости ответа", required=False)
+    dynamic_scoring_mode =forms.BooleanField(label="Блиц-раунд", required=False)
 
     def clean(self):
         """
-        Проверка: если пользователь запонлил чек-бокс dynamic_scoring_mode,
+        Проверка: если пользователь запонлнил чек-бокс dynamic_scoring_mode,
         то проставляем у points_per_correct 1, а если не заполнил dynamic_scoring_mode
         и points_per_correct is None - ошибка валидации
         """

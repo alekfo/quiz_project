@@ -20,11 +20,7 @@
         <span class="tag tag-muted">{{ gen_request.get_style_display }}</span>
         <span class="tag tag-muted">Аудитория: {{ gen_request.get_audience_display }}</span>
         <span class="tag tag-muted">Время на вопрос: {{ gen_request.time_limit_seconds }} с</span>
-        {% if gen_request.dynamic_scoring_mode %}
-            <span class="tag tag-muted">Выбран динамический подсчёт очков</span>
-        {% else %}
-            <span class="tag tag-muted">Очков за ответ: {{ gen_request.points_per_correct }}</span>
-        {% endif %}
+        <span class="tag tag-muted">{% include "_round_scoring.html" with round=gen_request detail=True only %}</span>
     </p>
 
     {# Какая это генерация и в какой квиз пойдёт раунд, save() узнаёт из pk в адресе и из самой #}
