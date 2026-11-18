@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.db.models import PositiveIntegerField
 
 MODE_CHOICES = [
     ('solo', 'Одиночная игра'),
@@ -28,6 +29,21 @@ REWARD_REASON_CHOICES = [
     ('', 'Нет причины отказа'),
     ('private_at_start', 'Квиз был приватным при первом старте'),
     ('private_at_completion', 'Квиз был приватным при полном завершении'),
+]
+
+KIND_CHOICES = [
+    ("player", "Игрок"),
+    ("author", "Автор"),
+]
+
+ANSWER_RATING_REASON_CHOICES = [
+    ("abandoned", "Прервано"),
+    ("own", "Собственный квиз"),
+    ("training", "Тренировка"),
+    ("timeout", "Вышло время"),
+    ("skipped", "Явный пропуск"),
+    ("incorrect", "Неправильный ответ"),
+    ("correct", "Правильный ответ"),
 ]
 
 class SeriesIdentity(models.Model):
@@ -257,4 +273,97 @@ class SeriesProgressRound(models.Model):
                 fields=["progress", "round_identity"],
                 name="stats_progress_round_uniq",
             )
+        ]
+
+class AnswerRating(models.Model):
+    """
+    Объяснение рейтинга одного принятого ответа. Сохраняется и положительный результат, и ноль с причиной:
+    ошибка, пропуск, просрочка, повторное участие или собственный квиз.
+    Нельзя определять просрочку только по is_skipped: существующий код объединяет явный пропуск и таймаут.
+    Сервису нужны фактические данные расчёта времени этого ответа.
+    """
+
+    answer = models.OneToOneField(
+        "gameplay.GameAnswer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    original_answer_id = models.PositiveBigIntegerField(unique=True)
+    participation = models.ForeignKey(
+        RoundParticipation,
+        on_delete=models.PROTECT,
+        related_name="answer_ratings"
+    )
+    original_question_id = models.PositiveBigIntegerField()
+    is_correct = models.BooleanField()
+    is_skipped = models.BooleanField()
+    timed_out = models.BooleanField()
+    answered_at = models.DateTimeField()
+    elapsed_seconds = models.FloatField()
+    time_limit_seconds = models.PositiveIntegerField()
+    dynamic_scoring_mode = models.BooleanField()
+    points = models.PositiveIntegerField()
+    reason = models.CharField(max_length=30, choices=ANSWER_RATING_REASON_CHOICES)
+    rules_version = PositiveIntegerField()
+
+class RatingEntry(models.Model):
+    """
+    Журнал начислений. Одна запись означает «кому, сколько, когда и за какое событие начислено».
+    Для игрока событие — AnswerRating, для автора — квалифицирующее завершение SeriesProgress.
+    Итоговый рейтинг — сумма записей нужного типа. Нулей в журнале нет, их объясняет AnswerRating.
+    Удаление вопроса не удаляет ни объяснение принятого ответа, ни начисление.
+    """
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="rating_entries"
+    )
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    amount = models.PositiveIntegerField()
+    earned_at = models.DateTimeField()
+    rules_version = models.PositiveIntegerField()
+    answer_rating = models.OneToOneField(
+        AnswerRating,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
+    series_progress = models.OneToOneField(
+        SeriesProgress,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        #При нарушении ограничения во время записи Django получит от базы IntegrityError.
+        constraints = [
+            #amount строго больше нуля
+            #нулевой результат и его причина остаются в AnswerRating
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0), #__gt - grater than (__gte - grater than or equal,  __lt - less than)
+                name="stats_entry_positive_amount",
+            ),
+            #прописываем условия "когда запиь пройдет":
+            #(kind="player" И answer_rating обязательно заполнен И series_progress должен быть NULL) ИЛИ
+            #(kind="author" И answer_rating должен быть NULL И series_progress обязательно заполнен)
+            models.CheckConstraint(
+                condition=(
+                        models.Q(
+                            kind="player",
+                            answer_rating__isnull=False,
+                            series_progress__isnull=True,
+                        )
+                        | models.Q(
+                            kind="author",
+                            answer_rating__isnull=True,
+                            series_progress__isnull=False,
+                        )
+                ),
+                name="stats_entry_source_matches_kind",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["kind", "earned_at", "recipient"]),
         ]

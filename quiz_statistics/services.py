@@ -1,9 +1,11 @@
 from django.db import transaction
 from django.utils import timezone
+from twisted.python.text import removeLeadingTrailingBlanks
 
-from .models import SeriesIdentity, RoundIdentity, RoundParticipation, RatingAttempt, SeriesProgress, SeriesProgressRound
+from .models import SeriesIdentity, RoundIdentity, RoundParticipation, RatingAttempt, SeriesProgress, SeriesProgressRound, AnswerRating, RatingEntry
 from quizzes.models import Quiz
-from gameplay.models import GameParticipant
+from gameplay.models import GameParticipant, GameAnswer
+from .rules import calculate_player_rating, RATING_RULES_VERSION
 
 def get_round_identity(quiz: Quiz) -> RoundIdentity:
     """
@@ -108,3 +110,73 @@ def register_round_start(participant: GameParticipant) -> RoundParticipation:
                         }
                     )
         return round_participation
+
+def record_answer_rating(answer: GameAnswer, *, elapsed_seconds: float, time_limit_seconds: int, timed_out: bool) -> AnswerRating:
+    answer_rating = AnswerRating.objects.filter(original_answer_id=answer.pk).first()
+
+    #возвращаем существующий answer_rating, если найден
+    if answer_rating:
+        return answer_rating
+
+    #находим RoundParticipation в котором уже определен rating_mode, по нему определяем что делать дальше при создании AnswerRating
+    round_participation = RoundParticipation.objects.get(participant_id=answer.participant_id)
+
+    #вычисляем dynamic_scoring_mode
+    dynamic_scoring_mode = answer.participant.session.quiz.dynamic_scoring_mode
+
+    # вычисляем reason
+    if round_participation.status == "abandoned":
+        reason = "abandoned"
+    elif round_participation.rating_mode == "training":
+        reason = "training"
+    elif round_participation.rating_mode == "own":
+        reason = "own"
+    elif timed_out:
+        reason = "timeout"
+    elif answer.is_skipped:
+        reason = "skipped"
+    elif answer.is_correct:
+        reason = "correct"
+    else:
+        reason = "incorrect"
+
+    #вычисляем points (только для rated)
+    points = 0
+    if reason == "correct":
+        points = calculate_player_rating(
+            is_correct=answer.is_correct,
+            is_skipped=answer.is_skipped,
+            elapsed_seconds=elapsed_seconds,
+            time_limit_seconds=time_limit_seconds,
+            dynamic_scoring_mode=dynamic_scoring_mode
+        )
+    with transaction.atomic():
+        #создаем answer_rating
+        answer_rating = AnswerRating.objects.create(
+            answer=answer,
+            original_answer_id=answer.pk,
+            participation=round_participation,
+            original_question_id=answer.question_id,
+            is_correct=answer.is_correct,
+            is_skipped=answer.is_skipped,
+            timed_out=timed_out,
+            answered_at=answer.answered_at,
+            elapsed_seconds=elapsed_seconds,
+            time_limit_seconds=time_limit_seconds,
+            dynamic_scoring_mode=dynamic_scoring_mode,
+            points=points,
+            reason=reason,
+            rules_version=RATING_RULES_VERSION
+        )
+
+        #если points > 0 то записываем собитие в журнал начислений AnswerRating
+        if points > 0:
+            rating_entry = RatingEntry.objects.create(
+                recipient=round_participation.player,
+                kind="player",
+                amount=points,
+                earned_at=answer.answered_at,
+                rules_version=RATING_RULES_VERSION,
+                answer_rating=answer_rating
+            )
+        return answer_rating
