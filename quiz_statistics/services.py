@@ -1,17 +1,19 @@
 from django.db import transaction
 from django.utils import timezone
-from twisted.python.text import removeLeadingTrailingBlanks
+from django.core.exceptions import ValidationError
 
 from .models import SeriesIdentity, RoundIdentity, RoundParticipation, RatingAttempt, SeriesProgress, SeriesProgressRound, AnswerRating, RatingEntry
 from quizzes.models import Quiz
-from gameplay.models import GameParticipant, GameAnswer
+from gameplay.models import GameParticipant, GameAnswer, GameSession
 from .rules import calculate_player_rating, RATING_RULES_VERSION
 
 def get_round_identity(quiz: Quiz) -> RoundIdentity:
-    """
-    Создает в базе рейтинговые записи (SeriesIdentity и RoundIdentity
-    для quiz нового прохождения. Или обновляет title у существующих, если
-    они уже существовали
+    """Возвращает рейтинговую запись раунда, создавая её при необходимости.
+
+    Вызывается из register_round_start для текущего раунда и при создании
+    снимка раундов чужой серии.
+    Для раунда в серии также получает или создаёт запись серии.
+    Обновляет названия существующих записей, если они изменились.
     """
 
     series_identity = None
@@ -47,6 +49,14 @@ def get_round_identity(quiz: Quiz) -> RoundIdentity:
         return round_identity
 
 def register_round_start(participant: GameParticipant) -> RoundParticipation:
+    """Регистрирует участие игрока в раунде и возвращает его запись.
+
+    По плану вызывается из solo_room и room_start сразу после создания
+    GameParticipant, в той же транзакции.
+    На своём раунде режим — own. На чужом первая попытка рейтинговая,
+    последующие тренировочные. При первом старте чужой серии фиксирует
+    её публичность и состав раундов с вопросами для учёта прогресса.
+    """
     session = participant.session
     quiz = session.quiz
     player = participant.user
@@ -111,7 +121,16 @@ def register_round_start(participant: GameParticipant) -> RoundParticipation:
                     )
         return round_participation
 
-def record_answer_rating(answer: GameAnswer, *, elapsed_seconds: float, time_limit_seconds: int, timed_out: bool) -> AnswerRating:
+def record_answer_rating(answer: GameAnswer, *, elapsed_seconds: float, time_limit_seconds: int, timed_out: bool) -> AnswerRating | None:
+    """Возвращает существующую оценку ответа или сохраняет новую.
+
+    По плану вызывается в POST play для каждого обработанного GameAnswer
+    после обновления игрового счёта, в той же транзакции. Для неверных
+    ответов, пропусков и таймаутов сохраняет причину нулевого начисления.
+
+    Сохраняет причину и сумму начисления. При положительной сумме
+    одновременно добавляет запись в журнал рейтинга игрока.
+    """
     answer_rating = AnswerRating.objects.filter(original_answer_id=answer.pk).first()
 
     #возвращаем существующий answer_rating, если найден
@@ -119,7 +138,9 @@ def record_answer_rating(answer: GameAnswer, *, elapsed_seconds: float, time_lim
         return answer_rating
 
     #находим RoundParticipation в котором уже определен rating_mode, по нему определяем что делать дальше при создании AnswerRating
-    round_participation = RoundParticipation.objects.get(participant_id=answer.participant_id)
+    round_participation = RoundParticipation.objects.filter(participant_id=answer.participant_id).first()
+    if not round_participation:
+        return None
 
     #вычисляем dynamic_scoring_mode
     dynamic_scoring_mode = answer.participant.session.quiz.dynamic_scoring_mode
@@ -180,3 +201,11 @@ def record_answer_rating(answer: GameAnswer, *, elapsed_seconds: float, time_lim
                 answer_rating=answer_rating
             )
         return answer_rating
+
+def ensure_round_editable(quiz: Quiz) -> None:
+    """Проверяет, можно ли изменить раунд после захвата блокировки Quiz.
+    Если у Quiz существует сессия in_progress - изменить Quiz нельзя
+    """
+
+    if GameSession.objects.filter(quiz_id=quiz.pk, status="in_progress").exists():
+        raise ValidationError("Нельзя изменять раунд, пока есть активные прохождения")

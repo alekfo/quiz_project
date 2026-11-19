@@ -16,6 +16,12 @@ LEADERBOARD_TOP_SIZE = 10
 #Одиночная * в сигнатуре Python означает, что все параметры после неё нужно передавать по имени.
 #Вызов calculate_player_rating(True, False, 2.5, 10, True) вызовет TypeError, потому что здесь аргументы переданы по позиции.
 def calculate_player_rating(*, is_correct: bool, is_skipped: bool, elapsed_seconds: float, time_limit_seconds: int, dynamic_scoring_mode: bool) -> int:
+    """Вычисляет очки рейтинга игрока за ответ.
+
+    Вызывается из record_answer_rating для правильного рейтингового ответа.
+    За пропуск, ошибку или превышение лимита даёт 0. За правильный ответ
+    в пределах лимита даёт фиксированные очки или, в блице, очки по скорости.
+    """
     if is_skipped or not is_correct or elapsed_seconds > time_limit_seconds:
         return 0
     if dynamic_scoring_mode:
@@ -29,4 +35,9 @@ def calculate_player_rating(*, is_correct: bool, is_skipped: bool, elapsed_secon
         return PLAYER_CORRECT_POINTS
 
 def calculate_author_reputation(questions_count: int) -> int:
+    """Вычисляет очки репутации автора за число вопросов с учётом лимита.
+
+    По плану вызывается из evaluate_series_completion, когда завершение
+    серии игроком даёт автору право на начисление.
+    """
     return min(questions_count * AUTHOR_POINTS_PER_QUESTION, AUTHOR_COMPLETION_POINTS_CAP)
