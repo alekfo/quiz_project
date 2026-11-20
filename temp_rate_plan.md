@@ -836,6 +836,12 @@ play, вместе с обновлением игрового score. Перед�
 
 ### Шаг 7. Личное завершение и прерывание
 
+**Выполнено.** Финализация и прерывание участия проверены отдельно от
+шага 8. На PostgreSQL 16 подтверждены оба порядка одновременного старта
+раунда и выхода игрока. Все 56 целевых тестов прошли с временной подменой
+`complete_round` в тестовом процессе. Реализация `complete_round` и
+сквозная проверка завершения раунда относятся к шагу 8.
+
 **Файлы:** `gameplay/views.py::_check_and_make_complete`, `next_question`,
 `finish_solo`; `multiplayer/views.py::room_reset_series`, `room_close`,
 `RoomPlayerDeleteView.form_valid`.

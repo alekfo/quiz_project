@@ -22,7 +22,7 @@ from .models import Room, RoomPlayer
 from .forms import RoomSeriesForm
 from gameplay.models import GameSession, GameParticipant, SeriesRun
 from gameplay.services import get_series_progress, get_room_history
-from quiz_statistics.services import register_round_start
+from quiz_statistics.services import register_round_start, finalize_round_participation
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -252,17 +252,64 @@ class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
         )
 
     def form_valid(self, form):
-        room = self.object.room
+        """Удаляет членство и прерывает участие игрока в текущем раунде.
+
+        Старт раунда читает состав игроков под блокировкой Room. Выход
+        берёт ту же блокировку, чтобы старт либо увидел состав после
+        удаления, либо успел создать сессию, которую обработает выход.
+
+        Если у комнаты есть текущая сессия, сначала блокируем GameSession,
+        потом Room. Завершение раунда использует тот же порядок, когда
+        обновляет сессию и сбрасывает указатель в комнате.
+
+        Первое чтение комнаты определяет, какую сессию блокировать.
+        После блокировки Room сверяем указатель. Если он изменился за
+        время ожидания, выходим из atomic и повторяем чтение со свежим
+        состоянием, освободив блокировки текущей попытки.
+
+        Прерывание участия и удаление членства выполняются в одной
+        транзакции. Уведомление лобби отправляется после коммита.
+        """
+        room_id = self.object.room_id
+        user_id = self.object.user_id
         success_url = self.get_success_url()
-        with transaction.atomic():
-            self.object.delete()
-            # on_commit: без него WS-консьюмер может прочитать Room ещё до
-            # коммита и увидеть уже удалённого RoomPlayer как существующего
-            # (или не увидеть только что удалённого — в зависимости от
-            # таймингов); on_commit гарантирует, что _notify_room выполнится
-            # только после того, как удаление реально закоммитится.
-            transaction.on_commit(lambda: _notify_room(room))
-        return HttpResponseRedirect(success_url)
+
+        while True:
+            with transaction.atomic():
+                current_room = get_object_or_404(
+                    Room.objects.only("current_game_session"),
+                    pk=room_id,
+                )
+                session_id = current_room.current_game_session_id
+
+                session = None
+                if session_id is not None:
+                    session = (
+                        GameSession.objects.select_for_update(of=("self",))
+                        .filter(pk=session_id)
+                        .first()
+                    )
+
+                room = get_object_or_404(
+                    Room.objects.select_for_update(of=("self",)),
+                    pk=room_id,
+                )
+                if room.current_game_session_id != session_id:
+                    continue
+
+                if session is not None and session.status == "in_progress":
+                    participant = session.participants.filter(user_id=user_id).first()
+                    if participant is not None:
+                        finalize_round_participation(
+                            participant,
+                            status="abandoned",
+                            finished_at=timezone.now(),
+                        )
+
+                self.object.delete()
+                transaction.on_commit(lambda: _notify_room(room))
+
+            return HttpResponseRedirect(success_url)
 
     def get_success_url(self):
         return reverse("multiplayer:room_detail", kwargs={"code": self.kwargs.get("code")})

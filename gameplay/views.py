@@ -19,8 +19,8 @@ from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
 from quizzes.models import AnswerOption, QuizSeries, Quiz
 from multiplayer.views import _notify_room
 from .services import get_series_progress, get_answer_stats, get_role, is_room_player
-from quiz_statistics.services import register_round_start, record_answer_rating
-from quiz_statistics.models import AnswerRating
+from quiz_statistics.services import register_round_start, record_answer_rating, finalize_round_participation
+from quiz_statistics.models import AnswerRating, RoundParticipation
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -145,6 +145,18 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
                 if not participant.finished_at:
                     participant.finished_at = timezone.now()
                     participant.save()
+
+                #регистрируем завершения участия RoundParticipation и RatingAttempt
+                participation = finalize_round_participation(
+                    participant,
+                    status="completed",
+                    finished_at=participant.finished_at,
+                )
+
+                #регистрируем завершение раунда
+                if participation is not None and participation.status == "completed":
+                    complete_round(participation) #будет написана на шаге 8
+
             #меняем статус сессии на completed
             sess.status = "completed"
             sess.save(update_fields=["status"])
@@ -515,11 +527,11 @@ def play(request: HttpRequest, pk: int):
             )
 
             #проверяем на участие
-            is_game_part = GameParticipant.objects.filter(
+            game_part = GameParticipant.objects.filter(
                 session=session,
                 user=request.user
-            ).exists()
-            if not is_game_part:
+            ).first()
+            if not game_part:
                 raise PermissionDenied
 
             if session.status == "completed":
@@ -530,6 +542,13 @@ def play(request: HttpRequest, pk: int):
                 url = reverse("gameplay:solo_room", kwargs={"pk": session.series_run_id})
                 return redirect(url)
             elif session.status != "in_progress":
+                raise PermissionDenied
+
+            # проверяем, не завершилось ли участие для данного GameParticipant в рейтинге
+            if RoundParticipation.objects.filter(
+                    original_participant_id=game_part.pk,
+                    status="abandoned",
+            ).exists():
                 raise PermissionDenied
 
             #получаем, обновляем и сохраняем GameAnswer
@@ -742,10 +761,17 @@ def finish_solo(request: HttpRequest, pk: int):
                 act_sess.save(update_fields=["status", "finished_at"])
 
             #ставим время у всех участников активных сессий
-            GameParticipant.objects.filter(
-                session__in=active_sessions,
-                finished_at__isnull=True,
-            ).update(finished_at=finished_at)
+            for participant in GameParticipant.objects.filter(session__in=active_sessions):
+                if participant.finished_at is None:
+                    participant.finished_at = finished_at
+                    participant.save(update_fields=["finished_at"])
+
+                #регистрируем завершение участия для рейтинговой системы
+                finalize_round_participation(
+                    participant,
+                    status="abandoned",
+                    finished_at=finished_at,
+                )
 
             #меняем статус самого пргона
             series_run.status = "abandoned"

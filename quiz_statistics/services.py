@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
@@ -209,3 +211,28 @@ def ensure_round_editable(quiz: Quiz) -> None:
 
     if GameSession.objects.filter(quiz_id=quiz.pk, status="in_progress").exists():
         raise ValidationError("Нельзя изменять раунд, пока есть активные прохождения")
+
+def finalize_round_participation(participant: GameParticipant, *, status: str, finished_at: datetime) -> RoundParticipation | None:
+
+    round_participation = RoundParticipation.objects.filter(original_participant_id=participant.pk).select_related("rating_attempts").first()
+
+    #обновляем данный round_participating
+    if round_participation:
+        if round_participation.status in ["completed", "abandoned"]:
+            return round_participation
+        round_participation.score = participant.score
+        round_participation.correct_answers_count = sum(1 for pa in participant.participants_answers.all() if pa.is_correct and pa.answered_at)
+        round_participation.finished_at = finished_at
+        round_participation.status = status
+        round_participation.save(update_fields=["score", "correct_answers_count", "finished_at", "status"])
+    else:
+        return None
+
+    #Также обновляем связанный RatingAttempt, подгражуем его за счет select_related в round_participation
+    rating_attempt = getattr(round_participation, "rating_attempts", None)
+    if rating_attempt is not None:
+        rating_attempt.status = status
+        rating_attempt.finished_at = finished_at
+        rating_attempt.save(update_fields=["status", "finished_at"])
+
+    return round_participation
