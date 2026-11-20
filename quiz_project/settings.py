@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'gameplay.apps.GameplayConfig',
     'multiplayer.apps.MultiplayerConfig',
     'social.apps.SocialConfig',
+    'quiz_statistics.apps.QuizStatisticsConfig',
 
 ]
 

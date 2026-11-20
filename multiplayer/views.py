@@ -22,6 +22,7 @@ from .models import Room, RoomPlayer
 from .forms import RoomSeriesForm
 from gameplay.models import GameSession, GameParticipant, SeriesRun
 from gameplay.services import get_series_progress, get_room_history
+from quiz_statistics.services import register_round_start, finalize_round_participation
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -251,17 +252,64 @@ class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
         )
 
     def form_valid(self, form):
-        room = self.object.room
+        """Удаляет членство и прерывает участие игрока в текущем раунде.
+
+        Старт раунда читает состав игроков под блокировкой Room. Выход
+        берёт ту же блокировку, чтобы старт либо увидел состав после
+        удаления, либо успел создать сессию, которую обработает выход.
+
+        Если у комнаты есть текущая сессия, сначала блокируем GameSession,
+        потом Room. Завершение раунда использует тот же порядок, когда
+        обновляет сессию и сбрасывает указатель в комнате.
+
+        Первое чтение комнаты определяет, какую сессию блокировать.
+        После блокировки Room сверяем указатель. Если он изменился за
+        время ожидания, выходим из atomic и повторяем чтение со свежим
+        состоянием, освободив блокировки текущей попытки.
+
+        Прерывание участия и удаление членства выполняются в одной
+        транзакции. Уведомление лобби отправляется после коммита.
+        """
+        room_id = self.object.room_id
+        user_id = self.object.user_id
         success_url = self.get_success_url()
-        with transaction.atomic():
-            self.object.delete()
-            # on_commit: без него WS-консьюмер может прочитать Room ещё до
-            # коммита и увидеть уже удалённого RoomPlayer как существующего
-            # (или не увидеть только что удалённого — в зависимости от
-            # таймингов); on_commit гарантирует, что _notify_room выполнится
-            # только после того, как удаление реально закоммитится.
-            transaction.on_commit(lambda: _notify_room(room))
-        return HttpResponseRedirect(success_url)
+
+        while True:
+            with transaction.atomic():
+                current_room = get_object_or_404(
+                    Room.objects.only("current_game_session"),
+                    pk=room_id,
+                )
+                session_id = current_room.current_game_session_id
+
+                session = None
+                if session_id is not None:
+                    session = (
+                        GameSession.objects.select_for_update(of=("self",))
+                        .filter(pk=session_id)
+                        .first()
+                    )
+
+                room = get_object_or_404(
+                    Room.objects.select_for_update(of=("self",)),
+                    pk=room_id,
+                )
+                if room.current_game_session_id != session_id:
+                    continue
+
+                if session is not None and session.status == "in_progress":
+                    participant = session.participants.filter(user_id=user_id).first()
+                    if participant is not None:
+                        finalize_round_participation(
+                            participant,
+                            status="abandoned",
+                            finished_at=timezone.now(),
+                        )
+
+                self.object.delete()
+                transaction.on_commit(lambda: _notify_room(room))
+
+            return HttpResponseRedirect(success_url)
 
     def get_success_url(self):
         return reverse("multiplayer:room_detail", kwargs={"code": self.kwargs.get("code")})
@@ -366,8 +414,22 @@ def room_confirm_ready(request, code):
 
 @login_required
 @require_POST
+@transaction.atomic
 def room_start(request: HttpRequest, code: str):
-    room = get_object_or_404(Room.objects.select_related("current_series", "current_series_run").prefetch_related("room_players__user", "current_series__rounds__questions", "current_series_run__game_sessions"), token=code)
+    # Блокируем только Room. Выбранная серия при старте не меняется,
+    # поэтому её можно загрузить через JOIN (select_related). Первый POST может создать прогон
+    # и обновить current_series_run_id, пока второй ждёт блокировку.
+    # Prefetch читает прогон и его сессии отдельными запросами после ожидания,
+    # чтобы второй POST увидел результат первого и продолжил ту же сессию.
+    room = get_object_or_404(
+        Room.objects.select_for_update(of=("self",))
+        .select_related("current_series")
+        .prefetch_related(
+            "room_players__user",
+            "current_series_run__game_sessions",
+        ),
+        token=code,)
+
     user = request.user
 
     if room.host != user:
@@ -403,66 +465,82 @@ def room_start(request: HttpRequest, code: str):
                 url = reverse("gameplay:play", kwargs={"pk": game_session.pk})
                 return redirect(url)
 
-    #проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
-    with transaction.atomic():
-        current_series_run = room.current_series_run
-        if current_series_run is None:
-            first_round = room.current_series.rounds.order_by("round_order").first()
-            try:
-                current_series_run = SeriesRun.objects.create(
-                    series=room.current_series,
-                    mode="multiplayer",
-                    room=room,
-                    created_by=user,
-                    current_round_index=first_round.round_order
-                )
-            except IntegrityError:
-                messages.error(request, "Вы уже проходите эту серию в другом месте")
-                return redirect("multiplayer:room_detail", code=code)
-            # сохраняем тут, т.к в определении current_round нам нужно точно чтобы current_round_index сохранился в current_series_run
-            room.current_series_run = current_series_run
-            room.save(update_fields=["current_series_run"])
+    current_series_run = room.current_series_run
+    if current_series_run is None:
+        first_round = room.current_series.rounds.select_for_update().order_by("round_order").first()
 
-        current_round = next((current_round for current_round in room.current_series.rounds.all() if
-                              current_round.round_order == current_series_run.current_round_index), None)
-        if current_round is None:
+        if not first_round:
             messages.error(request, "Раунд не найден — возможно, был удалён. Обратитесь к организатору")
             return redirect("multiplayer:room_detail", code=code)
 
+        if not first_round.questions.exists():
+            messages.error(request, "Невозможно начать раунд - нет ни одного вопроса")
+            return redirect("multiplayer:room_detail", code=code)
+
         try:
-            with transaction.atomic(): #добавляем вложенный atomic чтобы в блоке except все прошло дальше корректно
-                session = GameSession.objects.create(
-                    quiz=current_round,
-                    mode="multiplayer",
-                    created_by=user,
-                    current_question=current_round.questions.first(),
-                    room=room,
-                    series_run=current_series_run
-                )
+            current_series_run = SeriesRun.objects.create(
+                series=room.current_series,
+                mode="multiplayer",
+                room=room,
+                created_by=user,
+                current_round_index=first_round.round_order
+            )
         except IntegrityError:
-            session = GameSession.objects.filter(series_run=current_series_run, status="in_progress").first()
-            if session is None:
-                # ограничение сработало на идущую сессию этого раунда вне комнаты (соло или другая комната)
-                transaction.set_rollback(True)
-                messages.error(request, "У вас есть незавершённая игра в этом раунде в другом месте — завершите её")
-                return redirect("multiplayer:room_detail", code=code)
-        else:
-            for participant in room.room_players.all():
-                GameParticipant.objects.create(
+            messages.error(request, "Вы уже проходите эту серию в другом месте")
+            return redirect("multiplayer:room_detail", code=code)
+        # сохраняем тут, т.к в определении current_round нам нужно точно чтобы current_round_index сохранился в current_series_run
+        room.current_series_run = current_series_run
+        room.save(update_fields=["current_series_run"])
+
+    #получаем current_round с блокироввкой в бд
+    current_round = room.current_series.rounds.select_for_update().filter(round_order=current_series_run.current_round_index).first()
+
+    if current_round is None:
+        messages.error(request, "Раунд не найден — возможно, был удалён. Обратитесь к организатору")
+        return redirect("multiplayer:room_detail", code=code)
+
+    if not current_round.questions.exists():
+        messages.error(request, "Невозможно начать раунд - нет ни одного вопроса")
+        return redirect("multiplayer:room_detail", code=code)
+
+    try:
+        with transaction.atomic(): #добавляем вложенный atomic чтобы в блоке except все прошло дальше корректно
+            session = GameSession.objects.create(
+                quiz=current_round,
+                mode="multiplayer",
+                created_by=user,
+                current_question=current_round.questions.first(),
+                room=room,
+                series_run=current_series_run
+            )
+    except IntegrityError:
+        session = GameSession.objects.filter(series_run=current_series_run, status="in_progress").first()
+        if session is None:
+            # ограничение сработало на идущую сессию этого раунда вне комнаты (соло или другая комната)
+            transaction.set_rollback(True)
+            messages.error(request, "У вас есть незавершённая игра в этом раунде в другом месте — завершите её")
+            return redirect("multiplayer:room_detail", code=code)
+    else:
+        for participant in room.room_players.all():
+            gp = GameParticipant.objects.create(
                     session=session,
                     user=participant.user
                 )
-            room.current_game_session = session
-            room.current_series_run = current_series_run
-            room.status = "in_progress"
-            room.save(update_fields=["current_game_session", "status"])
-            # on_commit: без него WS-консьюмер (и RoomConsumer.room_update,
-            # который именно по status=="in_progress"+current_game_session_id
-            # решает слать редирект в игру) может прочитать Room раньше,
-            # чем эта транзакция закоммитится, и не увидеть ни новый
-            # status, ни созданную GameSession/GameParticipant.
-            transaction.on_commit(lambda: _notify_room(room))
-            logger.info("Сессия %s квиза %s серии %s создана и начата пользователем %s", session.pk, current_round.pk, room.current_series.pk, session.created_by.username)
+
+            # регистрируем раунд в рейтинговой системе для каждого игрока
+            register_round_start(gp)
+
+        room.current_game_session = session
+        room.current_series_run = current_series_run
+        room.status = "in_progress"
+        room.save(update_fields=["current_game_session", "status"])
+        # on_commit: без него WS-консьюмер (и RoomConsumer.room_update,
+        # который именно по status=="in_progress"+current_game_session_id
+        # решает слать редирект в игру) может прочитать Room раньше,
+        # чем эта транзакция закоммитится, и не увидеть ни новый
+        # status, ни созданную GameSession/GameParticipant.
+        transaction.on_commit(lambda: _notify_room(room))
+        logger.info("Сессия %s квиза %s серии %s создана и начата пользователем %s", session.pk, current_round.pk, room.current_series.pk, session.created_by.username)
 
     url = reverse("gameplay:play", kwargs={"pk": session.pk})
     return redirect(url)

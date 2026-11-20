@@ -19,6 +19,8 @@ from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
 from quizzes.models import AnswerOption, QuizSeries, Quiz
 from multiplayer.views import _notify_room
 from .services import get_series_progress, get_answer_stats, get_role, is_room_player
+from quiz_statistics.services import register_round_start, record_answer_rating, finalize_round_participation
+from quiz_statistics.models import AnswerRating, RoundParticipation
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -62,7 +64,7 @@ def _get_points_awarded(quiz: Quiz, elapsed: int) -> int:
     else:
         return quiz.points_per_correct
 
-def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, request: HttpRequest) -> GameAnswer:
+def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, request: HttpRequest) -> tuple[GameAnswer, float, bool]:
     """
     Получаем GameAnswer по pk, обновляем его данные по AnswerOption, сохраняем
     :param answer_pk: pk текущего ответа на вопрос от пользователя
@@ -86,8 +88,11 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
     if answ.answered_at or answ.is_skipped:
         raise PermissionDenied("На этот вопрос уже отвечали или он был пропущен")
 
+    #фиксируем время отвера
+    answered_at = timezone.now()
+
     #вычисляем время, затраченное на вопрос для дальнейшего определения is_skipped и points_awarded
-    elapsed = (timezone.now() - answ.shown_at).total_seconds()
+    elapsed = (answered_at - answ.shown_at).total_seconds()
 
     #определяем наличие таймаута
     timed_out = elapsed > time_limit_seconds
@@ -98,7 +103,7 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
         answ.chosen_option = opt
         answ.is_skipped = opt is None or timed_out
         answ.is_correct = opt is not None and opt.is_correct and not timed_out
-        answ.answered_at = timezone.now()
+        answ.answered_at = answered_at
 
         #если ответ правильный - вычисляем новое значение points_awarded, иначе - останется прежним по умолчанию
         if answ.is_correct:
@@ -107,7 +112,7 @@ def _update_gameAnswer(answer_pk, opt: AnswerOption, session:GameSession, reques
 
         answ.save()
         transaction.on_commit(lambda: _notify_session(session))
-    return answ
+    return answ, elapsed, timed_out
 
 def _update_total_score(sess: GameSession, req: HttpRequest, answer: GameAnswer) -> GameParticipant:
     """
@@ -140,6 +145,18 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
                 if not participant.finished_at:
                     participant.finished_at = timezone.now()
                     participant.save()
+
+                #регистрируем завершения участия RoundParticipation и RatingAttempt
+                participation = finalize_round_participation(
+                    participant,
+                    status="completed",
+                    finished_at=participant.finished_at,
+                )
+
+                #регистрируем завершение раунда
+                if participation is not None and participation.status == "completed":
+                    complete_round(participation) #будет написана на шаге 8
+
             #меняем статус сессии на completed
             sess.status = "completed"
             sess.save(update_fields=["status"])
@@ -214,6 +231,8 @@ def _play_multiplayer_or_solo(request: HttpRequest, session: GameSession, partic
             #считаем что сессия завершена у всех GameParticipant
             return  redirect("gameplay:result", pk=session.pk)
 
+    answer_rating = None
+
     if role == "player":
         current_answer, _ = GameAnswer.objects.get_or_create(
             participant=participant,
@@ -228,6 +247,11 @@ def _play_multiplayer_or_solo(request: HttpRequest, session: GameSession, partic
         remaining_seconds = max(0, int(session.quiz.time_limit_seconds - elapsed))
 
         points_gained = current_answer.points_awarded if current_answer.is_correct else 0
+
+        #получаем сохраненный при POST AnswerRating если already_answered
+        if already_answered:
+            answer_rating = AnswerRating.objects.filter(original_answer_id=current_answer.pk).first()
+
 
     #вспомогательные переменные и is_last_question
     questions = list(session.quiz.questions.all())  # уже по order, из prefetch
@@ -287,6 +311,7 @@ def _play_multiplayer_or_solo(request: HttpRequest, session: GameSession, partic
         "answers_progress": answers_progress if role == "player" else None,
         "remaining_seconds": remaining_seconds if role == "player" else None,
         "can_advance": can_advance,
+        "answer_rating": answer_rating,
     }
 
     # получаем необходимый контекст подсчета ответтов (participants_count, answered_count, all_answered)
@@ -393,7 +418,7 @@ def solo_room(request: HttpRequest, pk: int):
             series_run = get_object_or_404(
                 SeriesRun.objects
                 .select_related("series", "created_by", "room")
-                .prefetch_related("series__rounds", "game_sessions__quiz", "game_sessions__participants", "room__room_players__user")
+                .prefetch_related("series__rounds__questions", "game_sessions__quiz", "game_sessions__participants", "room__room_players__user")
                 .select_for_update(of=("self",)),
                 pk=pk,
                 mode="solo",
@@ -401,7 +426,9 @@ def solo_room(request: HttpRequest, pk: int):
             )
             if series_run.status != "in_progress":
                 raise PermissionDenied
-            curr_quiz = series_run.series.rounds.filter(round_order=series_run.current_round_index).first()
+
+            # получаем curr_quiz с блокироввкой в бд
+            curr_quiz = series_run.series.rounds.select_for_update().filter(round_order=series_run.current_round_index).first()
 
             if curr_quiz is None:
                 #текущий раунд удалён - прогон прерываем ("abandoned", как при смене серии/закрытии комнаты),
@@ -416,6 +443,12 @@ def solo_room(request: HttpRequest, pk: int):
             # проверяем на наличие IntegrityError в транзакции, если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
             try:
                 with transaction.atomic():
+
+                    if not curr_quiz.questions.all():
+                        messages.error(request,"Невозможно начать раунд - нет ни одного вопроса")
+                        url = reverse("gameplay:solo_room", kwargs={"pk": series_run.pk})
+                        return redirect(url)
+
                     session = GameSession.objects.create(
                         quiz=curr_quiz,
                         mode="solo",
@@ -423,12 +456,6 @@ def solo_room(request: HttpRequest, pk: int):
                         series_run=series_run,
                         current_question=curr_quiz.questions.first()
                     )
-                    participant = GameParticipant.objects.create(
-                        session=session,
-                        user=user
-                    )
-                    logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, curr_quiz.pk,
-                                session.created_by.username)
             except IntegrityError:
                 session = get_object_or_404 (
                     GameSession,
@@ -437,6 +464,18 @@ def solo_room(request: HttpRequest, pk: int):
                     created_by=user,
                     status="in_progress"
                 )
+            else:
+                participant = GameParticipant.objects.create(
+                    session=session,
+                    user=user
+                )
+
+                # регистрируем раунд в рейтинговой системе
+                register_round_start(participant)
+
+                logger.info("Сессия %s квиза %s создана и начата пользователем %s", session.pk, curr_quiz.pk,
+                            session.created_by.username)
+
             url = reverse("gameplay:play", kwargs={"pk": session.pk})
             return redirect(url)
 
@@ -479,6 +518,7 @@ def play(request: HttpRequest, pk: int):
 
             # получаем сессию для редиректа на gameplay:play
             # используем select_for_update для того, чтобы заблокировать запись в БД для других операций
+            User.objects.select_for_update().get(pk=request.user.pk)
             session = get_object_or_404(
                 GameSession.objects
                 .select_for_update(of=("self",))
@@ -487,11 +527,11 @@ def play(request: HttpRequest, pk: int):
             )
 
             #проверяем на участие
-            is_game_part = GameParticipant.objects.filter(
+            game_part = GameParticipant.objects.filter(
                 session=session,
                 user=request.user
-            ).exists()
-            if not is_game_part:
+            ).first()
+            if not game_part:
                 raise PermissionDenied
 
             if session.status == "completed":
@@ -504,12 +544,27 @@ def play(request: HttpRequest, pk: int):
             elif session.status != "in_progress":
                 raise PermissionDenied
 
+            # проверяем, не завершилось ли участие для данного GameParticipant в рейтинге
+            if RoundParticipation.objects.filter(
+                    original_participant_id=game_part.pk,
+                    status="abandoned",
+            ).exists():
+                raise PermissionDenied
+
             #получаем, обновляем и сохраняем GameAnswer
-            answer = _update_gameAnswer(current_answer_pk, option, session, request)
+            answer, elapsed, timed_out = _update_gameAnswer(current_answer_pk, option, session, request)
 
             #если answer is correct - обновляем score
             if answer.is_correct:
                 participant = _update_total_score(session, request, answer)
+
+            # фиксируем результат в рейтинговой record_answer_rating
+            record_answer_rating(
+                answer,
+                elapsed_seconds=elapsed,
+                time_limit_seconds=session.quiz.time_limit_seconds,
+                timed_out=timed_out,
+            )
 
         url = reverse("gameplay:play", kwargs={"pk": session.pk})
         return redirect(url)
@@ -706,10 +761,17 @@ def finish_solo(request: HttpRequest, pk: int):
                 act_sess.save(update_fields=["status", "finished_at"])
 
             #ставим время у всех участников активных сессий
-            GameParticipant.objects.filter(
-                session__in=active_sessions,
-                finished_at__isnull=True,
-            ).update(finished_at=finished_at)
+            for participant in GameParticipant.objects.filter(session__in=active_sessions):
+                if participant.finished_at is None:
+                    participant.finished_at = finished_at
+                    participant.save(update_fields=["finished_at"])
+
+                #регистрируем завершение участия для рейтинговой системы
+                finalize_round_participation(
+                    participant,
+                    status="abandoned",
+                    finished_at=finished_at,
+                )
 
             #меняем статус самого пргона
             series_run.status = "abandoned"

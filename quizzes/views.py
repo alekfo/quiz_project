@@ -8,6 +8,8 @@ from django.urls import reverse
 from django.db import transaction
 from django.contrib import messages
 from django.db.models import Count
+from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 
 from .models import Quiz, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId, QuizSeriesUpdateForm
@@ -15,6 +17,7 @@ from gameplay.models import SeriesRun
 from gameplay.services import is_room_player
 from multiplayer.models import Room
 from social.services import get_like_context, get_save_context
+from quiz_statistics.services import ensure_round_editable
 
 logger = logging.getLogger(__name__)
 
@@ -371,6 +374,19 @@ class RoundUpdateView(LoginRequiredMixin, UpdateView):
 
     @transaction.atomic
     def forms_valid(self, form, question_formset):
+        #блокируем Quiz который меняем с помощью select_for_update
+        locked_quiz = get_object_or_404(
+            self.get_queryset().select_for_update(),
+            pk=self.object.pk,
+        )
+
+        #проверяем на наличии активной сессии по этому квизу и если она есть - уходим в forms_invalid
+        try:
+            ensure_round_editable(locked_quiz)
+        except ValidationError as exc:
+            form.add_error(None, exc)
+            return self.forms_invalid(form, question_formset)
+
         # сохраняем измененный Quiz
         self.object = form.save()
         # сохраняем измененный формсет из QuestionForm - реальный update существующих Question
