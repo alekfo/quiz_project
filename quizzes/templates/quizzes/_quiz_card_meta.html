@@ -1,0 +1,12 @@
+<p class="quiz-card-meta">
+    <span>Раундов: {{ series.rounds_count }}</span>
+    {% for series_id, stats in series_card_stats.items %}
+        {% if series_id == series.pk %}
+            <span>Завершили: {{ stats.unique_finishers }}</span>
+            {% if stats.popularity_level %}
+                <span class="tag">🏆 Уровень {{ stats.popularity_level }}</span>
+            {% endif %}
+        {% endif %}
+    {% endfor %}
+    <span aria-label="Лайков: {{ series.like_count }}">♥ {{ series.like_count }}</span>
+</p>

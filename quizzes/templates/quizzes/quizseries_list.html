@@ -59,10 +59,7 @@
                         {% if quiz.description %}
                             <p class="quiz-card-description">{{ quiz.description }}</p>
                         {% endif %}
-                        <p class="quiz-card-meta">
-                            <span>Раундов: {{ quiz.rounds_count }}</span>
-                            <span aria-label="Лайков: {{ quiz.like_count }}">♥ {{ quiz.like_count }}</span>
-                        </p>
+                        {% include "quizzes/_quiz_card_meta.html" with series=quiz series_card_stats=series_card_stats only %}
                     </li>
                 {% endfor %}
             </ul>
@@ -94,10 +91,7 @@
                         <p class="quiz-card-author">
                             Автор: <a href="{% url 'users:user_detail' pk=ss.user_id %}">{{ ss.user.username }}</a>
                         </p>
-                        <p class="quiz-card-meta">
-                            <span>Раундов: {{ ss.rounds_count }}</span>
-                            <span aria-label="Лайков: {{ ss.like_count }}">♥ {{ ss.like_count }}</span>
-                        </p>
+                        {% include "quizzes/_quiz_card_meta.html" with series=ss series_card_stats=series_card_stats only %}
                     </li>
                 {% endfor %}
             </ul>

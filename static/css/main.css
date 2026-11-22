@@ -692,13 +692,66 @@ footer a {
 
 .rankings {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
 }
 
-.rankings-filters {
+.rankings-period-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--tap-size);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.rankings-period-toggle[aria-checked="false"] .rankings-period-month,
+.rankings-period-toggle[aria-checked="true"] .rankings-period-all {
+    color: var(--color-text);
+    font-weight: 700;
+}
+
+.rankings-period-track {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
+    align-items: center;
+    flex: none;
+    width: var(--tap-size);
+    height: var(--space-5);
+    padding-inline: var(--space-1);
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
+}
+
+.rankings-period-track::before {
+    content: "";
+    width: var(--space-4);
+    height: var(--space-4);
+    border-radius: var(--radius-full);
+    background: var(--color-on-accent);
+    transition: transform var(--transition-fast);
+}
+
+.rankings-period-toggle[aria-checked="true"] .rankings-period-track::before,
+.rankings-period-toggle[aria-checked="false"]:active .rankings-period-track::before {
+    transform: translateX(calc(var(--tap-size) - var(--space-2) - var(--space-4)));
+}
+
+.rankings-period-toggle[aria-checked="true"]:active .rankings-period-track::before {
+    transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rankings-period-track::before {
+        transition: none;
+    }
+}
+
+.rankings-table-scroll {
+    overflow-x: auto;
 }
 
 .rankings-table {
@@ -710,10 +763,9 @@ footer a {
 
 .rankings-table th,
 .rankings-table td {
-    padding: var(--space-2);
+    padding: var(--space-3) var(--space-2);
     border-bottom: 1px solid var(--color-border);
     text-align: start;
-    overflow-wrap: anywhere;
 }
 
 .rankings-table thead th {
@@ -721,8 +773,26 @@ footer a {
     font-size: var(--font-sm);
 }
 
-.rankings-table tbody th {
+.rankings-table .rankings-number {
+    text-align: end;
+    white-space: nowrap;
+}
+
+.rankings-table .rankings-subject {
     width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.rankings-unplaced {
+    display: inline-block;
+    max-inline-size: 8ch;
+    white-space: normal;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.rankings-table tbody tr:last-child > * {
+    border-bottom: 0;
 }
 
 .tabs {
@@ -730,12 +800,17 @@ footer a {
 }
 
 /* "папки": выбранная вкладка приклеена к содержимому, как ярлык */
-.js .tabs {
+.js .tabs,
+.tabs.rankings-tabs {
     display: flex;
     gap: var(--space-1);
     margin-bottom: var(--space-5);
     padding: 0 var(--space-1);
     border-bottom: 1px solid var(--color-border);
+}
+
+.tabs.rankings-tabs {
+    margin-bottom: 0;
 }
 
 .tab {
@@ -758,13 +833,18 @@ footer a {
                 border-color var(--transition-fast);
 }
 
+a.tab {
+    text-decoration: none;
+}
+
 .tab:hover {
     color: var(--color-text);
 }
 
-.tab[aria-selected="true"] {
+.tab[aria-selected="true"],
+.tab[aria-current="page"] {
     color: var(--color-text);
-    background: var(--color-bg);
+    background: var(--tab-active-background, var(--color-bg));
     border-color: var(--color-border);
 }
 
@@ -1083,6 +1163,21 @@ footer a {
     overflow-wrap: anywhere;
 }
 
+.profile-card.public-profile-card {
+    width: 100%;
+    max-width: none;
+}
+
+.profile-rating {
+    --tab-active-background: var(--color-surface);
+    margin-block: var(--space-5);
+}
+
+.profile-rating > .tabs,
+.profile-rating > .tab-panel {
+    margin-top: var(--space-4);
+}
+
 .profile-fields {
     display: grid;
     gap: var(--space-3);
@@ -1320,7 +1415,9 @@ footer a {
 
 .quiz-card-meta {
     display: flex;
-    gap: var(--space-4);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
     margin: auto 0 0;        /* прижимает строку к низу карточки при разной высоте соседей */
     padding-top: var(--space-2);
     font-size: var(--font-sm);
@@ -3210,7 +3307,8 @@ html:not(.js) #add-question-btn {
 }
 
 /* «История игр» - раскрывающаяся карточка: вся шапка нажимается, стрелка поворачивается */
-.lobby-history-summary {
+.lobby-history-summary,
+.profile-rating-summary {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3219,11 +3317,13 @@ html:not(.js) #add-question-btn {
     cursor: pointer;
 }
 
-.lobby-history-summary::-webkit-details-marker {
+.lobby-history-summary::-webkit-details-marker,
+.profile-rating-summary::-webkit-details-marker {
     display: none;
 }
 
-.lobby-history-summary h2 {
+.lobby-history-summary h2,
+.profile-rating-summary h2 {
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -3231,17 +3331,20 @@ html:not(.js) #add-question-btn {
     font-size: var(--font-lg);
 }
 
-.lobby-history-summary .disclosure-chevron {
+.lobby-history-summary .disclosure-chevron,
+.profile-rating-summary .disclosure-chevron {
     flex: none;
     color: var(--color-text-muted);
 }
 
 .lobby-history[open] > .lobby-history-summary .disclosure-chevron,
+.profile-rating[open] > .profile-rating-summary .disclosure-chevron,
 .lobby-game[open] > .lobby-game-summary .disclosure-chevron {
     transform: rotate(180deg);
 }
 
-.lobby-history-summary:focus-visible {
+.lobby-history-summary:focus-visible,
+.profile-rating-summary:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 4px;
     border-radius: var(--radius-btn);

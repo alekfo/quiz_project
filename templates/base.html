@@ -76,6 +76,13 @@
                         </svg>
                         <span class="nav-label">Мультиплеер</span>
                     </a>
+                    <a class="nav-item{% if ns == 'quiz_statistics' and name == 'rankings' %} is-active{% endif %}"
+                       href="{% url 'quiz_statistics:rankings' %}"{% if ns == 'quiz_statistics' and name == 'rankings' %} aria-current="page"{% endif %}>
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 20h16M6 20v-6h4v6m0 0V5h4v15m0 0v-9h4v9"/>
+                        </svg>
+                        <span class="nav-label">Рейтинги</span>
+                    </a>
                     <a class="nav-item{% if name == 'users_list' or name == 'user_detail' %} is-active{% endif %}"
                        href="{% url 'users:users_list' %}">
                         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">

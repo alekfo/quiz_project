@@ -8,16 +8,23 @@
             <h1>Рейтинги</h1>
         </header>
 
-        <nav class="rankings-filters" aria-label="Таблица рейтинга">
-            <a href="?board=players&amp;period={{ period }}" class="btn{% if board == 'players' %} btn-primary{% endif %}"{% if board == 'players' %} aria-current="page"{% endif %}>Игроки</a>
-            <a href="?board=authors&amp;period={{ period }}" class="btn{% if board == 'authors' %} btn-primary{% endif %}"{% if board == 'authors' %} aria-current="page"{% endif %}>Авторы</a>
-            <a href="?board=quizzes&amp;period={{ period }}" class="btn{% if board == 'quizzes' %} btn-primary{% endif %}"{% if board == 'quizzes' %} aria-current="page"{% endif %}>Квизы</a>
+        <nav class="tabs rankings-tabs" aria-label="Таблица рейтинга">
+            <a href="?board=players&amp;period={{ period }}" class="tab"{% if board == 'players' %} aria-current="page"{% endif %}>Игроки</a>
+            <a href="?board=authors&amp;period={{ period }}" class="tab"{% if board == 'authors' %} aria-current="page"{% endif %}>Авторы</a>
+            <a href="?board=quizzes&amp;period={{ period }}" class="tab"{% if board == 'quizzes' %} aria-current="page"{% endif %}>Квизы</a>
         </nav>
 
-        <nav class="rankings-filters" aria-label="Период рейтинга">
-            <a href="?board={{ board }}&amp;period=month" class="btn{% if period == 'month' %} btn-primary{% endif %}"{% if period == 'month' %} aria-current="page"{% endif %}>За месяц</a>
-            <a href="?board={{ board }}&amp;period=all" class="btn{% if period == 'all' %} btn-primary{% endif %}"{% if period == 'all' %} aria-current="page"{% endif %}>За всё время</a>
-        </nav>
+        <form method="get" class="rankings-period">
+            <input type="hidden" name="board" value="{{ board }}">
+            <button class="rankings-period-toggle" type="submit" name="period"
+                    value="{% if period == 'all' %}month{% else %}all{% endif %}"
+                    role="switch" aria-label="За всё время"
+                    aria-checked="{% if period == 'all' %}true{% else %}false{% endif %}">
+                <span class="rankings-period-month" aria-hidden="true">За месяц</span>
+                <span class="rankings-period-track" aria-hidden="true"></span>
+                <span class="rankings-period-all" aria-hidden="true">За всё время</span>
+            </button>
+        </form>
 
         <section class="card" aria-labelledby="rankings-top">
             <h2 id="rankings-top">Топ-10</h2>

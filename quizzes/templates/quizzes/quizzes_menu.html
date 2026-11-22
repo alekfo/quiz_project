@@ -67,10 +67,7 @@
                         <p class="quiz-card-author">
                             Автор: <a href="{% url 'users:user_detail' pk=series.user_id %}">{{ series.user.username }}</a>
                         </p>
-                        <p class="quiz-card-meta">
-                            <span>Раундов: {{ series.rounds_count }}</span>
-                            <span aria-label="Лайков: {{ series.like_count }}">♥ {{ series.like_count }}</span>
-                        </p>
+                        {% include "quizzes/_quiz_card_meta.html" with series=series series_card_stats=series_card_stats only %}
                     </li>
                 {% endfor %}
             </ul>

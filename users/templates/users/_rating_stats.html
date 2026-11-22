@@ -1,0 +1,72 @@
+<details class="card profile-rating">
+    <summary class="profile-rating-summary">
+        <h2>Рейтинг игрока</h2>
+        <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 9l6 6 6-6"/>
+        </svg>
+    </summary>
+    <div class="tabs" role="tablist" aria-label="Рейтинг игрока" data-tabs>
+        <button class="tab" type="button" role="tab" id="profile-player-tab"
+                aria-controls="profile-player-rating" aria-selected="true">Игрок</button>
+        <button class="tab" type="button" role="tab" id="profile-author-tab"
+                aria-controls="profile-author-rating" aria-selected="false">Автор</button>
+    </div>
+    <section class="tab-panel" id="profile-player-rating" role="tabpanel" aria-labelledby="profile-player-tab">
+        <h3 class="tab-panel-title">Игрок</h3>
+        <dl class="profile-fields">
+            <dt>За месяц</dt>
+            <dd>{{ player_stats.month.points }} очк. · {% if player_stats.month.rank %}{{ player_stats.month.rank }}-е место{% else %}Пока нет места{% endif %}</dd>
+            <dt>За всё время</dt>
+            <dd>{{ player_stats.all.points }} очк. · {% if player_stats.all.rank %}{{ player_stats.all.rank }}-е место{% else %}Пока нет места{% endif %}</dd>
+            <dt>Завершено квизов</dt>
+            <dd>{{ player_stats.completed_series_count }}</dd>
+        </dl>
+        {% if player_stats.achievements %}
+            <h3>Достижения игрока</h3>
+            <ul>
+                {% for award in player_stats.achievements %}
+                    <li>Завершено квизов — {{ award.threshold }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+
+    <section class="tab-panel" id="profile-author-rating" role="tabpanel" aria-labelledby="profile-author-tab">
+        <h3 class="tab-panel-title">Автор</h3>
+        <dl class="profile-fields">
+            <dt>За месяц</dt>
+            <dd>{{ author_stats.month.points }} очк. репутации · {% if author_stats.month.rank %}{{ author_stats.month.rank }}-е место{% else %}Пока нет места{% endif %}</dd>
+            <dt>За всё время</dt>
+            <dd>{{ author_stats.all.points }} очк. репутации · {% if author_stats.all.rank %}{{ author_stats.all.rank }}-е место{% else %}Пока нет места{% endif %}</dd>
+            <dt>Уникальная аудитория</dt>
+            <dd>{{ author_stats.unique_audience }}</dd>
+            <dt>Востребованные квизы</dt>
+            <dd>{{ author_stats.popular_series_count }}</dd>
+        </dl>
+        {% if author_stats.achievements %}
+            <h3>Достижения автора</h3>
+            <ul>
+                {% for award in author_stats.achievements %}
+                    {% if award.kind == "author_audience" %}
+                        <li>Уникальная аудитория — {{ award.threshold }}</li>
+                    {% elif award.kind == "author_popular_series" %}
+                        <li>Востребованные квизы — {{ award.threshold }}</li>
+                    {% elif award.kind == "series_audience" %}
+                        <li>
+                            {% if is_it_me %}
+                                {% if award.series_identity.series_id %}
+                                    <a href="{% url 'quizzes:quizzes_preview' pk=award.series_identity.series_id %}">{{ award.series_identity.title }}</a>
+                                {% else %}
+                                    {{ award.series_identity.title }}
+                                {% endif %}
+                            {% else %}
+                                Квиз{% for series in public_series %}{% if series.pk == award.series_identity.series_id %} «<a href="{% url 'quizzes:quizzes_preview' pk=series.pk %}">{{ series.title }}</a>»{% endif %}{% endfor %}
+                            {% endif %}
+                            · Завершили {{ award.threshold }}
+                        </li>
+                    {% endif %}
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+</details>
