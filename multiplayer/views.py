@@ -22,6 +22,8 @@ from .models import Room, RoomPlayer
 from .forms import RoomSeriesForm
 from gameplay.models import GameSession, GameParticipant, SeriesRun
 from gameplay.services import get_series_progress, get_room_history
+from quizzes.models import QuizSeries
+from quiz_statistics.selectors import get_exit_rating_context, get_round_rating_statuses
 from quiz_statistics.services import register_round_start, finalize_round_participation
 
 User = get_user_model()
@@ -72,6 +74,15 @@ def _get_room_context(context: dict, room: Room, user: settings.AUTH_USER_MODEL)
 
     #флаг о том, выбрана ли хостом серия
     context["has_selected_series"] = room.current_series is not None
+    # Рейтинг: личные данные передаются в HTTP-контексте игрока в лобби.
+    context["round_rating_statuses"] = {}
+    context["multiplayer_rating_notice"] = None
+    if context["is_player"] and room.current_series_id is not None:
+        context["round_rating_statuses"] = get_round_rating_statuses(user, room.current_series)
+        context["multiplayer_rating_notice"] = (
+            "Участие в раунде использует вашу единственную рейтинговую попытку. "
+            "Повторно пройти раунд можно, но без начисления рейтинга."
+        )
 
     #сколько RoomPlayers в комнате
     players = list(room.room_players.all())
@@ -251,6 +262,15 @@ class RoomPlayerDeleteView(LoginRequiredMixin, DeleteView):
             user=self.request.user
         )
 
+    def get_context_data(self, **kwargs):
+        """Добавляет в подтверждение выхода данные текущей рейтинговой попытки."""
+        context = super().get_context_data(**kwargs)
+        session = self.object.room.current_game_session
+        session_ids = [session.pk] if session is not None and session.status == "in_progress" else []
+        # Рейтинг: показываем последствия выхода только владельцу участия.
+        context.update(get_exit_rating_context(self.request.user, session_ids=session_ids))
+        return context
+
     def form_valid(self, form):
         """Удаляет членство и прерывает участие игрока в текущем раунде.
 
@@ -416,11 +436,15 @@ def room_confirm_ready(request, code):
 @require_POST
 @transaction.atomic
 def room_start(request: HttpRequest, code: str):
-    # Блокируем только Room. Выбранная серия при старте не меняется,
-    # поэтому её можно загрузить через JOIN (select_related). Первый POST может создать прогон
-    # и обновить current_series_run_id, пока второй ждёт блокировку.
-    # Prefetch читает прогон и его сессии отдельными запросами после ожидания,
-    # чтобы второй POST увидел результат первого и продолжил ту же сессию.
+    # Рейтинг: сначала блокируем серию, чтобы старт и удаление брали блокировки в одном порядке.
+    selection = get_object_or_404(Room.objects.only("host_id", "current_series_id"), token=code)
+    if selection.host_id != request.user.pk:
+        raise PermissionDenied
+    series_id = selection.current_series_id
+    locked_series = None
+    if series_id is not None:
+        locked_series = QuizSeries.objects.select_for_update(no_key=True).filter(pk=series_id).first()
+
     room = get_object_or_404(
         Room.objects.select_for_update(of=("self",))
         .select_related("current_series")
@@ -434,6 +458,10 @@ def room_start(request: HttpRequest, code: str):
 
     if room.host != user:
         raise PermissionDenied
+
+    if room.current_series_id != series_id:
+        messages.error(request, "Выбор квиза изменился. Проверьте выбранный квиз и повторите старт.")
+        return redirect("multiplayer:room_detail", code=code)
 
     if room.current_series is None:
         messages.error(request, "Не выбран квиз")
@@ -466,6 +494,11 @@ def room_start(request: HttpRequest, code: str):
                 return redirect(url)
 
     current_series_run = room.current_series_run
+    # Рейтинг: перед новой сессией проверяем актуальное право ведущего запустить квиз.
+    if locked_series is None or not QuizSeries.objects.available_to(user).filter(pk=series_id).exists():
+        messages.error(request, "Этот квиз больше недоступен для запуска. Выберите другой.")
+        return redirect("multiplayer:room_detail", code=code)
+
     if current_series_run is None:
         first_round = room.current_series.rounds.select_for_update().order_by("round_order").first()
 

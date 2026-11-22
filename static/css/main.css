@@ -690,6 +690,41 @@ footer a {
 
 /* --- вкладки (static/js/tabs.js): без JS скрыты, панели идут подряд со своими заголовками --- */
 
+.rankings {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.rankings-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.rankings-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: start;
+    font-variant-numeric: tabular-nums;
+}
+
+.rankings-table th,
+.rankings-table td {
+    padding: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+
+.rankings-table thead th {
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.rankings-table tbody th {
+    width: 100%;
+}
+
 .tabs {
     display: none;
 }

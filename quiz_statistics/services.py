@@ -1,13 +1,35 @@
 from datetime import datetime
 
-from django.db import transaction
+from django.db import connection, transaction
+from django.db.models import Sum
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
-from .models import SeriesIdentity, RoundIdentity, RoundParticipation, RatingAttempt, SeriesProgress, SeriesProgressRound, AnswerRating, RatingEntry
-from quizzes.models import Quiz
-from gameplay.models import GameParticipant, GameAnswer, GameSession
-from .rules import calculate_player_rating, RATING_RULES_VERSION
+from .models import (
+    AchievementAward,
+    AnswerRating,
+    AuthorAudience,
+    Notification,
+    RatingAttempt,
+    RatingEntry,
+    RoundIdentity,
+    RoundParticipation,
+    SeriesIdentity,
+    SeriesProgress,
+    SeriesProgressRound,
+)
+from quizzes.models import Quiz, QuizSeries
+from gameplay.models import GameParticipant, GameAnswer, GameSession, SeriesRun
+from .rules import (
+    AUTHOR_AUDIENCE_THRESHOLDS,
+    AUTHOR_POPULAR_SERIES_THRESHOLDS,
+    PLAYER_COMPLETED_SERIES_THRESHOLDS,
+    POPULAR_SERIES_MIN_FINISHERS,
+    RATING_RULES_VERSION,
+    SERIES_AUDIENCE_THRESHOLDS,
+    calculate_author_reputation,
+    calculate_player_rating,
+)
 
 def get_round_identity(quiz: Quiz) -> RoundIdentity:
     """Возвращает рейтинговую запись раунда, создавая её при необходимости.
@@ -213,6 +235,7 @@ def ensure_round_editable(quiz: Quiz) -> None:
         raise ValidationError("Нельзя изменять раунд, пока есть активные прохождения")
 
 def finalize_round_participation(participant: GameParticipant, *, status: str, finished_at: datetime) -> RoundParticipation | None:
+    """Сохраняет итог участия и завершает связанную рейтинговую попытку."""
 
     round_participation = RoundParticipation.objects.filter(original_participant_id=participant.pk).select_related("rating_attempts").first()
 
@@ -236,3 +259,272 @@ def finalize_round_participation(participant: GameParticipant, *, status: str, f
         rating_attempt.save(update_fields=["status", "finished_at"])
 
     return round_participation
+
+
+@transaction.atomic
+def complete_round(participation: RoundParticipation) -> None:
+    """Учитывает первое завершение раунда в накопительном прогрессе игрока."""
+    if participation.status != "completed" or participation.finished_at is None:
+        return
+
+    series_identity_id = participation.round_identity.series_identity_id
+    if series_identity_id is None:
+        return
+
+    progress = SeriesProgress.objects.select_for_update().filter(
+        player_id=participation.player_id,
+        series_identity_id=series_identity_id,
+    ).first()
+    if progress is None:
+        return
+
+    updated_count = progress.series_progress_rounds.filter(
+        round_identity_id=participation.round_identity_id,
+        completed_at__isnull=True,
+        excluded_at__isnull=True,
+    ).update(completed_at=participation.finished_at)
+    if updated_count:
+        evaluate_series_completion(progress, event_time=participation.finished_at)
+
+
+@transaction.atomic
+def evaluate_series_completion(progress: SeriesProgress, *, event_time: datetime) -> None:
+    """Фиксирует завершение серии и однократно начисляет репутацию автору."""
+    progress = SeriesProgress.objects.select_for_update().get(pk=progress.pk)
+    if progress.completed_at is not None:
+        return
+
+    required_rounds = progress.series_progress_rounds.filter(excluded_at__isnull=True)
+    if required_rounds.filter(completed_at__isnull=True).exists():
+        return
+
+    questions_count = required_rounds.aggregate(total=Sum("questions_count", default=0))["total"]
+    if questions_count == 0:
+        return
+
+    progress.completed_at = event_time
+    if progress.reward_status != "pending":
+        progress.save(update_fields=["completed_at"])
+        _award_player_completions(progress, event_time=event_time)
+        return
+
+    series_id = progress.series_identity.series_id
+    if progress.player_id == progress.author_at_start_id:
+        progress.reward_status = "ineligible"
+    elif not progress.was_public_at_start:
+        progress.reward_status = "ineligible"
+        progress.reward_reason = "private_at_start"
+    elif not QuizSeries.objects.filter(pk=series_id, status="public").exists():
+        progress.reward_status = "ineligible"
+        progress.reward_reason = "private_at_completion"
+    else:
+        RatingEntry.objects.create(
+            recipient_id=progress.author_at_start_id,
+            kind="author",
+            amount=calculate_author_reputation(questions_count),
+            earned_at=event_time,
+            rules_version=RATING_RULES_VERSION,
+            series_progress=progress,
+        )
+        progress.qualified_at = event_time
+        progress.reward_status = "awarded"
+
+    progress.save(update_fields=["completed_at", "qualified_at", "reward_status", "reward_reason"])
+    _award_player_completions(progress, event_time=event_time)
+    if progress.qualified_at is not None:
+        award_achievements(progress, event_time=event_time)
+
+
+def _award_player_completions(progress: SeriesProgress, *, event_time: datetime) -> None:
+    """Выдаёт игроку достижения за завершение разных чужих квизов."""
+    if progress.player_id == progress.author_at_start_id:
+        return
+
+    if connection.vendor == "postgresql":
+        # Сериализуем подсчёт порогов при одновременном завершении разных квизов.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                [f"quiz_statistics:player-completions:{progress.player_id}"],
+            )
+
+    count = SeriesProgress.objects.filter(
+        player_id=progress.player_id,
+        completed_at__isnull=False,
+    ).exclude(author_at_start_id=progress.player_id).count()
+    _award_thresholds(
+        kind=AchievementAward.Kind.PLAYER_COMPLETED_SERIES,
+        thresholds=PLAYER_COMPLETED_SERIES_THRESHOLDS,
+        count=count,
+        recipient_id=progress.player_id,
+        event_time=event_time,
+    )
+
+
+@transaction.atomic
+def award_achievements(progress: SeriesProgress, *, event_time: datetime) -> None:
+    """Обновляет аудиторию автора и выдаёт достижения за достигнутые пороги."""
+    if progress.qualified_at is None:
+        return
+
+    author_id = progress.author_at_start_id
+    series_identity_id = progress.series_identity_id
+    if connection.vendor == "postgresql":
+        # Сериализуем выдачу по автору без блокировки строки пользователя.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                [f"quiz_statistics:achievements:{author_id}"],
+            )
+
+    AuthorAudience.objects.get_or_create(
+        author_id=author_id,
+        player_id=progress.player_id,
+        defaults={"first_qualified_at": event_time},
+    )
+    series_audience_count = SeriesProgress.objects.filter(
+        series_identity_id=series_identity_id,
+        qualified_at__isnull=False,
+    ).count()
+    author_audience_count = AuthorAudience.objects.filter(author_id=author_id).count()
+
+    _award_thresholds(
+        kind=AchievementAward.Kind.SERIES_AUDIENCE,
+        thresholds=SERIES_AUDIENCE_THRESHOLDS,
+        count=series_audience_count,
+        recipient_id=author_id,
+        event_time=event_time,
+        series_identity_id=series_identity_id,
+    )
+    _award_thresholds(
+        kind=AchievementAward.Kind.AUTHOR_AUDIENCE,
+        thresholds=AUTHOR_AUDIENCE_THRESHOLDS,
+        count=author_audience_count,
+        recipient_id=author_id,
+        event_time=event_time,
+    )
+    popular_series_count = AchievementAward.objects.filter(
+        kind=AchievementAward.Kind.SERIES_AUDIENCE,
+        threshold=POPULAR_SERIES_MIN_FINISHERS,
+        notification_owner_id=author_id,
+    ).count()
+    _award_thresholds(
+        kind=AchievementAward.Kind.AUTHOR_POPULAR_SERIES,
+        thresholds=AUTHOR_POPULAR_SERIES_THRESHOLDS,
+        count=popular_series_count,
+        recipient_id=author_id,
+        event_time=event_time,
+    )
+
+
+def _award_thresholds(
+    *,
+    kind: AchievementAward.Kind,
+    thresholds: tuple[int, ...],
+    count: int,
+    recipient_id: int,
+    event_time: datetime,
+    series_identity_id: int | None = None,
+) -> None:
+    """Создаёт недостающие достижения и по одному уведомлению на каждое."""
+    subject = {"author_id": None, "series_identity_id": series_identity_id}
+    defaults = {"awarded_at": event_time, "notification_owner_id": recipient_id}
+    if kind == AchievementAward.Kind.PLAYER_COMPLETED_SERIES:
+        subject["notification_owner_id"] = recipient_id
+        del defaults["notification_owner_id"]
+    elif series_identity_id is None:
+        subject["author_id"] = recipient_id
+
+    for threshold in thresholds:
+        if threshold > count:
+            break
+        award, created = AchievementAward.objects.get_or_create(
+            kind=kind,
+            threshold=threshold,
+            defaults=defaults,
+            **subject,
+        )
+        if created:
+            Notification.objects.create(
+                recipient_id=recipient_id,
+                award=award,
+                created_at=event_time,
+            )
+
+
+def _abandon_round_participations(round_ids: list[int], *, deleted_at: datetime) -> None:
+    """Сохраняет итоги незавершённых участий перед удалением раундов."""
+    session_ids = list(
+        GameSession.objects.select_for_update()
+        .filter(quiz_id__in=round_ids)
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
+    participations = RoundParticipation.objects.filter(
+        participant__session_id__in=session_ids,
+        status="in_progress",
+    ).select_related("participant").order_by("pk")
+    for participation in participations:
+        finalize_round_participation(
+            participation.participant,
+            status="abandoned",
+            finished_at=deleted_at,
+        )
+
+
+@transaction.atomic
+def delete_round(quiz: Quiz) -> None:
+    """Удаляет раунд, сохраняя историю и проверяя завершение серии."""
+    if quiz.series_id is not None:
+        QuizSeries.objects.select_for_update(no_key=True).get(pk=quiz.series_id)
+    quiz = Quiz.objects.select_for_update().get(pk=quiz.pk)
+    ensure_round_deletable(quiz)
+    deleted_at = timezone.now()
+    _abandon_round_participations([quiz.pk], deleted_at=deleted_at)
+
+    pending_snapshots = SeriesProgressRound.objects.filter(
+        round_identity__quiz_id=quiz.pk,
+        completed_at__isnull=True,
+        excluded_at__isnull=True,
+    )
+    progresses = SeriesProgress.objects.select_for_update().filter(
+        pk__in=pending_snapshots.values("progress_id"),
+    ).order_by("pk")
+    for progress in progresses:
+        if pending_snapshots.filter(progress=progress).update(excluded_at=deleted_at):
+            evaluate_series_completion(progress, event_time=deleted_at)
+    quiz.delete()
+
+
+@transaction.atomic
+def delete_series(series: QuizSeries) -> None:
+    """Удаляет серию целиком, сохраняя историю без новых начислений."""
+    series = QuizSeries.objects.select_for_update(no_key=True).get(pk=series.pk)
+    if (
+        SeriesRun.objects.filter(series=series, status="in_progress").exists()
+        or GameSession.objects.filter(quiz__series=series, status="in_progress").exists()
+    ):
+        raise ValidationError("Нельзя удалить квиз, пока есть незавершённое прохождение.")
+    round_ids = list(
+        series.rounds.select_for_update().order_by("pk").values_list("pk", flat=True)
+    )
+    _abandon_round_participations(round_ids, deleted_at=timezone.now())
+    series.delete()
+
+
+def ensure_round_deletable(quiz: Quiz) -> None:
+    """Проверяет, что раунд не идёт и не ожидается в начатом прогоне."""
+    sessions = GameSession.objects.select_for_update(of=("self",)).order_by("pk")
+    if quiz.series_id is None:
+        sessions = sessions.filter(quiz=quiz)
+    else:
+        sessions = sessions.filter(quiz__series_id=quiz.series_id)
+    locked_sessions = list(sessions.values_list("quiz_id", "status"))
+    if any(quiz_id == quiz.pk and status == "in_progress" for quiz_id, status in locked_sessions):
+        raise ValidationError("Нельзя удалить раунд, пока он идёт.")
+    if quiz.series_id is not None and SeriesRun.objects.filter(
+        series_id=quiz.series_id,
+        current_round_index=quiz.round_order,
+        status="in_progress",
+    ).exists():
+        raise ValidationError("Нельзя удалить раунд, пока его ожидает незавершённый прогон.")

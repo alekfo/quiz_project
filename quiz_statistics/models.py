@@ -367,3 +367,120 @@ class RatingEntry(models.Model):
         indexes = [
             models.Index(fields=["kind", "earned_at", "recipient"]),
         ]
+
+
+class AuthorAudience(models.Model):
+    """Хранит первое квалифицирующее завершение квиза игроком у автора."""
+
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="author_audience",
+    )
+    player = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="audience_memberships",
+    )
+    first_qualified_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["author", "player"],
+                name="stats_author_player_uniq",
+            ),
+        ]
+
+
+class AchievementAward(models.Model):
+    """Фиксирует достижение игрока, автора или квиза."""
+
+    class Kind(models.TextChoices):
+        """Определяет показатель, за который выдано достижение."""
+
+        AUTHOR_AUDIENCE = "author_audience", "Аудитория автора"
+        SERIES_AUDIENCE = "series_audience", "Аудитория квиза"
+        AUTHOR_POPULAR_SERIES = "author_popular_series", "Востребованные квизы автора"
+        PLAYER_COMPLETED_SERIES = "player_completed_series", "Завершённые квизы игрока"
+
+    kind = models.CharField(max_length=30, choices=Kind.choices)
+    threshold = models.PositiveIntegerField()
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        related_name="author_achievement_awards",
+    )
+    series_identity = models.ForeignKey(
+        SeriesIdentity,
+        on_delete=models.PROTECT,
+        null=True,
+        related_name="achievement_awards",
+    )
+    awarded_at = models.DateTimeField()
+    notification_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="owned_achievement_awards",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        kind="series_audience",
+                        author__isnull=True,
+                        series_identity__isnull=False,
+                    )
+                    | models.Q(
+                        kind__in=["author_audience", "author_popular_series"],
+                        author__isnull=False,
+                        series_identity__isnull=True,
+                    )
+                    | models.Q(
+                        kind="player_completed_series",
+                        author__isnull=True,
+                        series_identity__isnull=True,
+                    )
+                ),
+                name="stats_award_subject_matches_kind",
+            ),
+            models.UniqueConstraint(
+                fields=["author", "kind", "threshold"],
+                condition=models.Q(author__isnull=False),
+                name="stats_author_award_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["series_identity", "kind", "threshold"],
+                condition=models.Q(series_identity__isnull=False),
+                name="stats_series_award_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["notification_owner", "threshold"],
+                condition=models.Q(kind="player_completed_series"),
+                name="stats_player_completed_award_uniq",
+            ),
+        ]
+
+
+class Notification(models.Model):
+    """Хранит уведомление о достижении и время его прочтения."""
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="achievement_notifications",
+    )
+    award = models.OneToOneField(AchievementAward, on_delete=models.PROTECT)
+    created_at = models.DateTimeField()
+    read_at = models.DateTimeField(null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["recipient", "read_at", "created_at"],
+                name="stats_notif_rec_read_idx",
+            ),
+        ]

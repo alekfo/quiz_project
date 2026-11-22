@@ -19,8 +19,18 @@ from .models import GameSession, GameParticipant, GameAnswer, SeriesRun
 from quizzes.models import AnswerOption, QuizSeries, Quiz
 from multiplayer.views import _notify_room
 from .services import get_series_progress, get_answer_stats, get_role, is_room_player
-from quiz_statistics.services import register_round_start, record_answer_rating, finalize_round_participation
+from quiz_statistics.services import (
+    complete_round,
+    finalize_round_participation,
+    record_answer_rating,
+    register_round_start,
+)
 from quiz_statistics.models import AnswerRating, RoundParticipation
+from quiz_statistics.selectors import (
+    get_exit_rating_context,
+    get_participation_result,
+    get_round_rating_statuses,
+)
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -153,9 +163,9 @@ def _check_and_make_complete(sess: GameSession) -> GameSession:
                     finished_at=participant.finished_at,
                 )
 
-                #регистрируем завершение раунда
+                # Рейтинг: учитываем завершённый раунд в общем прогрессе игрока по серии.
                 if participation is not None and participation.status == "completed":
-                    complete_round(participation) #будет написана на шаге 8
+                    complete_round(participation)
 
             #меняем статус сессии на completed
             sess.status = "completed"
@@ -312,6 +322,9 @@ def _play_multiplayer_or_solo(request: HttpRequest, session: GameSession, partic
         "remaining_seconds": remaining_seconds if role == "player" else None,
         "can_advance": can_advance,
         "answer_rating": answer_rating,
+        # Рейтинг: показываем уже сохранённую оценку принятого ответа.
+        "rating_gained": answer_rating.points if answer_rating is not None else None,
+        "rating_reason": answer_rating.reason if answer_rating is not None else None,
     }
 
     # получаем необходимый контекст подсчета ответтов (participants_count, answered_count, all_answered)
@@ -359,20 +372,16 @@ def start(request: HttpRequest, pk: int):
     и через SeriesRun/GameSession увидеть все её вопросы.
     """
 
-    series = get_object_or_404(
-        QuizSeries.objects
-        .visible_to(request.user)
-        .prefetch_related("rounds", "runs__game_sessions")
-        .annotate(rounds_count=Count("rounds")),
-        pk=pk
-    )
-
-    if not series.rounds.all():
-        messages.error(request, "Невозможно начать квиз без раундов. Обратитесь к автору квиза.")
-        url = reverse("quizzes:quizzes_preview", kwargs={"pk": series.pk})
-        return redirect(url)
-
     with transaction.atomic():
+        # Рейтинг: старт и удаление сериализуются на строке серии.
+        series = get_object_or_404(
+            QuizSeries.objects.visible_to(request.user).select_for_update(no_key=True),
+            pk=pk,
+        )
+        first_round = series.rounds.order_by("round_order").first()
+        if first_round is None:
+            messages.error(request, "Невозможно начать квиз без раундов. Обратитесь к автору квиза.")
+            return redirect("quizzes:quizzes_preview", pk=series.pk)
         user = User.objects.select_for_update().get(pk=request.user.pk)
         # Проверяем, нет ли активной серии (SeriesRun),
         # а также у найденного SeriesRun провверяем, нет ли активной GameSession с помощью вспомогательной функции check_series_run
@@ -389,15 +398,13 @@ def start(request: HttpRequest, pk: int):
         #перед созданием прогона (series_run) проверяем на наличие IntegrityError в транзакции,
         # если было - сессия in_progress уже существует, забираем ее и идем на gameplay:play
         try:
-            #для заполнения current_round_index определяем какой индекс первого раунда реально щас у series (при удаении первого раунда в серии (с индеком 0) первый раунд может стать с индексом не 0
-            first_round = series.rounds.order_by('round_order').first()
             with transaction.atomic():
                 series_run = SeriesRun.objects.create(
                     series=series,
                     mode="solo",
                     room=None,
                     created_by=user,
-                    current_round_index=first_round.round_order if first_round else None
+                    current_round_index=first_round.round_order,
                 )
                 logger.info("Пользователем %s создана соло комната №%s для квиза №%s",series_run.created_by.username, series_run.pk, series.pk)
         except IntegrityError:
@@ -414,6 +421,11 @@ def solo_room(request: HttpRequest, pk: int):
     # ==========POST часть===================
     if request.method == "POST":
         with transaction.atomic():
+            # Рейтинг: берём ту же блокировку, что и при удалении раунда или серии.
+            series_id = get_object_or_404(
+                SeriesRun.objects.only("series_id"), pk=pk, mode="solo", created_by=request.user,
+            ).series_id
+            get_object_or_404(QuizSeries.objects.select_for_update(no_key=True), pk=series_id)
             user = User.objects.select_for_update().get(pk=request.user.pk)  # блокируем пользователя (чтобы везде он заблокировался)
             series_run = get_object_or_404(
                 SeriesRun.objects
@@ -497,6 +509,8 @@ def solo_room(request: HttpRequest, pk: int):
         return redirect(url)
 
     context = get_series_progress(series_run)
+    # Рейтинг: доступность попытки рассчитывается для владельца соло-прогона.
+    context["round_rating_statuses"] = get_round_rating_statuses(request.user, series_run.series)
 
     return render(request, "gameplay/solo_room.html", context=context)
 
@@ -720,6 +734,12 @@ def result(request: HttpRequest, pk: int):
         "question_count": len(session.quiz.questions.all()),
         "correct_answer_count": correct_answer_count,
     }
+    # Рейтинг: ведущий-наблюдатель и старые игры могут не иметь записи участия.
+    context.update(rating_total_this_participation=0, personal_best=None, rating_mode=None)
+    if curr_participant is not None:
+        participation = RoundParticipation.objects.filter(participant=curr_participant).first()
+        if participation is not None:
+            context.update(get_participation_result(participation))
     return render(request, "gameplay/result.html", context=context)
 
 @login_required
@@ -800,11 +820,14 @@ def finish_solo(request: HttpRequest, pk: int):
         return redirect(url)
 
     game_sessions = series_run.game_sessions.all()
+    active_session_ids = [session.pk for session in game_sessions if session.status == "in_progress"]
     context = {
         "series_run": series_run,
         "completed_rounds": sum(gs.status == "completed" for gs in game_sessions),
         "rounds_count": series_run.rounds_count,
-        "has_active_round": any(gs.status == "in_progress" for gs in game_sessions)
+        "has_active_round": bool(active_session_ids),
     }
+    # Рейтинг: подтверждение показывает, что будет с текущей попыткой и очками.
+    context.update(get_exit_rating_context(request.user, session_ids=active_session_ids))
 
     return render(request, "gameplay/finish_solo_confirm.html", context=context)

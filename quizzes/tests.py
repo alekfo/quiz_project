@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from ai_generator.models import GenerationRequest
-from gameplay.models import SeriesRun
+from gameplay.models import GameSession, SeriesRun
 from quiz_project.testing import BaseTestCase, make_category, make_round, make_series, make_user
 from social.models import QuizSeriesLike, SavedQuizSeries
 
@@ -423,6 +423,39 @@ class SeriesOwnerOnlyTests(BaseTestCase):
         )
         self.assertFalse(Quiz.objects.filter(pk=self.round.pk).exists())
         self.assertEqual(self.series.rounds.count(), 1)
+
+    def test_author_cannot_delete_round_with_active_session(self):
+        """Отказ удаления сохраняет активную игровую сессию."""
+        self.client.force_login(self.author)
+        session = GameSession.objects.create(
+            quiz=self.round, mode="solo", created_by=self.author,
+        )
+
+        response = self.client.post(reverse("quizzes:round_delete", args=[self.round.pk]))
+
+        self.assertRedirects(
+            response, reverse("quizzes:quizzes_details", args=[self.series.pk]),
+            fetch_redirect_response=False,
+        )
+        self.assertTrue(Quiz.objects.filter(pk=self.round.pk).exists())
+        self.assertTrue(GameSession.objects.filter(pk=session.pk, status="in_progress").exists())
+
+    def test_author_cannot_delete_series_or_expected_round_between_sessions(self):
+        """Незавершённый прогон защищает серию и ожидаемый раунд."""
+        self.client.force_login(self.author)
+        run = SeriesRun.objects.create(
+            series=self.series, mode="solo", created_by=self.author,
+            current_round_index=self.round.round_order,
+        )
+        for name, pk in (("round_delete", self.round.pk), ("quiz_delete", self.series.pk)):
+            with self.subTest(name=name):
+                response = self.client.post(reverse(f"quizzes:{name}", args=[pk]))
+                self.assertRedirects(
+                    response, reverse("quizzes:quizzes_details", args=[self.series.pk]),
+                    fetch_redirect_response=False,
+                )
+                self.assertTrue(Quiz.objects.filter(pk=self.round.pk).exists())
+                self.assertTrue(SeriesRun.objects.filter(pk=run.pk, status="in_progress").exists())
 
     def test_stranger_cannot_delete_or_update_round(self):
         self.client.force_login(self.stranger)

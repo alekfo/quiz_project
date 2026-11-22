@@ -10,14 +10,20 @@ from django.contrib import messages
 from django.db.models import Count
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from .models import Quiz, AnswerOption, QuizSeries
 from .forms import QuizForm, QuestionFormSet, QuizFormWithSeriesId, QuizSeriesUpdateForm
-from gameplay.models import SeriesRun
 from gameplay.services import is_room_player
 from multiplayer.models import Room
 from social.services import get_like_context, get_save_context
-from quiz_statistics.services import ensure_round_editable
+from quiz_statistics.selectors import (
+    get_author_quiz_stats,
+    get_personal_series_progress,
+    get_round_rating_statuses,
+    get_series_card_stats,
+)
+from quiz_statistics.services import delete_round, delete_series, ensure_round_editable
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +44,8 @@ def menu(request: HttpRequest):
                   .with_in_progress(request.user)
                   .order_by("-like_count", "-created_at")[:12])
     context["showcase_series"] = series
+    # Рейтинг: получаем показатели для всех карточек витрины одним вызовом.
+    context["series_card_stats"] = get_series_card_stats([item.pk for item in series])
 
     return render(request, "quizzes/quizzes_menu.html", context=context)
 
@@ -58,6 +66,14 @@ class QuizDetailView(LoginRequiredMixin, DetailView):
         """
         context = super().get_context_data(**kwargs)
         context.setdefault("nums_of_rounds", len(self.object.rounds.all()))
+        # Рейтинг: аналитика доступна владельцу через текущий queryset.
+        period = self.request.GET.get("period", "month")
+        if period not in {"month", "all"}:
+            period = "month"
+        context["author_stats_period"] = period
+        context["author_quiz_stats"] = get_author_quiz_stats(
+            self.object, period=period, now=timezone.now(),
+        )
         return context
 
     def get_queryset(self):
@@ -79,9 +95,16 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["nums_of_rounds"] = self.object.rounds.count()
-        context["active_solo_run"] = (SeriesRun.objects
-                                          .filter(series=self.object, mode="solo", created_by=self.request.user, status="in_progress")
-                                          .first())
+        # Рейтинг: общий показатель квиза и личный статус каждого раунда.
+        context["public_stats"] = get_series_card_stats([self.object.pk])[self.object.pk]
+        context["personal_progress"] = None
+        context["round_rating_statuses"] = {}
+        context["active_solo_run"] = None
+        if self.request.user.is_authenticated:
+            progress = get_personal_series_progress(self.request.user, self.object)
+            context["personal_progress"] = progress
+            context["round_rating_statuses"] = get_round_rating_statuses(self.request.user, self.object)
+            context["active_solo_run"] = progress["active_run"]
         context["has_run_in_progress"] = context["active_solo_run"] is not None
 
         #отдельный флаг конфликта для превью - показываем что идет мультиплеер и сейчас соло начать нельзя
@@ -130,6 +153,12 @@ class QuizListView(LoginRequiredMixin, ListView):
                                    .annotate(like_count=Count("likes", distinct=True))
                                    .annotate(rounds_count=Count("rounds", distinct=True))
                                    )
+        # Рейтинг: одним набором покрываем собственные и сохранённые карточки.
+        context["series_card_stats"] = get_series_card_stats([
+            series.pk
+            for group in (context["object_list"], context["saved_series"])
+            for series in group
+        ])
         return context
 
 class QuizCreateView(LoginRequiredMixin, CreateView):
@@ -283,6 +312,16 @@ class QuizDeleteView(LoginRequiredMixin, DeleteView):
         """Без этого self.get_object() искал бы QuizSeries по pk среди ВСЕХ пользователей"""
         return QuizSeries.objects.filter(user=self.request.user)
 
+    def form_valid(self, form):
+        """Удаляет серию через сервис сохранения рейтинговой истории."""
+        # Рейтинг: сохраняем итоги участий до каскадного удаления серии.
+        try:
+            delete_series(self.object)
+        except ValidationError as exc:
+            messages.error(self.request, exc.messages[0])
+            return HttpResponseRedirect(reverse("quizzes:quizzes_details", args=[self.object.pk]))
+        return HttpResponseRedirect(self.get_success_url())
+
     def get_success_url(self):
         logger.info("Пользователь %s успешно удалил квиз №%s", self.request.user.username, self.object.pk)
         messages.success(self.request, "Квиз успешно удален")
@@ -297,6 +336,16 @@ class RoundDeleteView(LoginRequiredMixin, DeleteView):
     def get_queryset(self):
         """Без этого self.get_object() искал бы Quiz по pk среди ВСЕХ пользователей"""
         return Quiz.objects.filter(user=self.request.user)
+
+    def form_valid(self, form):
+        """Удаляет раунд через сервис накопительного прогресса."""
+        # Рейтинг: пересматриваем условия завершения серии после удаления раунда.
+        try:
+            delete_round(self.object)
+        except ValidationError as exc:
+            messages.error(self.request, exc.messages[0])
+            return HttpResponseRedirect(reverse("quizzes:quizzes_details", args=[self.object.series_id]))
+        return HttpResponseRedirect(self.get_success_url())
 
     def get_success_url(self):
         logger.info("Пользователь %s успешно удалил раунд №%s", self.request.user.username, self.object.pk)

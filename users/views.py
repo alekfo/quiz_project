@@ -13,10 +13,12 @@ from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView, ListView, DetailView, UpdateView
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from .forms import RegisterForm, ProfileUpdateForm
 from social.services import get_follow_context
 from quizzes.models import QuizSeries
+from quiz_statistics.selectors import get_author_stats, get_player_stats, get_series_card_stats
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +169,15 @@ class AboutMeView(LoginRequiredMixin, TemplateView):
 
     template_name = "users/about_me.html"
 
+    def get_context_data(self, **kwargs):
+        """Добавляет в личный профиль статистику игрока и автора."""
+        context = super().get_context_data(**kwargs)
+        # Рейтинг: оба зачёта используют один момент расчёта.
+        now = timezone.now()
+        context["player_stats"] = get_player_stats(self.request.user, now=now)
+        context["author_stats"] = get_author_stats(self.request.user, now=now)
+        return context
+
 class UsersListView(LoginRequiredMixin, ListView):
     """Посмотреть список пользователей (на которых я подписан) или
     найти нужного мне пользователя по username,
@@ -227,6 +238,13 @@ class UserDetailView(LoginRequiredMixin, DetailView):
                                     .annotate(like_count=Count("likes", distinct=True))
                                     .annotate(rounds_count=Count("rounds", distinct=True))
                                     .with_in_progress(self.request.user))
+        # Рейтинг: показываем статистику владельца профиля и его публичных квизов.
+        now = timezone.now()
+        context["player_stats"] = get_player_stats(self.object, now=now)
+        context["author_stats"] = get_author_stats(self.object, now=now)
+        context["series_card_stats"] = get_series_card_stats(
+            [series.pk for series in context["public_series"]]
+        )
         return context
 
 class SettingsPageView(LoginRequiredMixin, TemplateView):

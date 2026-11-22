@@ -1,0 +1,30 @@
+<table class="rankings-table" aria-labelledby="{{ label_id }}">
+    <thead>
+        <tr>
+            <th scope="col">Место</th>
+            {% if board == "quizzes" %}
+                <th scope="col">Квиз</th>
+                <th scope="col">Завершили</th>
+                <th scope="col">Лайки</th>
+            {% elif board == "authors" %}
+                <th scope="col">Автор</th>
+                <th scope="col">Репутация</th>
+            {% else %}
+                <th scope="col">Игрок</th>
+                <th scope="col">Очки</th>
+            {% endif %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+            <tr>
+                <td>{% if row.rank %}{{ row.rank }}{% else %}Пока нет места{% endif %}</td>
+                <th scope="row">
+                    <a href="{{ row.url }}">{% if board == "quizzes" %}{{ row.subject.title }}{% else %}{{ row.subject.username }}{% endif %}</a>
+                </th>
+                <td>{{ row.value }}</td>
+                {% if board == "quizzes" %}<td>{{ row.likes }}</td>{% endif %}
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

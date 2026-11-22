@@ -83,6 +83,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # Рейтинг: счётчик непрочитанных уведомлений о достижениях.
+                'quiz_statistics.context_processors.notification_counts',
             ],
         },
     },
