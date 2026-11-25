@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Уведомления — QuizCrowd{% endblock %}
+
+{% block body %}
+    <div class="rankings">
+        <h1>Уведомления</h1>
+        {% for notification in notifications %}
+            {% with award=notification.award %}
+                <article class="card">
+                    {% if not notification.read_at %}<span class="tag">Новое</span>{% endif %}
+                    <h2>{{ award.get_kind_display }}</h2>
+                    {% if award.kind == "player_completed_series" %}
+                        <p>Завершено чужих квизов: {{ award.threshold }}</p>
+                    {% elif award.kind == "author_audience" %}
+                        <p>Уникальная аудитория достигла {{ award.threshold }}.</p>
+                    {% elif award.kind == "author_popular_series" %}
+                        <p>Число востребованных квизов достигло {{ award.threshold }}.</p>
+                    {% elif award.kind == "series_audience" %}
+                        <p>
+                            {% if award.series_identity.series_id %}
+                                <a href="{% url 'quizzes:quizzes_preview' pk=award.series_identity.series_id %}">{{ award.series_identity.title }}</a>
+                            {% else %}
+                                {{ award.series_identity.title }}
+                            {% endif %}
+                            {% include "quizzes/_popularity_badge.html" with threshold=award.threshold only %}
+                        </p>
+                    {% endif %}
+                    <div class="quiz-actions">
+                        <time class="quiz-preview-note" datetime="{{ notification.created_at|date:'c' }}">{{ notification.created_at|date:"d.m.Y H:i" }}</time>
+                        {% if not notification.read_at %}
+                            <form method="post" action="{% url 'quiz_statistics:notification_read' pk=notification.pk %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn">Отметить прочитанным</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </article>
+            {% endwith %}
+        {% empty %}
+            <p class="empty-state">Уведомлений пока нет.</p>
+        {% endfor %}
+
+        {% if page_obj.has_other_pages %}
+            <nav class="quiz-actions" aria-label="Страницы уведомлений">
+                {% if page_obj.has_previous %}
+                    <a class="btn" href="?page={{ page_obj.previous_page_number }}">← Назад</a>
+                {% endif %}
+                <span>Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+                {% if page_obj.has_next %}
+                    <a class="btn" href="?page={{ page_obj.next_page_number }}">Дальше →</a>
+                {% endif %}
+            </nav>
+        {% endif %}
+    </div>
+{% endblock %}

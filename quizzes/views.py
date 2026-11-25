@@ -7,7 +7,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse
 from django.db import transaction
 from django.contrib import messages
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -22,8 +22,10 @@ from quiz_statistics.selectors import (
     get_personal_series_progress,
     get_round_rating_statuses,
     get_series_card_stats,
+    get_top_quiz_results,
 )
 from quiz_statistics.services import delete_round, delete_series, ensure_round_editable
+from quiz_statistics.models import RoundParticipation
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +111,21 @@ class QuizPreviewView(LoginRequiredMixin, DetailView):
 
         #отдельный флаг конфликта для превью - показываем что идет мультиплеер и сейчас соло начать нельзя
         context["is_player"] = is_room_player(self.request.user)
+
+        #получаем в контекст рекорд по очкам в каждом раунде
+        rounds_ids = [r.pk for r in self.object.rounds.all()]
+        completed_attempts = RoundParticipation.objects.filter(
+            player=self.request.user,
+            status="completed",
+            round_identity__quiz_id__in=rounds_ids,
+        )
+        bests_by_round = completed_attempts.values("round_identity__quiz_id")#группируем попытки по round_identity__quiz_id
+        bests_by_round = bests_by_round.annotate(best_score=Max("score"))#получаем макс score для каждой round_identity__quiz_id
+        round_score_pairs = bests_by_round.values_list(
+            "round_identity__quiz_id", "best_score"
+        )
+        context["round_personal_bests"] = dict(round_score_pairs)
+        context["top_quiz_results"] = get_top_quiz_results(self.object)
 
         context.update(get_like_context(self.request.user, self.object))
         context.update(get_save_context(self.request.user, self.object))

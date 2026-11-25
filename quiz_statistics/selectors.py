@@ -6,7 +6,7 @@ from django.db.models import Count, Max, OuterRef, QuerySet, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.urls import reverse
 
-from gameplay.models import SeriesRun
+from gameplay.models import GameParticipant, SeriesRun
 from quizzes.models import QuizSeries
 from social.models import QuizSeriesLike
 from .models import (
@@ -227,6 +227,40 @@ def get_series_card_stats(series_ids: list[int]) -> dict:
     for series_id, level in levels:
         stats[series_id]["popularity_level"] = level
     return stats
+
+
+def get_top_quiz_results(series: QuizSeries) -> list[dict]:
+    """Возвращает лучшие соло-результаты трёх разных игроков."""
+    solo_results = GameParticipant.objects.filter(
+        session__series_run__series=series,
+        session__series_run__mode="solo",
+        session__series_run__status="completed",
+        session__status="completed",
+    )
+    results_by_run = solo_results.values(
+        "session__series_run_id",
+        "user_id",
+        "user__username",
+    )
+    results_by_run = results_by_run.annotate(total_score=Sum("score"))
+    results_by_run = results_by_run.order_by("-total_score", "user_id")
+
+    top_results = []
+    seen_players = set()
+    for result in results_by_run.iterator():
+        player_id = result["user_id"]
+        if player_id in seen_players:
+            continue
+
+        seen_players.add(player_id)
+        top_results.append({
+            "username": result["user__username"],
+            "score": result["total_score"],
+        })
+        if len(top_results) == 3:
+            break
+
+    return top_results
 
 
 def get_personal_series_progress(user, series: QuizSeries) -> dict:

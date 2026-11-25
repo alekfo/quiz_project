@@ -13,6 +13,7 @@
         <p class="confirm-text">Продолжить это прохождение будет нельзя. Результаты завершённых раундов сохранятся — квиз можно будет начать заново.</p>
         {% if has_active_round %}
             <p class="confirm-text">Текущий раунд будет прерван. Его очки не войдут в общий итог.</p>
+            {% include "gameplay/_exit_rating_notice.html" %}
         {% endif %}
         <form method="post" action="{% url 'gameplay:finish_solo' pk=series_run.pk %}">
             {% csrf_token %}

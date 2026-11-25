@@ -26,6 +26,7 @@
                 Вернуться можно по ссылке на комнату, пока хост её не закрыл.
             </p>
         {% endif %}
+        {% include "gameplay/_exit_rating_notice.html" %}
         <form method="post">
             {% csrf_token %}
             {{ form.as_p }}

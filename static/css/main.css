@@ -17,6 +17,9 @@
     --color-accent-soft-hover: #dfd4fd;   /* мягкая кнопка при наведении */
     --color-track: #e9e5f7;               /* нейтральная подложка: счётчик вкладки */
     --color-on-accent: #ffffff;
+    --color-edit: #facc15;
+    --color-edit-hover: #eab308;
+    --color-on-edit: #1b1730;
     --color-success: #15803d;
     --color-error: #c62828;
     --color-error-text: #c62828;   /* ошибка как цвет текста на фоне страницы */
@@ -335,6 +338,16 @@ input[type="file"]::file-selector-button:hover {
     white-space: nowrap;
 }
 
+.header-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-text-muted);
+    font-size: var(--font-btn);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 /* --- разделы: на телефоне список под шапкой, с 640px - узкая панель слева --- */
 
 .layout {
@@ -554,7 +567,7 @@ footer a {
     font-size: var(--font-md);
 }
 
-.btn:has(> .btn-icon:first-child):not(.nav-toggle) {
+.btn:has(> .btn-icon:first-child):not(.nav-toggle, .header-notifications) {
     padding-left: var(--space-3);
 }
 
@@ -562,6 +575,20 @@ footer a {
     width: 24px;
     height: 24px;
     stroke-width: 2;
+}
+
+.header-notifications {
+    flex: none;
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+}
+
+.notification-count {
+    padding-inline: var(--space-1);
+    color: var(--color-on-accent);
+    background: var(--color-accent);
+    border-radius: var(--radius-full);
+    font-size: var(--font-sm);
 }
 
 .btn-primary {
@@ -572,6 +599,16 @@ footer a {
 .btn-primary:hover {
     color: var(--color-on-accent);
     background-color: var(--color-accent-hover);
+}
+
+.btn-edit {
+    color: var(--color-on-edit);
+    background-color: var(--color-edit);
+}
+
+.btn-edit:hover {
+    color: var(--color-on-edit);
+    background-color: var(--color-edit-hover);
 }
 
 .btn-danger {
@@ -1586,6 +1623,10 @@ a.tab {
     font-size: var(--font-md);
 }
 
+.quiz-preview-progress {
+    margin: 0 0 var(--space-3);
+}
+
 .quiz-preview-rounds .empty-state {
     margin: 0;
 }
@@ -1711,9 +1752,16 @@ a.tab {
     border-radius: var(--radius-md);
 }
 
+.result-scores {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-5);
+    width: 100%;
+}
+
 .result-score {
     display: flex;
-    align-items: baseline;
+    flex-direction: column;
     gap: var(--space-2);
     margin: 0;
 }
@@ -1867,6 +1915,18 @@ a.tab {
     margin-bottom: var(--space-5);
 }
 
+.quiz-management-round-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    align-self: flex-start;
+    min-width: 0;
+}
+
+.quiz-management-round-actions .btn {
+    padding-inline: var(--space-2);
+}
+
 .round-cards {
     display: grid;
     gap: var(--space-4);
@@ -1891,6 +1951,10 @@ a.tab {
 
 .round-summary::-webkit-details-marker {
     display: none;
+}
+
+.round-summary h2 {
+    margin: 0;
 }
 
 .round-summary-text {
