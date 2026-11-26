@@ -13,7 +13,7 @@ def avatar_directory_path(instance: "User", filename: str) -> str:
 class User(AbstractUser):
     email = models.EmailField(unique=True)
     ai_quizzes_generated = models.PositiveIntegerField(default=0)
-    ai_quizzes_limit_per_day = models.PositiveSmallIntegerField(default=1)
+    ai_quizzes_limit_per_day = models.PositiveSmallIntegerField(default=10)
     is_subscribed = models.BooleanField(default=False)
     is_premium = models.BooleanField(default=False)
     email_confirmed = models.BooleanField(default=False)
