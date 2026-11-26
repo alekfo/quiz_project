@@ -29,6 +29,7 @@
                                 <span class="tag tag-success">подтверждена</span>
                             {% else %}
                                 <span class="tag tag-warning">не подтверждена</span>
+                                <a href="{% url 'users:settings' %}#email-settings">Подтвердить почту</a>
                             {% endif %}
                         {% endif %}
                     </dd>

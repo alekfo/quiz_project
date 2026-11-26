@@ -2397,6 +2397,10 @@ a.tab {
     max-width: var(--card-width);
 }
 
+.settings-password {
+    margin-top: var(--space-4);
+}
+
 .confirm-card h1 {
     margin: 0 0 var(--space-2);
     font-size: var(--font-xl);
