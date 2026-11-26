@@ -115,9 +115,18 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
       2. дневной лимит;
       3. только потом форма / запрос к Claude.
     """
+
     series = None
     if series_id:
         series = get_object_or_404(QuizSeries, pk=series_id, user=request.user)
+
+    # проверям подтверждение лимита
+    if not request.user.email_confirmed:
+        logger.warning("Email not confirmed for user=%s, ai_generation rejected", request.user.username)
+        messages.error(request, 'Для использования функции AI-генерации необходимо подтвердить Email')
+        if series:
+            return redirect("quizzes:quizzes_details", pk=series.pk)
+        return redirect("quizzes:menu")
 
     active_request = GenerationRequest.objects.filter(
         user=request.user, status__in=["in_progress", "completed"]
@@ -136,6 +145,8 @@ def index(request: HttpRequest, series_id=None) -> HttpResponse:
         user=request.user,
         created_at__date=timezone.localdate(),
     ).exclude(status="failed").count()
+
+    #проверям непревышение дневного лимита
     if generated_today >= request.user.ai_quizzes_limit_per_day:
         logger.warning("Daily limit reached for user=%s (%d/%d)", request.user.username, generated_today, request.user.ai_quizzes_limit_per_day)
         messages.error(request, 'Дневной лимит ai-генераций исчерпан. Возвращайтесь завтра.')

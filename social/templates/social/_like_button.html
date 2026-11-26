@@ -8,9 +8,7 @@
             {% csrf_token %}
             <button class="btn" type="submit" aria-pressed="true"
                     aria-label="Убрать лайк. Лайков: {{ nums_of_likes }}" title="Убрать лайк">
-                <svg class="btn-icon is-filled" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>
-                </svg>
+                {% include "_like_icon.html" only %}
                 {{ nums_of_likes }}
             </button>
         </form>
@@ -23,9 +21,7 @@
             {% csrf_token %}
             <button class="btn" type="submit" aria-pressed="false"
                     aria-label="Лайкнуть. Лайков: {{ nums_of_likes }}" title="Лайкнуть">
-                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>
-                </svg>
+                {% include "_like_icon.html" only %}
                 {{ nums_of_likes }}
             </button>
         </form>

@@ -1,9 +1,37 @@
 {% extends 'base.html' %}
 
 {% block title %}
-    Setting
+    Настройки — QuizCrowd
 {% endblock %}
 
 {% block body %}
-  <h2>Тут будут настройки</h2>
+    <h1>Настройки</h1>
+    <section class="card" id="email-settings">
+        <h2>Электронная почта</h2>
+        {% if user.email %}
+            <p class="confirm-subject">
+                {{ user.email }}
+                {% if user.email_confirmed %}
+                    <span class="tag tag-success">подтверждена</span>
+                {% else %}
+                    <span class="tag tag-warning">не подтверждена</span>
+                {% endif %}
+            </p>
+            {% if not user.email_confirmed %}
+                <p class="confirm-text">Откройте ссылку в письме, чтобы подтвердить адрес. Ссылка действует 24 часа.</p>
+                <form method="post" action="{% url 'users:send_confirmation' %}" class="form-actions">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary">Отправить письмо подтверждения</button>
+                </form>
+            {% endif %}
+        {% else %}
+            <p class="confirm-text">Адрес электронной почты не указан.</p>
+        {% endif %}
+    </section>
+    <section class="card settings-password">
+        <h2>Пароль</h2>
+        <div class="form-actions">
+            <a class="btn btn-primary" href="{% url 'users:password_change' %}">Сменить пароль</a>
+        </div>
+    </section>
 {% endblock %}

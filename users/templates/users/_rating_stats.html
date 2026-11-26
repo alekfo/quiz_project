@@ -1,0 +1,70 @@
+<details class="card profile-rating">
+    <summary class="profile-rating-summary">
+        <h2>{{ rating_title|default:"Рейтинг пользователя" }}</h2>
+        <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 9l6 6 6-6"/>
+        </svg>
+    </summary>
+    <div class="tabs" role="tablist" aria-label="{{ rating_title|default:'Рейтинг пользователя' }}" data-tabs>
+        <button class="tab" type="button" role="tab" id="profile-player-tab"
+                aria-controls="profile-player-rating" aria-selected="true">Игрок</button>
+        <button class="tab" type="button" role="tab" id="profile-author-tab"
+                aria-controls="profile-author-rating" aria-selected="false">Автор</button>
+    </div>
+    <section class="tab-panel" id="profile-player-rating" role="tabpanel" aria-labelledby="profile-player-tab">
+        <h3 class="tab-panel-title">Игрок</h3>
+        <dl class="profile-fields">
+            <dt>За месяц</dt>
+            <dd>{{ player_stats.month.points }} очк. · {% if player_stats.month.rank %}{{ player_stats.month.rank }}-е место{% else %}Пока нет места{% endif %}</dd>
+            <dt>За всё время</dt>
+            <dd>{{ player_stats.all.points }} очк. · {% if player_stats.all.rank %}{{ player_stats.all.rank }}-е место{% else %}Пока нет места{% endif %}</dd>
+            <dt>Завершено квизов</dt>
+            <dd>{{ player_stats.completed_series_count }}</dd>
+        </dl>
+        {% if player_stats.achievements %}
+            <h3>Достижения</h3>
+            <ul class="achievement-list">
+                {% for award in player_stats.achievements %}
+                    <li>{% include "_achievement_badge.html" with badge_id=award.pk kind=award.kind threshold=award.threshold only %}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+
+    <section class="tab-panel" id="profile-author-rating" role="tabpanel" aria-labelledby="profile-author-tab">
+        <h3 class="tab-panel-title">Автор</h3>
+        <dl class="profile-fields">
+            <dt>За месяц</dt>
+            <dd>{{ author_stats.month.points }} очк. репутации · {% if author_stats.month.rank %}{{ author_stats.month.rank }}-е место{% else %}Пока нет места{% endif %}</dd>
+            <dt>За всё время</dt>
+            <dd>{{ author_stats.all.points }} очк. репутации · {% if author_stats.all.rank %}{{ author_stats.all.rank }}-е место{% else %}Пока нет места{% endif %}</dd>
+            <dt>Уникальная аудитория</dt>
+            <dd>{{ author_stats.unique_audience }}</dd>
+            <dt>Востребованные квизы</dt>
+            <dd>{{ author_stats.popular_series_count }}</dd>
+        </dl>
+        {% if author_stats.achievements %}
+            <h3>Достижения</h3>
+            <ul class="achievement-list">
+                {% for award in author_stats.achievements %}
+                    <li>
+                        {% if award.kind == "series_audience" %}
+                            {% with series_id=award.series_identity.series_id %}
+                                {% if series_id and series_id in series_card_stats or series_id and is_it_me %}
+                                    {% url 'quizzes:quizzes_preview' pk=series_id as quiz_url %}
+                                    {% include "_achievement_badge.html" with badge_id=award.pk kind=award.kind threshold=award.threshold quiz_title=award.series_identity.title href=quiz_url only %}
+                                {% elif is_it_me %}
+                                    {% include "_achievement_badge.html" with badge_id=award.pk kind=award.kind threshold=award.threshold quiz_title=award.series_identity.title only %}
+                                {% else %}
+                                    {% include "_achievement_badge.html" with badge_id=award.pk kind=award.kind threshold=award.threshold only %}
+                                {% endif %}
+                            {% endwith %}
+                        {% else %}
+                            {% include "_achievement_badge.html" with badge_id=award.pk kind=award.kind threshold=award.threshold only %}
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+</details>

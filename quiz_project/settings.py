@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'gameplay.apps.GameplayConfig',
     'multiplayer.apps.MultiplayerConfig',
     'social.apps.SocialConfig',
+    'quiz_statistics.apps.QuizStatisticsConfig',
 
 ]
 
@@ -82,6 +83,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # Рейтинг: счётчик непрочитанных уведомлений о достижениях.
+                'quiz_statistics.context_processors.notification_counts',
             ],
         },
     },
@@ -157,7 +160,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'ru'
 
 TIME_ZONE = 'Europe/Moscow'
 
@@ -180,6 +183,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 LOGIN_URL = '/users/login/'
 LOGIN_REDIRECT_URL = '/quizzes/menu/'
 LOGOUT_REDIRECT_URL = '/users/login/'
+PASSWORD_RESET_TIMEOUT = 3600
 
 
 # Email (SMTP)

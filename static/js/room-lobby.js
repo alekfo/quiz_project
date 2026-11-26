@@ -122,6 +122,7 @@
         var roundRunning = data.has_selected_series && !data.start_available;
 
         show('confirm-ready-form', data.can_confirm);
+        show('multiplayer-rating-notice', data.start_available);
         show('ready-confirmed-msg', data.is_ready && !roundRunning);
         show('return-to-game', roundRunning);
         show('select-series-form', !data.has_selected_series);

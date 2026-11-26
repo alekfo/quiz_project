@@ -36,7 +36,9 @@
 
     <form method="POST" class="quiz-form">
         {% csrf_token  %}
-        {{ form.non_field_errors }}
+        {% if form.non_field_errors %}
+            <div role="alert">{{ form.non_field_errors }}</div>
+        {% endif %}
 
         {# поля самого квиза есть только в форме нового квиза #}
         {% if form.title %}

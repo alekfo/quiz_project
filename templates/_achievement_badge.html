@@ -1,0 +1,43 @@
+{% if href %}
+    <a class="rating-hint-trigger achievement-trigger" href="{{ href }}" aria-describedby="achievement-{{ badge_id }}">
+{% else %}
+    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="achievement-{{ badge_id }}">
+{% endif %}
+        <span class="achievement-badge rating-hint-label" data-kind="{{ kind }}"
+              data-tier="{% if threshold >= 10 %}3{% elif threshold >= 5 %}2{% else %}1{% endif %}">
+            <svg class="achievement-shield" viewBox="0 0 80 88" aria-hidden="true">
+                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+            </svg>
+            <svg class="achievement-icon" viewBox="0 0 32 32" aria-hidden="true">
+                {% if kind == "player_completed_series" %}
+                    <path d="M7 28V5m0 2c6-5 12 4 19-1v13c-7 5-13-4-19 1"/>
+                    <path d="M13 8v4m6-3v4m-6 2v3m6-2v3m-6-7h6"/>
+                {% elif kind == "author_audience" %}
+                    <circle cx="12" cy="10" r="4.5"/>
+                    <path d="M3.5 26v-2a8.5 8.5 0 0 1 17 0v2M22 6a4.5 4.5 0 0 1 0 9m1.5 4a7 7 0 0 1 5 7"/>
+                {% elif kind == "series_audience" %}
+                    <rect x="6" y="4" width="20" height="24" rx="5"/>
+                    <path d="M12 10h8m-9 8 3 3 7-7"/>
+                {% elif kind == "author_popular_series" %}
+                    <rect x="9" y="4" width="19" height="20" rx="4"/>
+                    <path d="M4 10v13a5 5 0 0 0 5 5h13m-3.5-19 1.4 3 3.3.4-2.4 2.3.6 3.3-2.9-1.6-2.9 1.6.6-3.3-2.4-2.3 3.3-.4z"/>
+                {% endif %}
+            </svg>
+            <span class="achievement-level">{{ threshold }}</span>
+        </span>
+{% if href %}</a>{% else %}</span>{% endif %}
+<span class="rating-tooltip achievement-tooltip" id="achievement-{{ badge_id }}" role="tooltip">
+    {% if kind == "player_completed_series" %}
+        <strong>Пройденные квизы</strong>
+        {% if threshold == 1 %}Пройден первый квиз другого автора.{% else %}Пройдено {{ threshold }} разных квизов других авторов.{% endif %}
+    {% elif kind == "author_audience" %}
+        <strong>Аудитория автора</strong>
+        {% if threshold == 1 %}Первый игрок завершил публичный квиз автора.{% else %}{{ threshold }} разных игроков завершили хотя бы один публичный квиз автора.{% endif %}
+    {% elif kind == "series_audience" %}
+        <strong>{% if quiz_title %}{{ quiz_title }}{% else %}Аудитория квиза{% endif %}</strong>
+        {% if threshold == 1 %}Первый игрок прошёл этот квиз до конца.{% else %}{{ threshold }} разных игроков прошли этот квиз до конца.{% endif %}
+    {% elif kind == "author_popular_series" %}
+        <strong>Востребованные квизы</strong>
+        {% if threshold == 1 %}Первый квиз автора прошли до конца минимум 5 разных игроков.{% else %}{{ threshold }} квизов автора собрали по 5 или больше игроков, прошедших их до конца.{% endif %}
+    {% endif %}
+</span>

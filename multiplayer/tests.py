@@ -694,6 +694,25 @@ class RoomStartTests(RoomTestCase):
     def test_not_started_without_players(self):
         self.assertNotStarted(self.start())
 
+    def test_cannot_start_foreign_series_made_private_after_selection(self):
+        """Старт повторно проверяет публичность выбранного чужого квиза."""
+        series = make_series(self.guest, status="public")
+        SavedQuizSeries.objects.create(user=self.host, series=series)
+        self.room.current_series = series
+        self.room.save(update_fields=["current_series"])
+        self.add_player(self.host, is_ready=True)
+        series.status = "private"
+        series.save(update_fields=["status"])
+
+        response = self.start()
+
+        self.assertNotStarted(response)
+        self.assertFalse(SeriesRun.objects.filter(room=self.room).exists())
+        self.assertIn(
+            "Этот квиз больше недоступен для запуска",
+            " ".join(str(message) for message in get_messages(response.wsgi_request)),
+        )
+
     def test_not_started_until_everyone_is_ready(self):
         self.add_player(self.guest, is_ready=True)
         self.add_player(self.host, is_ready=False)

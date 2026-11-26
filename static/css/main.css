@@ -17,6 +17,9 @@
     --color-accent-soft-hover: #dfd4fd;   /* мягкая кнопка при наведении */
     --color-track: #e9e5f7;               /* нейтральная подложка: счётчик вкладки */
     --color-on-accent: #ffffff;
+    --color-edit: #facc15;
+    --color-edit-hover: #eab308;
+    --color-on-edit: #1b1730;
     --color-success: #15803d;
     --color-error: #c62828;
     --color-error-text: #c62828;   /* ошибка как цвет текста на фоне страницы */
@@ -67,6 +70,9 @@
     --avatar-sm: 32px;
     --avatar-md: 48px;
     --avatar-lg: 96px;
+    --achievement-width: 74px;
+    --achievement-height: 82px;
+    --achievement-icon-size: 36px;
 
 
     --transition-fast: 0.15s ease;
@@ -335,6 +341,30 @@ input[type="file"]::file-selector-button:hover {
     white-space: nowrap;
 }
 
+.header-rating {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-text-muted);
+    font-size: var(--font-btn);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.header-notifications-hint {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+}
+
+.header-auth-right-section .rating-tooltip {
+    inset-inline: auto 0;
+    max-width: min(45vw, var(--toast-width));
+    white-space: normal;
+    font-weight: 400;
+}
+
 /* --- разделы: на телефоне список под шапкой, с 640px - узкая панель слева --- */
 
 .layout {
@@ -434,12 +464,20 @@ footer a {
 }
 
 @media (min-width: 480px) {
+    .header-auth-right-section {
+        gap: var(--space-3);
+    }
+
     .site-header .header-user {
         display: inline-block;
     }
 }
 
 @media (min-width: 640px) {
+    .header-auth-right-section {
+        gap: var(--space-4);
+    }
+
     .layout {
         flex-direction: row;
     }
@@ -449,6 +487,7 @@ footer a {
         display: flex;
         position: sticky;
         top: var(--header-height);
+        z-index: 50;
         align-self: flex-start;
         flex: none;
         width: var(--rail-width);
@@ -554,7 +593,7 @@ footer a {
     font-size: var(--font-md);
 }
 
-.btn:has(> .btn-icon:first-child):not(.nav-toggle) {
+.btn:has(> .btn-icon:first-child):not(.nav-toggle, .header-notifications) {
     padding-left: var(--space-3);
 }
 
@@ -562,6 +601,25 @@ footer a {
     width: 24px;
     height: 24px;
     stroke-width: 2;
+}
+
+.header-notifications {
+    flex: none;
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+}
+
+.header-notifications .btn-icon {
+    width: var(--space-5);
+    height: var(--space-5);
+}
+
+.notification-count {
+    padding-inline: var(--space-1);
+    color: var(--color-on-accent);
+    background: var(--color-accent);
+    border-radius: var(--radius-full);
+    font-size: var(--font-sm);
 }
 
 .btn-primary {
@@ -572,6 +630,16 @@ footer a {
 .btn-primary:hover {
     color: var(--color-on-accent);
     background-color: var(--color-accent-hover);
+}
+
+.btn-edit {
+    color: var(--color-on-edit);
+    background-color: var(--color-edit);
+}
+
+.btn-edit:hover {
+    color: var(--color-on-edit);
+    background-color: var(--color-edit-hover);
 }
 
 .btn-danger {
@@ -690,17 +758,127 @@ footer a {
 
 /* --- вкладки (static/js/tabs.js): без JS скрыты, панели идут подряд со своими заголовками --- */
 
+.rankings {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+}
+
+.rankings-period-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--tap-size);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.rankings-period-toggle[aria-checked="false"] .rankings-period-month,
+.rankings-period-toggle[aria-checked="true"] .rankings-period-all {
+    color: var(--color-text);
+    font-weight: 700;
+}
+
+.rankings-period-track {
+    display: flex;
+    align-items: center;
+    flex: none;
+    width: var(--tap-size);
+    height: var(--space-5);
+    padding-inline: var(--space-1);
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
+}
+
+.rankings-period-track::before {
+    content: "";
+    width: var(--space-4);
+    height: var(--space-4);
+    border-radius: var(--radius-full);
+    background: var(--color-on-accent);
+    transition: transform var(--transition-fast);
+}
+
+.rankings-period-toggle[aria-checked="true"] .rankings-period-track::before,
+.rankings-period-toggle[aria-checked="false"]:active .rankings-period-track::before {
+    transform: translateX(calc(var(--tap-size) - var(--space-2) - var(--space-4)));
+}
+
+.rankings-period-toggle[aria-checked="true"]:active .rankings-period-track::before {
+    transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rankings-period-track::before {
+        transition: none;
+    }
+}
+
+.rankings-table-scroll {
+    overflow-x: auto;
+}
+
+.rankings-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: start;
+    font-variant-numeric: tabular-nums;
+}
+
+.rankings-table th,
+.rankings-table td {
+    padding: var(--space-3) var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+    text-align: start;
+}
+
+.rankings-table thead th {
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.rankings-table .rankings-number {
+    text-align: end;
+    white-space: nowrap;
+}
+
+.rankings-table .rankings-subject {
+    width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.rankings-unplaced {
+    display: inline-block;
+    max-inline-size: 8ch;
+    white-space: normal;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.rankings-table tbody tr:last-child > * {
+    border-bottom: 0;
+}
+
 .tabs {
     display: none;
 }
 
 /* "папки": выбранная вкладка приклеена к содержимому, как ярлык */
-.js .tabs {
+.js .tabs,
+.tabs.rankings-tabs {
     display: flex;
     gap: var(--space-1);
     margin-bottom: var(--space-5);
     padding: 0 var(--space-1);
     border-bottom: 1px solid var(--color-border);
+}
+
+.tabs.rankings-tabs {
+    margin-bottom: 0;
 }
 
 .tab {
@@ -723,13 +901,18 @@ footer a {
                 border-color var(--transition-fast);
 }
 
+a.tab {
+    text-decoration: none;
+}
+
 .tab:hover {
     color: var(--color-text);
 }
 
-.tab[aria-selected="true"] {
+.tab[aria-selected="true"],
+.tab[aria-current="page"] {
     color: var(--color-text);
-    background: var(--color-bg);
+    background: var(--tab-active-background, var(--color-bg));
     border-color: var(--color-border);
 }
 
@@ -828,6 +1011,36 @@ footer a {
 
 .form-field .helptext {
     margin-top: var(--space-2);
+}
+
+.registration-form [aria-invalid="true"] {
+    border-color: var(--color-error-text);
+    outline: 1px solid var(--color-error-text);
+    outline-offset: 1px;
+}
+
+.registration-errors {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--color-error-soft);
+    color: var(--color-error-text);
+    font-weight: 600;
+}
+
+.registration-consent {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    font-size: var(--font-sm);
+}
+
+.registration-consent input {
+    flex: none;
+    margin: 0.2em 0 0;
+}
+
+.registration-actions {
+    margin-block: var(--space-6) var(--space-4);
 }
 
 .form-actions {
@@ -1027,11 +1240,15 @@ footer a {
 
 .profile-card,
 .profile-form {
-    max-width: var(--card-width);
     padding: var(--space-5);
 }
 
+.profile-form {
+    max-width: var(--card-width);
+}
+
 .profile-card {
+    width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1046,6 +1263,16 @@ footer a {
 .profile-name {
     text-align: center;
     overflow-wrap: anywhere;
+}
+
+.profile-rating {
+    --tab-active-background: var(--color-surface);
+    margin-block: var(--space-5);
+}
+
+.profile-rating > .tabs,
+.profile-rating > .tab-panel {
+    margin-top: var(--space-4);
 }
 
 .profile-fields {
@@ -1067,6 +1294,118 @@ footer a {
     margin: 0;
     font-weight: 600;
     overflow-wrap: anywhere;
+}
+
+.achievement-list {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    max-width: var(--field-width);
+    padding: 0;
+    list-style: none;
+}
+
+.achievement-trigger.rating-hint-trigger {
+    display: block;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+}
+
+.achievement-trigger .achievement-badge {
+    --achievement-color: var(--color-accent);
+    --achievement-intensity: 15%;
+
+    position: relative;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: var(--space-1);
+    width: var(--achievement-width);
+    height: var(--achievement-height);
+    color: var(--color-text);
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.achievement-trigger .achievement-badge[data-kind="author_audience"] {
+    --achievement-color: var(--color-info);
+}
+
+.achievement-trigger .achievement-badge[data-kind="series_audience"] {
+    --achievement-color: var(--color-success);
+}
+
+.achievement-trigger .achievement-badge[data-kind="author_popular_series"] {
+    --achievement-color: var(--color-warning);
+}
+
+.achievement-trigger .achievement-badge[data-tier="2"] {
+    --achievement-intensity: 24%;
+}
+
+.achievement-trigger .achievement-badge[data-tier="3"] {
+    --achievement-intensity: 37%;
+}
+
+.achievement-shield {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    fill: color-mix(in srgb, var(--achievement-color) var(--achievement-intensity), var(--color-surface));
+    stroke: color-mix(in srgb, var(--achievement-color) 55%, var(--color-border));
+    stroke-width: 2;
+}
+
+.achievement-icon {
+    position: relative;
+    width: var(--achievement-icon-size);
+    height: var(--achievement-icon-size);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.achievement-level {
+    position: relative;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.achievement-tooltip strong {
+    display: block;
+    margin-bottom: var(--space-1);
+}
+
+.achievement-list .achievement-tooltip {
+    display: block;
+    inset-block-start: auto;
+    inset-inline: 0;
+    width: auto;
+    max-width: none;
+    overflow-wrap: anywhere;
+}
+
+.achievement-placement {
+    position: relative;
+    display: inline-block;
+}
+
+.achievement-placement .achievement-badge {
+    --achievement-width: var(--tap-size);
+    --achievement-height: calc(var(--tap-size) + var(--space-1));
+    --achievement-icon-size: var(--space-5);
+
+    gap: 0;
+}
+
+.achievement-placement .achievement-tooltip {
+    max-width: min(var(--toast-width), calc(100vw - 4 * var(--space-4)));
+    font-weight: 400;
 }
 
 /* --- чужой профиль (user_detail.html) и блок подписки (social/_follow_button.html) --- */
@@ -1285,11 +1624,50 @@ footer a {
 
 .quiz-card-meta {
     display: flex;
-    gap: var(--space-4);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
     margin: auto 0 0;        /* прижимает строку к низу карточки при разной высоте соседей */
     padding-top: var(--space-2);
     font-size: var(--font-sm);
     font-weight: 600;
+}
+
+.quiz-card-likes {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.btn-icon.like-icon {
+    width: var(--font-lg);
+    height: var(--font-lg);
+    stroke-width: 1.65;
+}
+
+.like-block [aria-pressed="true"] .like-icon {
+    fill: currentColor;
+}
+
+.quiz-card > .achievement-placement {
+    position: static;
+}
+
+.quiz-card > .achievement-placement .achievement-trigger {
+    position: relative;
+    z-index: 1;
+}
+
+.quiz-card > .achievement-placement .achievement-tooltip {
+    display: block;
+    inset-block-start: auto;
+    inset-inline: var(--space-4);
+    width: auto;
+    max-width: none;
+}
+
+.quiz-card:has(.achievement-trigger:is(:hover, :focus-visible), .achievement-tooltip:hover) {
+    z-index: 1;
 }
 
 @media (min-width: 640px) {
@@ -1454,6 +1832,10 @@ footer a {
     font-size: var(--font-md);
 }
 
+.quiz-preview-progress {
+    margin: 0 0 var(--space-3);
+}
+
 .quiz-preview-rounds .empty-state {
     margin: 0;
 }
@@ -1518,6 +1900,65 @@ footer a {
     font-style: italic;
 }
 
+.solo-rating-hint {
+    position: relative;
+    align-self: stretch;
+}
+
+.rating-hint-trigger:not(.btn) {
+    display: inline-block;
+    border-radius: var(--radius-full);
+}
+
+.rating-hint-label {
+    display: inline-block;
+}
+
+.rating-tooltip {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 100%;
+    inset-inline-start: 0;
+    width: max-content;
+    max-width: min(100%, var(--toast-width));
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: var(--shadow-md);
+    font-size: var(--font-sm);
+    visibility: hidden;
+    opacity: 0;
+}
+
+.rating-hint-trigger:hover + .rating-tooltip,
+.rating-hint-trigger:focus-visible + .rating-tooltip,
+.rating-tooltip:hover {
+    visibility: visible;
+    opacity: 1;
+}
+
+.header-rating:has(.rating-hint-trigger:hover, .rating-tooltip:hover)
+    .rating-hint-trigger:not(:hover) + .rating-tooltip:not(:hover) {
+    visibility: hidden;
+    opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .rating-hint-label {
+        transition: transform var(--transition-fast);
+    }
+
+    .rating-hint-trigger:hover .rating-hint-label {
+        transform: translateY(-2px);
+    }
+
+    .rating-tooltip {
+        transition: opacity var(--transition-fast);
+    }
+}
+
 /* результат раунда (gameplay/result.html) */
 .round-result {
     width: 100%;
@@ -1579,9 +2020,16 @@ footer a {
     border-radius: var(--radius-md);
 }
 
+.result-scores {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-5);
+    width: 100%;
+}
+
 .result-score {
     display: flex;
-    align-items: baseline;
+    flex-direction: column;
     gap: var(--space-2);
     margin: 0;
 }
@@ -1735,6 +2183,18 @@ footer a {
     margin-bottom: var(--space-5);
 }
 
+.quiz-management-round-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    align-self: flex-start;
+    min-width: 0;
+}
+
+.quiz-management-round-actions .btn {
+    padding-inline: var(--space-2);
+}
+
 .round-cards {
     display: grid;
     gap: var(--space-4);
@@ -1759,6 +2219,10 @@ footer a {
 
 .round-summary::-webkit-details-marker {
     display: none;
+}
+
+.round-summary h2 {
+    margin: 0;
 }
 
 .round-summary-text {
@@ -1931,6 +2395,10 @@ footer a {
 
 .confirm-card {
     max-width: var(--card-width);
+}
+
+.settings-password {
+    margin-top: var(--space-4);
 }
 
 .confirm-card h1 {
@@ -3175,7 +3643,8 @@ html:not(.js) #add-question-btn {
 }
 
 /* «История игр» - раскрывающаяся карточка: вся шапка нажимается, стрелка поворачивается */
-.lobby-history-summary {
+.lobby-history-summary,
+.profile-rating-summary {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3184,11 +3653,13 @@ html:not(.js) #add-question-btn {
     cursor: pointer;
 }
 
-.lobby-history-summary::-webkit-details-marker {
+.lobby-history-summary::-webkit-details-marker,
+.profile-rating-summary::-webkit-details-marker {
     display: none;
 }
 
-.lobby-history-summary h2 {
+.lobby-history-summary h2,
+.profile-rating-summary h2 {
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -3196,17 +3667,20 @@ html:not(.js) #add-question-btn {
     font-size: var(--font-lg);
 }
 
-.lobby-history-summary .disclosure-chevron {
+.lobby-history-summary .disclosure-chevron,
+.profile-rating-summary .disclosure-chevron {
     flex: none;
     color: var(--color-text-muted);
 }
 
 .lobby-history[open] > .lobby-history-summary .disclosure-chevron,
+.profile-rating[open] > .profile-rating-summary .disclosure-chevron,
 .lobby-game[open] > .lobby-game-summary .disclosure-chevron {
     transform: rotate(180deg);
 }
 
-.lobby-history-summary:focus-visible {
+.lobby-history-summary:focus-visible,
+.profile-rating-summary:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 4px;
     border-radius: var(--radius-btn);

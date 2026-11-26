@@ -37,11 +37,24 @@
         {# хост-наблюдатель сам не играл - у него только таблица участников #}
         {% if curr_participant %}
             <section class="result-summary" aria-label="Итог раунда">
-                <p class="result-score">
-                    <span class="result-score-value">{{ curr_participant.score }}</span>
-                    <span class="result-score-label">очков за раунд</span>
-                </p>
+                <div class="result-scores" role="group" aria-label="Игровые очки">
+                    <p class="result-score">
+                        <span class="result-score-label">За этот раунд</span>
+                        <strong class="result-score-value">{{ curr_participant.score }}</strong>
+                    </p>
+                    {% if personal_best is not None %}
+                        <p class="result-score">
+                            <span class="result-score-label">Личный рекорд</span>
+                            <strong class="result-score-value">{{ personal_best }}</strong>
+                        </p>
+                    {% endif %}
+                </div>
                 <p class="result-correct">Верных ответов: <strong>{{ correct_answer_count }} из {{ question_count }}</strong></p>
+                {% if rating_mode == "rated" %}
+                    <p class="result-correct">Рейтинг за раунд: <strong>+{{ rating_total_this_participation }}</strong></p>
+                {% elif rating_mode == "own" %}
+                    <p class="result-correct">Свой квиз: без рейтинга</p>
+                {% endif %}
             </section>
 
             {# верный ответ и факт не показываем намеренно (решение пользователя) #}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Рейтинги · QuizCrowd{% endblock %}
+
+{% block body %}
+    <div class="rankings">
+        <header class="page-header">
+            <h1>Рейтинги</h1>
+        </header>
+
+        <nav class="tabs rankings-tabs" aria-label="Таблица рейтинга">
+            <a href="?board=players&amp;period={{ period }}" class="tab"{% if board == 'players' %} aria-current="page"{% endif %}>Игроки</a>
+            <a href="?board=authors&amp;period={{ period }}" class="tab"{% if board == 'authors' %} aria-current="page"{% endif %}>Авторы</a>
+            <a href="?board=quizzes&amp;period={{ period }}" class="tab"{% if board == 'quizzes' %} aria-current="page"{% endif %}>Квизы</a>
+        </nav>
+
+        <form method="get" class="rankings-period">
+            <input type="hidden" name="board" value="{{ board }}">
+            <button class="rankings-period-toggle" type="submit" name="period"
+                    value="{% if period == 'all' %}month{% else %}all{% endif %}"
+                    role="switch" aria-label="За всё время"
+                    aria-checked="{% if period == 'all' %}true{% else %}false{% endif %}">
+                <span class="rankings-period-month" aria-hidden="true">За месяц</span>
+                <span class="rankings-period-track" aria-hidden="true"></span>
+                <span class="rankings-period-all" aria-hidden="true">За всё время</span>
+            </button>
+        </form>
+
+        <section class="card" aria-labelledby="rankings-top">
+            <h2 id="rankings-top">Топ-10</h2>
+            {% if top_rows %}
+                {% include "quiz_statistics/_ranking_table.html" with rows=top_rows label_id="rankings-top" board=board only %}
+            {% else %}
+                <p class="empty-state">За этот период пока нет результатов.</p>
+            {% endif %}
+        </section>
+
+        {% if my_position %}
+            <section class="card" aria-labelledby="rankings-personal">
+                <h2 id="rankings-personal">Ваше место</h2>
+                {% if my_position.rank %}
+                    <p><strong>{{ my_position.rank }}-е место</strong> · {% if board == 'authors' %}Репутация{% else %}Очки{% endif %} — {{ my_position.points }}</p>
+                {% else %}
+                    <p class="empty-state">Пока нет места</p>
+                {% endif %}
+            </section>
+        {% endif %}
+
+        {% if my_quiz_positions %}
+            <section class="card" aria-labelledby="rankings-my-quizzes">
+                <h2 id="rankings-my-quizzes">Ваши квизы вне топ-10</h2>
+                {% include "quiz_statistics/_ranking_table.html" with rows=my_quiz_positions label_id="rankings-my-quizzes" board=board only %}
+            </section>
+        {% endif %}
+    </div>
+{% endblock %}

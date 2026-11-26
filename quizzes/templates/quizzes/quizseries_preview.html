@@ -23,6 +23,7 @@
         </p>
 
         <h1 class="quiz-preview-title">{{ series.title }}</h1>
+        {% include "quizzes/_popularity_badge.html" with threshold=public_stats.popularity_level badge_id="quiz-preview" only %}
 
         {% if series.description %}
             <details class="disclosure">
@@ -42,6 +43,23 @@
         <div class="quiz-overview-grid">
             <section class="quiz-preview-rounds" aria-labelledby="overview-rounds-title">
                 <h2 id="overview-rounds-title">Раундов: {{ nums_of_rounds }}</h2>
+                {% if nums_of_rounds and personal_progress and not is_my_series %}
+                    <p class="quiz-preview-progress">
+                        {% if personal_progress.completed_rounds == personal_progress.total_rounds %}
+                            <span class="tag tag-success"><span aria-hidden="true">✓</span> Ваш прогресс: квиз пройден</span>
+                        {% else %}
+                            <span class="tag">Ваш прогресс:
+                                {% if personal_progress.completed_rounds %}
+                                    пройдено {{ personal_progress.completed_rounds }} из {{ personal_progress.total_rounds }} раундов
+                                {% elif personal_progress.started or active_solo_run %}
+                                    начали, но ещё не завершили ни одного раунда
+                                {% else %}
+                                    ещё не играли
+                                {% endif %}
+                            </span>
+                        {% endif %}
+                    </p>
+                {% endif %}
                 {% if nums_of_rounds %}
                     <ol class="progress-list">
                         {% for round in series.rounds.all|dictsort:"round_order" %}
@@ -49,6 +67,24 @@
                                 <span class="progress-text">
                                     <span class="progress-subject">{{ round.subject }}</span>
                                     <span class="progress-meta">{% if round.level != "common" %}Уровень: {{ round.get_level_display }} · {% endif %}{{ round.time_limit_seconds }} с на ответ · {% include "_round_scoring.html" with round=round only %}</span>
+                                    {% for round_id, best_score in round_personal_bests.items %}
+                                        {% if round_id == round.pk %}
+                                            <span class="progress-meta"><strong>Личный рекорд: {{ best_score }} очк.</strong></span>
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% for round_id, rating_status in round_rating_statuses.items %}
+                                        {% if round_id == round.pk %}
+                                            {% if rating_status == "used" and round.pk not in round_personal_bests %}
+                                                <span class="progress-meta">Пока нет личного рекорда</span>
+                                            {% endif %}
+                                            {% if rating_status == "available" or rating_status == "in_progress" %}
+                                                <span class="progress-meta">
+                                                    {% if rating_status == "available" %}Рейтинговая попытка доступна
+                                                    {% elif rating_status == "in_progress" %}Рейтинговая попытка идёт{% endif %}
+                                                </span>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
                                 </span>
                             </li>
                         {% endfor %}
@@ -85,9 +121,40 @@
                     Завершить прохождение
                 </a>
             {% endif %}
-            {% include "social/_like_button.html" %}
             {% include "social/_save_button.html" %}
         </div>
+
+        <div class="quiz-actions">
+            {% include "social/_like_button.html" %}
+        </div>
+
+        <section class="quiz-preview-rounds" aria-labelledby="solo-results-title">
+            <h2 id="solo-results-title">Лучшие соло-результаты</h2>
+            {% if top_quiz_results %}
+                <div class="rankings-table-scroll">
+                    <table class="rankings-table" aria-labelledby="solo-results-title">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="rankings-number">Место</th>
+                                <th scope="col">Игрок</th>
+                                <th scope="col" class="rankings-number">Очки</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in top_quiz_results %}
+                                <tr>
+                                    <td class="rankings-number">{{ forloop.counter }}</td>
+                                    <th scope="row" class="rankings-subject">{{ row.username }}</th>
+                                    <td class="rankings-number">{{ row.score }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="empty-state">Пока нет результатов.</p>
+            {% endif %}
+        </section>
 
         {% if is_player and not has_run_in_progress %}
             <p class="quiz-preview-note">Вы являетесь участником игры в комнате. Чтобы начать соло-квиз, сначала выйдите из неё.</p>
@@ -98,30 +165,9 @@
         {% endif %}
 
         {% if is_my_series %}
-            <section class="quiz-manage">
-                <h2>Управление квизом</h2>
-                <div class="manage-list">
-                    <a class="manage-link" href="{% url 'quizzes:quiz_update_main_info' pk=series.pk %}">
-                        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M4 20h4L19 9l-4-4L4 16v4z"/>
-                            <path d="M13.5 6.5l4 4"/>
-                        </svg>
-                        <span>
-                            <span class="manage-link-title">Общая информация</span>
-                            <span class="manage-link-text">Изменить название, описание, категорию и доступность</span>
-                        </span>
-                    </a>
-                    <a class="manage-link" href="{% url 'quizzes:quizzes_details' pk=series.pk %}">
-                        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>
-                        </svg>
-                        <span>
-                            <span class="manage-link-title">Раунды и вопросы</span>
-                            <span class="manage-link-text">Посмотреть всё содержимое, изменить, добавить или удалить раунды</span>
-                        </span>
-                    </a>
-                </div>
-            </section>
+            <div class="quiz-manage">
+                <a class="btn" href="{% url 'quizzes:quizzes_details' pk=series.pk %}">Управление квизом</a>
+            </div>
         {% endif %}
     </article>
 {% endblock %}

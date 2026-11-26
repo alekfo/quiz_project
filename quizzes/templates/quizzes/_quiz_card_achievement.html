@@ -1,0 +1,8 @@
+{% for series_id, stats in series_card_stats.items %}
+    {% if series_id == series.pk and stats.popularity_level %}
+        {% url 'quizzes:quizzes_preview' pk=series.pk as quiz_url %}
+        {% with quiz_id=series.pk|stringformat:"s" scope=badge_scope|default:"quiz-card" %}
+            {% include "quizzes/_popularity_badge.html" with threshold=stats.popularity_level badge_id=scope|add:"-"|add:quiz_id href=quiz_url only %}
+        {% endwith %}
+    {% endif %}
+{% endfor %}

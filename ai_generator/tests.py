@@ -204,8 +204,8 @@ class QuestionsToInitialTests(SimpleTestCase):
 class AiGeneratorViewTestCase(BaseTestCase):
     def setUp(self):
         super().setUp()
-        # лимит по умолчанию - 1 генерация в день; поднимаем, чтобы он не мешал тестам не про лимит
-        self.user = make_user("author", ai_quizzes_limit_per_day=50)
+        # Повышаем лимит, чтобы он не мешал тестам, которые проверяют другую логику.
+        self.user = make_user("author", email_confirmed=True, ai_quizzes_limit_per_day=50)
         self.category = make_category("Наука")
         self.client.force_login(self.user)
 
@@ -262,6 +262,23 @@ class GenerationRequestModelTests(AiGeneratorViewTestCase):
 
 class IndexViewTests(AiGeneratorViewTestCase):
     url = reverse("ai_generator:index")
+
+    def test_unconfirmed_email_blocks_generation_for_both_routes(self):
+        user = make_user("unconfirmed", email_confirmed=False)
+        self.client.force_login(user)
+        series = make_series(user)
+        series_url = reverse("ai_generator:index_for_series", kwargs={"series_id": series.pk})
+        cases = (
+            (self.url, self.series_params(), reverse("quizzes:menu")),
+            (series_url, self.round_params(), reverse("quizzes:quizzes_details", kwargs={"pk": series.pk})),
+        )
+
+        for url, data, redirect_url in cases:
+            with self.subTest(url=url):
+                response, generate = self.generate(data, url=url)
+                self.assertRedirects(response, redirect_url, fetch_redirect_response=False)
+                generate.assert_not_called()
+                self.assertFalse(GenerationRequest.objects.filter(user=user).exists())
 
     def test_scoring_and_description_for_both_generation_forms(self):
         series = make_series(self.user)
