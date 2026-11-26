@@ -6,69 +6,68 @@
 <div class="auth-card">
   <h1>Регистрация</h1>
 
-  <form method="post">
+  <form method="post" class="registration-form">
     {% csrf_token %}
+
+    {% if form.username.errors or form.email.errors or form.password1.errors or form.password2.errors or form.privacy_policy.errors %}
+      <p class="registration-errors" role="alert">Исправьте ошибки в выделенных полях.</p>
+    {% endif %}
+    {{ form.non_field_errors }}
 
     <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
         {{ form.website }}
     </div>
 
     <div>
-      <div>Аккаунт</div>
-
-      <div>
-        <label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+      <div class="form-field">
+        <label for="{{ form.username.id_for_label }}">Имя пользователя</label>
         {{ form.username }}
-        {% if form.username.help_text %}<span>{{ form.username.help_text }}</span>{% endif %}
-        {% if form.username.errors %}<ul>{% for e in form.username.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+        {{ form.username.errors }}
+        {% if form.username.help_text %}<span class="helptext" id="{{ form.username.auto_id }}_helptext">{{ form.username.help_text }}</span>{% endif %}
       </div>
 
-      <div>
-        <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+      <div class="form-field">
+        <label for="{{ form.email.id_for_label }}">Электронная почта</label>
         {{ form.email }}
-        <span>На этот адрес будет отправлено письмо с подтверждением.</span>
-        {% if form.email.errors %}<ul>{% for e in form.email.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+        {{ form.email.errors }}
+        <span class="helptext">На этот адрес будет отправлено письмо с подтверждением.</span>
       </div>
 
     </div>
 
     <div>
-      <div>Пароль</div>
-
-      <div>
-        <label for="{{ form.password1.id_for_label }}">{{ form.password1.label }}</label>
+      <div class="form-field">
+        <label for="{{ form.password1.id_for_label }}">Пароль</label>
         {{ form.password1 }}
-        {% if form.password1.help_text %}<span>{{ form.password1.help_text }}</span>{% endif %}
-        {% if form.password1.errors %}<ul>{% for e in form.password1.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+        {{ form.password1.errors }}
+        <div class="helptext" id="{{ form.password1.auto_id }}_helptext">
+          {{ form.password1.help_text }}
+        </div>
       </div>
 
-      <div>
-        <label for="{{ form.password2.id_for_label }}">{{ form.password2.label }}</label>
+      <div class="form-field">
+        <label for="{{ form.password2.id_for_label }}">Повторите пароль</label>
         {{ form.password2 }}
-        {% if form.password2.errors %}<ul>{% for e in form.password2.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+        {{ form.password2.errors }}
+        {% if form.password2.help_text %}<span class="helptext" id="{{ form.password2.auto_id }}_helptext">{{ form.password2.help_text }}</span>{% endif %}
       </div>
 
     </div>
 
-    <div>
-      <div>Согласие</div>
-      <div>
-        <div>
-          {{ form.privacy_policy }}
-          <label for="{{ form.privacy_policy.id_for_label }}" class="privacy-policy-label">
-            Я ознакомлен(а) с
-            <a href="{% url 'users:privacy_policy' %}" target="_blank">Политикой конфиденциальности</a>
-            и <a href="{% url 'users:public_offer' %}" target="_blank">Договором публичной оферты</a>,
-            согласен(на) с их условиями и даю согласие на обработку персональных данных
-          </label>
-        </div>
-        {% if form.privacy_policy.errors %}
-          <ul>{% for e in form.privacy_policy.errors %}<li>{{ e }}</li>{% endfor %}</ul>
-        {% endif %}
+    <div class="form-field">
+      <div class="registration-consent">
+        {{ form.privacy_policy }}
+        <label for="{{ form.privacy_policy.id_for_label }}">
+          Я ознакомлен(а) с
+          <a href="{% url 'users:privacy_policy' %}" target="_blank">Политикой конфиденциальности</a>
+          и <a href="{% url 'users:public_offer' %}" target="_blank">Договором публичной оферты</a>,
+          согласен(на) с их условиями и даю согласие на обработку персональных данных
+        </label>
       </div>
-      <div>
-        <button class="btn" type="submit" id="submit-btn" disabled>Зарегистрироваться</button>
-      </div>
+      {{ form.privacy_policy.errors }}
+    </div>
+    <div class="form-actions registration-actions">
+      <button class="btn" type="submit" id="submit-btn" disabled>Зарегистрироваться</button>
     </div>
 
   </form>
