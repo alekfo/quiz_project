@@ -1,9 +1,7 @@
-<p class="quiz-card-meta">
+<div class="quiz-card-meta">
     <span>Раундов: {{ series.rounds_count }}</span>
-    {% for series_id, stats in series_card_stats.items %}
-        {% if series_id == series.pk %}
-            {% include "quizzes/_popularity_badge.html" with threshold=stats.popularity_level only %}
-        {% endif %}
-    {% endfor %}
-    <span aria-label="Лайков: {{ series.like_count }}">♥ {{ series.like_count }}</span>
-</p>
+    <span class="quiz-card-likes">
+        {% include "_like_icon.html" only %}
+        <span><span class="visually-hidden">Лайков: </span>{{ series.like_count }}</span>
+    </span>
+</div>

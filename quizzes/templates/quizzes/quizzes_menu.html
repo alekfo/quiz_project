@@ -61,13 +61,14 @@
                         <h3 class="quiz-card-title">
                             <a class="quiz-card-link" href="{% url 'quizzes:quizzes_preview' pk=series.pk %}">{{ series.title }}</a>
                         </h3>
+                        {% include "quizzes/_quiz_card_achievement.html" with series=series series_card_stats=series_card_stats only %}
                         {% if series.description %}
                             <p class="quiz-card-description">{{ series.description }}</p>
                         {% endif %}
                         <p class="quiz-card-author">
                             Автор: <a href="{% url 'users:user_detail' pk=series.user_id %}">{{ series.user.username }}</a>
                         </p>
-                        {% include "quizzes/_quiz_card_meta.html" with series=series series_card_stats=series_card_stats only %}
+                        {% include "quizzes/_quiz_card_meta.html" with series=series only %}
                     </li>
                 {% endfor %}
             </ul>

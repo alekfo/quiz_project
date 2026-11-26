@@ -1,3 +1,5 @@
 {% if threshold %}
-    <span class="tag">🏆 {% if threshold == 1 %}Завершил 1 игрок{% else %}Завершили {{ threshold }} игроков{% endif %}</span>
+    <span class="achievement-placement">
+        {% include "_achievement_badge.html" with badge_id=badge_id kind="series_audience" threshold=threshold href=href only %}
+    </span>
 {% endif %}

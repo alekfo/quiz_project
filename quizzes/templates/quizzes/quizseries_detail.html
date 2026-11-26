@@ -72,7 +72,7 @@
                     <h3>Значок популярности</h3>
                     {% with award=object.seriesidentity.achievement_awards.all|dictsortreversed:"threshold"|first %}
                         {% if award %}
-                            <p>{% include "quizzes/_popularity_badge.html" with threshold=award.threshold only %}</p>
+                            <p>{% include "quizzes/_popularity_badge.html" with threshold=award.threshold badge_id="quiz-detail" only %}</p>
                         {% else %}
                             <p class="quiz-preview-note">Значок пока не получен.</p>
                         {% endif %}

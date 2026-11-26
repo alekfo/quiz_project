@@ -70,6 +70,9 @@
     --avatar-sm: 32px;
     --avatar-md: 48px;
     --avatar-lg: 96px;
+    --achievement-width: 74px;
+    --achievement-height: 82px;
+    --achievement-icon-size: 36px;
 
 
     --transition-fast: 0.15s ease;
@@ -339,6 +342,7 @@ input[type="file"]::file-selector-button:hover {
 }
 
 .header-rating {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
@@ -346,6 +350,19 @@ input[type="file"]::file-selector-button:hover {
     font-size: var(--font-btn);
     font-weight: 600;
     white-space: nowrap;
+}
+
+.header-notifications-hint {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+}
+
+.header-auth-right-section .rating-tooltip {
+    inset-inline: auto 0;
+    max-width: min(45vw, var(--toast-width));
+    white-space: normal;
+    font-weight: 400;
 }
 
 /* --- разделы: на телефоне список под шапкой, с 640px - узкая панель слева --- */
@@ -447,12 +464,20 @@ footer a {
 }
 
 @media (min-width: 480px) {
+    .header-auth-right-section {
+        gap: var(--space-3);
+    }
+
     .site-header .header-user {
         display: inline-block;
     }
 }
 
 @media (min-width: 640px) {
+    .header-auth-right-section {
+        gap: var(--space-4);
+    }
+
     .layout {
         flex-direction: row;
     }
@@ -581,6 +606,11 @@ footer a {
     flex: none;
     gap: var(--space-1);
     padding-inline: var(--space-2);
+}
+
+.header-notifications .btn-icon {
+    width: var(--space-5);
+    height: var(--space-5);
 }
 
 .notification-count {
@@ -1179,11 +1209,15 @@ a.tab {
 
 .profile-card,
 .profile-form {
-    max-width: var(--card-width);
     padding: var(--space-5);
 }
 
+.profile-form {
+    max-width: var(--card-width);
+}
+
 .profile-card {
+    width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1198,11 +1232,6 @@ a.tab {
 .profile-name {
     text-align: center;
     overflow-wrap: anywhere;
-}
-
-.profile-card.public-profile-card {
-    width: 100%;
-    max-width: none;
 }
 
 .profile-rating {
@@ -1234,6 +1263,118 @@ a.tab {
     margin: 0;
     font-weight: 600;
     overflow-wrap: anywhere;
+}
+
+.achievement-list {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    max-width: var(--field-width);
+    padding: 0;
+    list-style: none;
+}
+
+.achievement-trigger.rating-hint-trigger {
+    display: block;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+}
+
+.achievement-trigger .achievement-badge {
+    --achievement-color: var(--color-accent);
+    --achievement-intensity: 15%;
+
+    position: relative;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: var(--space-1);
+    width: var(--achievement-width);
+    height: var(--achievement-height);
+    color: var(--color-text);
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.achievement-trigger .achievement-badge[data-kind="author_audience"] {
+    --achievement-color: var(--color-info);
+}
+
+.achievement-trigger .achievement-badge[data-kind="series_audience"] {
+    --achievement-color: var(--color-success);
+}
+
+.achievement-trigger .achievement-badge[data-kind="author_popular_series"] {
+    --achievement-color: var(--color-warning);
+}
+
+.achievement-trigger .achievement-badge[data-tier="2"] {
+    --achievement-intensity: 24%;
+}
+
+.achievement-trigger .achievement-badge[data-tier="3"] {
+    --achievement-intensity: 37%;
+}
+
+.achievement-shield {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    fill: color-mix(in srgb, var(--achievement-color) var(--achievement-intensity), var(--color-surface));
+    stroke: color-mix(in srgb, var(--achievement-color) 55%, var(--color-border));
+    stroke-width: 2;
+}
+
+.achievement-icon {
+    position: relative;
+    width: var(--achievement-icon-size);
+    height: var(--achievement-icon-size);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.achievement-level {
+    position: relative;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.achievement-tooltip strong {
+    display: block;
+    margin-bottom: var(--space-1);
+}
+
+.achievement-list .achievement-tooltip {
+    display: block;
+    inset-block-start: auto;
+    inset-inline: 0;
+    width: auto;
+    max-width: none;
+    overflow-wrap: anywhere;
+}
+
+.achievement-placement {
+    position: relative;
+    display: inline-block;
+}
+
+.achievement-placement .achievement-badge {
+    --achievement-width: var(--tap-size);
+    --achievement-height: calc(var(--tap-size) + var(--space-1));
+    --achievement-icon-size: var(--space-5);
+
+    gap: 0;
+}
+
+.achievement-placement .achievement-tooltip {
+    max-width: min(var(--toast-width), calc(100vw - 4 * var(--space-4)));
+    font-weight: 400;
 }
 
 /* --- чужой профиль (user_detail.html) и блок подписки (social/_follow_button.html) --- */
@@ -1459,6 +1600,43 @@ a.tab {
     padding-top: var(--space-2);
     font-size: var(--font-sm);
     font-weight: 600;
+}
+
+.quiz-card-likes {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.btn-icon.like-icon {
+    width: var(--font-lg);
+    height: var(--font-lg);
+    stroke-width: 1.65;
+}
+
+.like-block [aria-pressed="true"] .like-icon {
+    fill: currentColor;
+}
+
+.quiz-card > .achievement-placement {
+    position: static;
+}
+
+.quiz-card > .achievement-placement .achievement-trigger {
+    position: relative;
+    z-index: 1;
+}
+
+.quiz-card > .achievement-placement .achievement-tooltip {
+    display: block;
+    inset-block-start: auto;
+    inset-inline: var(--space-4);
+    width: auto;
+    max-width: none;
+}
+
+.quiz-card:has(.achievement-trigger:is(:hover, :focus-visible), .achievement-tooltip:hover) {
+    z-index: 1;
 }
 
 @media (min-width: 640px) {
@@ -1689,6 +1867,65 @@ a.tab {
 
 .next-round .quiz-preview-note {
     font-style: italic;
+}
+
+.solo-rating-hint {
+    position: relative;
+    align-self: stretch;
+}
+
+.rating-hint-trigger:not(.btn) {
+    display: inline-block;
+    border-radius: var(--radius-full);
+}
+
+.rating-hint-label {
+    display: inline-block;
+}
+
+.rating-tooltip {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 100%;
+    inset-inline-start: 0;
+    width: max-content;
+    max-width: min(100%, var(--toast-width));
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: var(--shadow-md);
+    font-size: var(--font-sm);
+    visibility: hidden;
+    opacity: 0;
+}
+
+.rating-hint-trigger:hover + .rating-tooltip,
+.rating-hint-trigger:focus-visible + .rating-tooltip,
+.rating-tooltip:hover {
+    visibility: visible;
+    opacity: 1;
+}
+
+.header-rating:has(.rating-hint-trigger:hover, .rating-tooltip:hover)
+    .rating-hint-trigger:not(:hover) + .rating-tooltip:not(:hover) {
+    visibility: hidden;
+    opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .rating-hint-label {
+        transition: transform var(--transition-fast);
+    }
+
+    .rating-hint-trigger:hover .rating-hint-label {
+        transform: translateY(-2px);
+    }
+
+    .rating-tooltip {
+        transition: opacity var(--transition-fast);
+    }
 }
 
 /* результат раунда (gameplay/result.html) */

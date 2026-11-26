@@ -1,0 +1,173 @@
+.awards-preview {
+    --preview-medal-size: 76px;
+    --preview-shield-width: 74px;
+    --preview-shield-height: 82px;
+    --preview-tile-size: 72px;
+    --preview-icon-size: 34px;
+    --preview-shield-icon-size: 36px;
+    --preview-tile-icon-size: 40px;
+
+    padding: var(--space-4);
+}
+
+.awards-preview-variant {
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--color-border);
+}
+
+.awards-preview-variant h4 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--font-md);
+}
+
+.awards-preview-row {
+    min-width: 0;
+}
+
+.awards-preview-row p {
+    margin: var(--space-2) 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.awards-preview-row .achievement-list {
+    margin: 0 0 var(--space-3);
+    gap: var(--space-3);
+}
+
+.awards-preview-badge {
+    --award-color: var(--color-accent);
+    --award-intensity: 15%;
+    --award-fill: color-mix(in srgb, var(--award-color) var(--award-intensity), var(--color-surface));
+    --award-line: color-mix(in srgb, var(--award-color) 55%, var(--color-border));
+
+    position: relative;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    color: var(--color-text);
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.awards-preview-badge[data-award="audience"] {
+    --award-color: var(--color-info);
+}
+
+.awards-preview-badge[data-award="series"] {
+    --award-color: var(--color-success);
+}
+
+.awards-preview-badge[data-award="popular"] {
+    --award-color: var(--color-warning);
+}
+
+.awards-preview-badge[data-level="5"] {
+    --award-intensity: 24%;
+}
+
+.awards-preview-badge[data-level="10"] {
+    --award-intensity: 37%;
+}
+
+.awards-preview-icon {
+    width: var(--preview-icon-size);
+    height: var(--preview-icon-size);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.awards-preview-medal .achievement-trigger {
+    border-radius: var(--radius-full);
+}
+
+.awards-preview-medal .awards-preview-badge {
+    width: var(--preview-medal-size);
+    height: var(--preview-medal-size);
+    gap: var(--space-1);
+    border: 1px solid var(--award-line);
+    border-radius: var(--radius-full);
+    background: radial-gradient(circle at 34% 20%, var(--color-surface), var(--award-fill) 72%);
+    box-shadow: var(--shadow-sm);
+}
+
+.awards-preview-medal .awards-preview-badge::before {
+    position: absolute;
+    inset: var(--space-1);
+    border: 1px solid var(--award-line);
+    border-radius: inherit;
+    content: "";
+}
+
+.awards-preview-medal .awards-preview-level {
+    font-size: var(--font-sm);
+}
+
+.awards-preview-shield .awards-preview-badge {
+    width: var(--preview-shield-width);
+    height: var(--preview-shield-height);
+    gap: var(--space-1);
+}
+
+.awards-preview-shield-outline {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    fill: var(--award-fill);
+    stroke: var(--award-line);
+    stroke-width: 2;
+}
+
+.awards-preview-shield .awards-preview-icon,
+.awards-preview-shield .awards-preview-level {
+    position: relative;
+}
+
+.awards-preview-shield .awards-preview-icon {
+    width: var(--preview-shield-icon-size);
+    height: var(--preview-shield-icon-size);
+}
+
+.awards-preview-shield .awards-preview-level {
+    color: var(--color-text-muted);
+    font-size: var(--font-sm);
+}
+
+.awards-preview-tile .awards-preview-badge {
+    width: var(--preview-tile-size);
+    height: var(--preview-tile-size);
+    border: 1px solid var(--award-line);
+    border-radius: var(--radius-md);
+    background: linear-gradient(145deg, var(--color-surface), var(--award-fill));
+    box-shadow: var(--shadow-sm);
+}
+
+.awards-preview-tile .awards-preview-icon {
+    width: var(--preview-tile-icon-size);
+    height: var(--preview-tile-icon-size);
+    transform: translate(calc(var(--space-1) * -1), calc(var(--space-1) * -1));
+}
+
+.awards-preview-tile .awards-preview-level {
+    position: absolute;
+    inset-inline-end: var(--space-1);
+    inset-block-end: var(--space-1);
+    min-width: var(--space-5);
+    padding: var(--space-1);
+    border: 1px solid var(--award-line);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    text-align: center;
+    font-size: var(--font-sm);
+}
+
+@media (min-width: 640px) {
+    .awards-preview {
+        padding-inline: var(--space-5);
+    }
+}

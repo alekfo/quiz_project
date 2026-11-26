@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}
     Мой профиль — QuizCrowd
@@ -36,4 +37,6 @@
             <a href="{% url 'users:profile_update' %}" class="btn btn-primary">Редактировать профиль</a>
         </div>
     </section>
+    {% include "users/_rating_stats.html" with rating_title="Мой рейтинг" is_it_me=True %}
+    <script src="{% static 'js/tabs.js' %}"></script>
 {% endblock %}

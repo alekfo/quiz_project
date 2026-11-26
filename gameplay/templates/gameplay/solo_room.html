@@ -40,6 +40,26 @@
                                 Начать раунд {{ round_number }}
                             </button>
                         </form>
+                        {% for round_id, rating_status in round_rating_statuses.items %}
+                            {% if round_id == current_round.pk %}
+                                <div class="solo-rating-hint">
+                                    <span class="rating-hint-trigger" tabindex="0" aria-describedby="solo-rating-tooltip">
+                                        {% if rating_status == "available" %}
+                                            <span class="tag tag-success rating-hint-label">Рейтинговая попытка</span>
+                                        {% else %}
+                                            <span class="tag rating-hint-label">Попытка на личный рекорд</span>
+                                        {% endif %}
+                                    </span>
+                                    <span class="rating-tooltip" id="solo-rating-tooltip" role="tooltip">
+                                        {% if rating_status == "available" %}
+                                            Заработанные в этом раунде рейтинговые баллы пополнят ваш счёт в общем рейтинге игроков.
+                                        {% else %}
+                                            Сыграйте на свой лучший результат. Если наберёте больше очков, личный рекорд обновится.
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
                         <p class="quiz-preview-note">Таймер запустится после начала раунда.</p>
                         <a class="btn btn-danger" href="{% url 'gameplay:finish_solo' pk=series_run.pk %}">
                             <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>

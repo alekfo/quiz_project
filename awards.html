@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Варианты значков достижений — QuizCrowd</title>
+    <link rel="stylesheet" href="static/css/main.css">
+    <link rel="stylesheet" href="static/css/awards-preview.css">
+    <script src="static/js/base.js"></script>
+    <script src="static/js/htmx.min.js"></script>
+</head>
+<body>
+    <svg hidden aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+        <symbol id="award-flag" viewBox="0 0 32 32">
+            <path d="M7 28V5m0 2c6-5 12 4 19-1v13c-7 5-13-4-19 1"/>
+            <path d="M13 8v4m6-3v4m-6 2v3m6-2v3m-6-7h6"/>
+        </symbol>
+        <symbol id="award-people" viewBox="0 0 32 32">
+            <circle cx="12" cy="10" r="4.5"/>
+            <path d="M3.5 26v-2a8.5 8.5 0 0 1 17 0v2M22 6a4.5 4.5 0 0 1 0 9m1.5 4a7 7 0 0 1 5 7"/>
+        </symbol>
+        <symbol id="award-check" viewBox="0 0 32 32">
+            <rect x="6" y="4" width="20" height="24" rx="5"/>
+            <path d="M12 10h8m-9 8 3 3 7-7"/>
+        </symbol>
+        <symbol id="award-star" viewBox="0 0 32 32">
+            <rect x="9" y="4" width="19" height="20" rx="4"/>
+            <path d="M4 10v13a5 5 0 0 0 5 5h13m-3.5-19 1.4 3 3.3.4-2.4 2.3.6 3.3-2.9-1.6-2.9 1.6.6-3.3-2.4-2.3 3.3-.4z"/>
+        </symbol>
+    </svg>
+
+    <div class="container">
+        <header class="site-header">
+            <div class="header-main">
+                <div class="header-left"><span class="logo">Quiz<span>Crowd</span></span></div>
+            </div>
+        </header>
+
+        <main class="awards-preview">
+            <h1>Варианты значков достижений</h1>
+            <details class="card profile-rating" open>
+                <summary class="profile-rating-summary">
+                    <h2>Рейтинг пользователя</h2>
+                    <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </summary>
+
+                <div class="tabs" role="tablist" aria-label="Рейтинг пользователя" data-tabs>
+                    <button class="tab" type="button" role="tab" id="awards-player-tab" aria-controls="awards-player" aria-selected="true">Игрок</button>
+                    <button class="tab" type="button" role="tab" id="awards-author-tab" aria-controls="awards-author" aria-selected="false">Автор</button>
+                </div>
+
+                <section class="tab-panel" id="awards-player" role="tabpanel" aria-labelledby="awards-player-tab">
+                    <h3 class="tab-panel-title">Игрок</h3>
+                    <dl class="profile-fields">
+                        <dt>За месяц</dt><dd>120 очк. · 3-е место</dd>
+                        <dt>За всё время</dt><dd>430 очк. · 2-е место</dd>
+                        <dt>Завершено квизов</dt><dd>12</dd>
+                    </dl>
+                    <h3>Достижения</h3>
+                    <section class="awards-preview-variant awards-preview-medal" aria-labelledby="player-medal">
+                        <h4 id="player-medal">Круглые медали</h4>
+                        <div class="awards-preview-row">
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-player-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="1">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-player-1" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Первый полностью пройденный квиз другого автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-player-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="5">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-player-5" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Полностью пройдено 5 разных квизов других авторов.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-player-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="10">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-player-10" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Полностью пройдено 10 разных квизов других авторов.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+                    <section class="awards-preview-variant awards-preview-shield" aria-labelledby="player-shield">
+                        <h4 id="player-shield">Щиты</h4>
+                        <div class="awards-preview-row">
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-player-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="1">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-player-1" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Первый полностью пройденный квиз другого автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-player-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="5">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-player-5" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Полностью пройдено 5 разных квизов других авторов.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-player-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="10">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-player-10" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Полностью пройдено 10 разных квизов других авторов.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+                    <section class="awards-preview-variant awards-preview-tile" aria-labelledby="player-tile">
+                        <h4 id="player-tile">Скруглённые плитки</h4>
+                        <div class="awards-preview-row">
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-player-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="1">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-player-1" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Первый полностью пройденный квиз другого автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-player-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="5">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-player-5" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Полностью пройдено 5 разных квизов других авторов.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-player-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="player" data-level="10">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-flag"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-player-10" role="tooltip">
+                                        <strong>Пройденные квизы</strong>
+                                        Полностью пройдено 10 разных квизов других авторов.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+                </section>
+
+                <section class="tab-panel" id="awards-author" role="tabpanel" aria-labelledby="awards-author-tab">
+                    <h3 class="tab-panel-title">Автор</h3>
+                    <dl class="profile-fields">
+                        <dt>За месяц</dt><dd>60 очк. репутации · 4-е место</dd>
+                        <dt>За всё время</dt><dd>240 очк. репутации · 2-е место</dd>
+                        <dt>Уникальная аудитория</dt><dd>28</dd>
+                        <dt>Востребованные квизы</dt><dd>10</dd>
+                    </dl>
+                    <h3>Достижения</h3>
+                    <section class="awards-preview-variant awards-preview-medal" aria-labelledby="author-medal">
+                        <h4 id="author-medal">Круглые медали</h4>
+                        <div class="awards-preview-row">
+                            <p>Аудитория автора</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-audience-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="1">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-audience-1" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        Первый игрок завершил публичный квиз автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-audience-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="5">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-audience-5" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        5 разных игроков завершили хотя бы один публичный квиз автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-audience-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="10">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-audience-10" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        10 разных игроков завершили хотя бы один публичный квиз автора.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="awards-preview-row">
+                            <p>Аудитория квиза</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-series-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="1">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-series-1" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        Первый игрок прошёл этот квиз до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-series-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="5">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-series-5" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        5 разных игроков прошли этот квиз до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-series-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="10">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-series-10" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        10 разных игроков прошли этот квиз до конца.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="awards-preview-row">
+                            <p>Востребованные квизы</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-popular-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="1">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-popular-1" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        Первый квиз автора прошли до конца минимум 5 разных игроков.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-popular-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="5">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-popular-5" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        5 квизов автора собрали по 5 или больше игроков, прошедших их до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="medal-popular-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="10">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="medal-popular-10" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        10 квизов автора собрали по 5 или больше игроков, прошедших их до конца.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+                    <section class="awards-preview-variant awards-preview-shield" aria-labelledby="author-shield">
+                        <h4 id="author-shield">Щиты</h4>
+                        <div class="awards-preview-row">
+                            <p>Аудитория автора</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-audience-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="1">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-audience-1" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        Первый игрок завершил публичный квиз автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-audience-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="5">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-audience-5" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        5 разных игроков завершили хотя бы один публичный квиз автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-audience-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="10">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-audience-10" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        10 разных игроков завершили хотя бы один публичный квиз автора.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="awards-preview-row">
+                            <p>Аудитория квиза</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-series-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="1">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-series-1" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        Первый игрок прошёл этот квиз до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-series-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="5">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-series-5" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        5 разных игроков прошли этот квиз до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-series-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="10">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-series-10" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        10 разных игроков прошли этот квиз до конца.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="awards-preview-row">
+                            <p>Востребованные квизы</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-popular-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="1">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-popular-1" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        Первый квиз автора прошли до конца минимум 5 разных игроков.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-popular-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="5">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-popular-5" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        5 квизов автора собрали по 5 или больше игроков, прошедших их до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="shield-popular-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="10">
+                                            <svg class="awards-preview-shield-outline" viewBox="0 0 80 88" aria-hidden="true">
+                                                <path d="M40 4C50 9 61 12 73 13v28c0 20-13 33-33 42C20 74 7 61 7 41V13c12-1 23-4 33-9Z"/>
+                                            </svg>
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="shield-popular-10" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        10 квизов автора собрали по 5 или больше игроков, прошедших их до конца.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+                    <section class="awards-preview-variant awards-preview-tile" aria-labelledby="author-tile">
+                        <h4 id="author-tile">Скруглённые плитки</h4>
+                        <div class="awards-preview-row">
+                            <p>Аудитория автора</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-audience-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="1">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-audience-1" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        Первый игрок завершил публичный квиз автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-audience-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="5">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-audience-5" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        5 разных игроков завершили хотя бы один публичный квиз автора.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-audience-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="audience" data-level="10">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-people"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-audience-10" role="tooltip">
+                                        <strong>Аудитория автора</strong>
+                                        10 разных игроков завершили хотя бы один публичный квиз автора.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="awards-preview-row">
+                            <p>Аудитория квиза</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-series-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="1">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-series-1" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        Первый игрок прошёл этот квиз до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-series-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="5">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-series-5" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        5 разных игроков прошли этот квиз до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-series-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="series" data-level="10">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-check"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-series-10" role="tooltip">
+                                        <strong>Аудитория квиза</strong>
+                                        10 разных игроков прошли этот квиз до конца.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="awards-preview-row">
+                            <p>Востребованные квизы</p>
+                            <ul class="achievement-list">
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-popular-1">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="1">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">1</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-popular-1" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        Первый квиз автора прошли до конца минимум 5 разных игроков.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-popular-5">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="5">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">5</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-popular-5" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        5 квизов автора собрали по 5 или больше игроков, прошедших их до конца.
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="rating-hint-trigger achievement-trigger" tabindex="0" aria-describedby="tile-popular-10">
+                                        <span class="awards-preview-badge rating-hint-label" data-award="popular" data-level="10">
+                                            <svg class="awards-preview-icon" viewBox="0 0 32 32" aria-hidden="true"><use href="#award-star"/></svg>
+                                            <span class="awards-preview-level">10</span>
+                                        </span>
+                                    </span>
+                                    <span class="rating-tooltip achievement-tooltip" id="tile-popular-10" role="tooltip">
+                                        <strong>Востребованные квизы</strong>
+                                        10 квизов автора собрали по 5 или больше игроков, прошедших их до конца.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+                </section>
+            </details>
+        </main>
+    </div>
+
+    <script src="static/js/tabs.js"></script>
+</body>
+</html>

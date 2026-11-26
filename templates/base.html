@@ -40,20 +40,29 @@
                     {% if user.is_authenticated %}
                         <div class="header-auth-right-section">
                             <span class="header-rating">
-                                <span title="Рейтинг за прохождение квизов"><span class="visually-hidden">Рейтинг за прохождение квизов: </span>{{ header_player_points }}</span>
+                                <span class="rating-hint-trigger" tabindex="0" aria-describedby="header-player-rating-tooltip">
+                                    <span class="rating-hint-label">{{ header_player_points }}</span>
+                                </span>
+                                <span class="rating-tooltip" id="header-player-rating-tooltip" role="tooltip">Рейтинг за прохождение квизов</span>
                                 <span aria-hidden="true">/</span>
-                                <span title="Репутация автора"><span class="visually-hidden">Репутация автора: </span>{{ header_author_points }}</span>
+                                <span class="rating-hint-trigger" tabindex="0" aria-describedby="header-author-rating-tooltip">
+                                    <span class="rating-hint-label">{{ header_author_points }}</span>
+                                </span>
+                                <span class="rating-tooltip" id="header-author-rating-tooltip" role="tooltip">Репутация автора</span>
                             </span>
-                            <a class="btn btn-ghost header-notifications" href="{% url 'quiz_statistics:notifications' %}"
-                               aria-label="Уведомления{% if unread_notifications_count %}, непрочитанных: {{ unread_notifications_count }}{% endif %}"
-                               title="Уведомления"{% if request.resolver_match.url_name == "notifications" %} aria-current="page"{% endif %}>
-                                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-                                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>
-                                </svg>
-                                {% if unread_notifications_count %}
-                                    <span class="notification-count" aria-hidden="true">{% if unread_notifications_count > 99 %}99+{% else %}{{ unread_notifications_count }}{% endif %}</span>
-                                {% endif %}
-                            </a>
+                            <span class="header-notifications-hint">
+                                <a class="btn btn-ghost header-notifications rating-hint-trigger" href="{% url 'quiz_statistics:notifications' %}"
+                                   aria-label="Уведомления{% if unread_notifications_count %}, непрочитанных: {{ unread_notifications_count }}{% endif %}"
+                                   aria-describedby="header-notifications-tooltip"{% if request.resolver_match.url_name == "notifications" %} aria-current="page"{% endif %}>
+                                    <svg class="btn-icon rating-hint-label" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>
+                                    </svg>
+                                    {% if unread_notifications_count %}
+                                        <span class="notification-count" aria-hidden="true">{% if unread_notifications_count > 99 %}99+{% else %}{{ unread_notifications_count }}{% endif %}</span>
+                                    {% endif %}
+                                </a>
+                                <span class="rating-tooltip" id="header-notifications-tooltip" role="tooltip">Открыть уведомления</span>
+                            </span>
                             <a class="btn btn-ghost header-user" href="{% url 'users:about_me' %}">{{ user.username }}</a>
                             <form method="post" action="{% url 'users:logout' %}">
                                 {% csrf_token %}

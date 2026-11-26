@@ -10,22 +10,20 @@
                 <article class="card">
                     {% if not notification.read_at %}<span class="tag">Новое</span>{% endif %}
                     <h2>{{ award.get_kind_display }}</h2>
-                    {% if award.kind == "player_completed_series" %}
-                        <p>Завершено чужих квизов: {{ award.threshold }}</p>
-                    {% elif award.kind == "author_audience" %}
-                        <p>Уникальная аудитория достигла {{ award.threshold }}.</p>
-                    {% elif award.kind == "author_popular_series" %}
-                        <p>Число востребованных квизов достигло {{ award.threshold }}.</p>
-                    {% elif award.kind == "series_audience" %}
+                    {% if award.kind == "series_audience" %}
                         <p>
                             {% if award.series_identity.series_id %}
                                 <a href="{% url 'quizzes:quizzes_preview' pk=award.series_identity.series_id %}">{{ award.series_identity.title }}</a>
                             {% else %}
                                 {{ award.series_identity.title }}
                             {% endif %}
-                            {% include "quizzes/_popularity_badge.html" with threshold=award.threshold only %}
                         </p>
                     {% endif %}
+                    <div class="achievement-list">
+                        <div>
+                            {% include "_achievement_badge.html" with badge_id=notification.pk kind=award.kind threshold=award.threshold quiz_title=award.series_identity.title only %}
+                        </div>
+                    </div>
                     <div class="quiz-actions">
                         <time class="quiz-preview-note" datetime="{{ notification.created_at|date:'c' }}">{{ notification.created_at|date:"d.m.Y H:i" }}</time>
                         {% if not notification.read_at %}

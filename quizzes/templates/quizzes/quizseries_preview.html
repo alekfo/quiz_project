@@ -23,6 +23,7 @@
         </p>
 
         <h1 class="quiz-preview-title">{{ series.title }}</h1>
+        {% include "quizzes/_popularity_badge.html" with threshold=public_stats.popularity_level badge_id="quiz-preview" only %}
 
         {% if series.description %}
             <details class="disclosure">
@@ -123,8 +124,7 @@
             {% include "social/_save_button.html" %}
         </div>
 
-        <div class="quiz-actions" role="group" aria-label="Популярность квиза">
-            {% include "quizzes/_popularity_badge.html" with threshold=public_stats.popularity_level only %}
+        <div class="quiz-actions">
             {% include "social/_like_button.html" %}
         </div>
 
