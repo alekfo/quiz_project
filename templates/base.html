@@ -147,6 +147,7 @@
               {% csrf_token %}
               <button class="btn btn-ghost" type="submit">Связаться с поддержкой</button>
             </form>
+            <a href="{% url 'users:about_project' %}">О проекте</a>
             <a href="{% url 'users:privacy_policy' %}">Политика конфиденциальности</a>
             <a href="{% url 'users:public_offer' %}">Публичная оферта</a>
         </footer>

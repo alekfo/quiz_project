@@ -1354,9 +1354,16 @@ a.tab {
     inset: 0;
     width: 100%;
     height: 100%;
-    fill: color-mix(in srgb, var(--achievement-color) var(--achievement-intensity), var(--color-surface));
-    stroke: color-mix(in srgb, var(--achievement-color) 55%, var(--color-border));
+    fill: var(--color-surface);
+    stroke: var(--achievement-color);
     stroke-width: 2;
+}
+
+@supports (fill: color-mix(in srgb, black, white)) {
+    .achievement-shield {
+        fill: color-mix(in srgb, var(--achievement-color) var(--achievement-intensity), var(--color-surface));
+        stroke: color-mix(in srgb, var(--achievement-color) 55%, var(--color-border));
+    }
 }
 
 .achievement-icon {
