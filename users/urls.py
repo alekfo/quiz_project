@@ -48,6 +48,7 @@ urlpatterns = [
     path('privacy-policy/', views.privacy_policy, name='privacy_policy'),
     path('public-offer/', views.public_offer, name='public_offer'),
     path('feedback/', views.feedback, name='feedback'),
+    path('about-project/', views.about, name='about_project'),
     path("about_me/", views.AboutMeView.as_view(), name="about_me"),
     path("update/", views.ProfileUpdateView.as_view(), name="profile_update"),
     path("", views.UsersListView.as_view(), name="users_list"),

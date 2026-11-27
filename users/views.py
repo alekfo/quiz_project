@@ -314,3 +314,7 @@ class ProfileUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_success_url(self):
         return reverse("users:about_me")
+
+def about(request):
+    """Страница «О проекте»."""
+    return render(request, 'users/about_project.html')
