@@ -29,6 +29,8 @@ urlpatterns = [
     path('gameplay/', include('gameplay.urls')),
     path('multiplayer/', include('multiplayer.urls')),
     path('social/', include('social.urls')),
+    # Рейтинг: публичная таблица и личные места авторизованного посетителя.
+    path('statistics/', include('quiz_statistics.urls')),
 ]
 
 if settings.DEBUG:

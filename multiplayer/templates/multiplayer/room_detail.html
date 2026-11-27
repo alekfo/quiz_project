@@ -103,6 +103,10 @@
                         {% endif %}
 
                         {% if is_player %}
+                            <p id="multiplayer-rating-notice" class="lobby-note"{% if not start_available %} hidden{% endif %}>
+                                Если рейтинговая попытка ещё доступна, участие в раунде её использует.
+                                Повторное прохождение не влияет на рейтинг.
+                            </p>
                             <form method="post" id="confirm-ready-form" class="lobby-start"
                                   action="{% url 'multiplayer:room_confirm_ready' code=object.token %}"{% if not object.current_series or my_room_player.is_ready %} hidden{% endif %}>
                                 {% csrf_token %}

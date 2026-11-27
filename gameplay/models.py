@@ -79,6 +79,7 @@ class GameAnswer(models.Model):
     is_skipped = models.BooleanField(default=False)
     shown_at = models.DateTimeField(auto_now_add=True)
     answered_at = models.DateTimeField(null=True)
+    points_awarded = models.PositiveIntegerField(default=0)
 
     class Meta:
         constraints = [

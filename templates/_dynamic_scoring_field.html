@@ -1,0 +1,8 @@
+<div class="form-field">
+    <label for="{{ form.dynamic_scoring_mode.id_for_label }}">
+        {{ form.dynamic_scoring_mode }}
+        <span aria-hidden="true">⚡</span> {{ form.dynamic_scoring_mode.label }}
+    </label>
+    <p class="helptext">Чем быстрее верный ответ, тем больше очков: 4 за первые 30% времени, 2 до 70%, затем 1. Неверный ответ или пропуск — 0.</p>
+    {{ form.dynamic_scoring_mode.errors }}
+</div>

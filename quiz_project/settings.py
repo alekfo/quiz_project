@@ -32,8 +32,12 @@ DEBUG = os.environ.get("DEBUG", "false") == "True"
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if h not in ('localhost', '127.0.0.1')]
 
+BASE_AI_MODEL = os.environ.get('BASE_AI_MODEL', "deep_seek")
+
 CLAUDE_API_SERVICE_URL = os.environ.get('CLAUDE_API_SERVICE_URL', 'https://api.fieldlog.online/ask')
 CLAUDE_API_SERVICE_KEY = os.environ.get('SERVICE_API_KEY', '')
+
+DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
 
 # Application definition
 
@@ -52,6 +56,7 @@ INSTALLED_APPS = [
     'gameplay.apps.GameplayConfig',
     'multiplayer.apps.MultiplayerConfig',
     'social.apps.SocialConfig',
+    'quiz_statistics.apps.QuizStatisticsConfig',
 
 ]
 
@@ -78,6 +83,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # Рейтинг: счётчик непрочитанных уведомлений о достижениях.
+                'quiz_statistics.context_processors.notification_counts',
             ],
         },
     },
@@ -100,10 +107,22 @@ CHANNEL_LAYERS = {
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 if DEBUG:
+    # SQLite допускает только одну транзакцию записи одновременно.
+    # IMMEDIATE резервирует право записи при входе во внешний atomic(),
+    # а не при первой записи. Это предотвращает конфликт перехода от чтения
+    # к записи при одновременных GET play, создающих GameAnswer.
+    # Другие записи в тот же файл БД (даже из других комнат или конструктора)
+    # ожидают завершения транзакции; timeout ограничивает ожидание 20 секундами.
+    # select_for_update() в SQLite не действует. Чтения могут выполняться
+    # параллельно, но их блокировка зависит от режима журнала и стадии записи.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
+            'OPTIONS': {
+              'transaction_mode': 'IMMEDIATE',
+              'timeout': 20,
+            },
         }
     }
 else:
@@ -141,7 +160,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'ru'
 
 TIME_ZONE = 'Europe/Moscow'
 
@@ -164,6 +183,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 LOGIN_URL = '/users/login/'
 LOGIN_REDIRECT_URL = '/quizzes/menu/'
 LOGOUT_REDIRECT_URL = '/users/login/'
+PASSWORD_RESET_TIMEOUT = 3600
 
 
 # Email (SMTP)

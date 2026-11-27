@@ -1,0 +1,61 @@
+.likes-preview {
+    padding: var(--space-4);
+}
+
+.likes-preview > p {
+    color: var(--color-text-muted);
+}
+
+.likes-preview-variant {
+    margin-block: var(--space-5);
+}
+
+.likes-preview-contexts {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.likes-preview-contexts .quiz-preview {
+    width: 100%;
+    margin: 0;
+}
+
+.likes-preview-count {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.likes-preview-icon {
+    width: var(--font-lg);
+    height: var(--font-lg);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.65;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.likes-preview-round .likes-preview-icon {
+    stroke-width: 1.4;
+}
+
+.likes-preview-compact .likes-preview-icon {
+    stroke-width: 1.9;
+}
+
+.likes-preview [aria-pressed="true"] .likes-preview-icon,
+.likes-preview [data-liked] .likes-preview-count .likes-preview-icon {
+    fill: currentColor;
+    color: var(--color-accent);
+}
+
+@media (min-width: 640px) {
+    .likes-preview {
+        padding-inline: var(--space-5);
+    }
+
+    .likes-preview-contexts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

@@ -1,0 +1,32 @@
+<div class="rankings-table-scroll">
+<table class="rankings-table" aria-labelledby="{{ label_id }}">
+    <thead>
+        <tr>
+            <th scope="col" class="rankings-number">Место</th>
+            {% if board == "quizzes" %}
+                <th scope="col">Квиз</th>
+                <th scope="col" class="rankings-number">Завершили</th>
+                <th scope="col" class="rankings-number">Лайки</th>
+            {% elif board == "authors" %}
+                <th scope="col">Автор</th>
+                <th scope="col" class="rankings-number">Репутация</th>
+            {% else %}
+                <th scope="col">Игрок</th>
+                <th scope="col" class="rankings-number">Очки</th>
+            {% endif %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+            <tr>
+                <td class="rankings-number">{% if row.rank %}{{ row.rank }}{% else %}<span class="rankings-unplaced">Пока нет места</span>{% endif %}</td>
+                <th scope="row" class="rankings-subject">
+                    <a href="{{ row.url }}">{% if board == "quizzes" %}{{ row.subject.title }}{% else %}{{ row.subject.username }}{% endif %}</a>
+                </th>
+                <td class="rankings-number">{{ row.value }}</td>
+                {% if board == "quizzes" %}<td class="rankings-number">{{ row.likes }}</td>{% endif %}
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>

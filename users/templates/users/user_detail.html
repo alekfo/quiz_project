@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}
     {{ target_user.username }} — QuizCrowd
@@ -8,7 +9,7 @@
     <a class="back-link" href="{% url 'users:users_list' %}">← Пользователи</a>
     <h1>Профиль пользователя</h1>
 
-    <section class="card profile-card">
+    <section class="card profile-card public-profile-card">
         {% include "users/_avatar.html" with avatar_user=target_user size="lg" %}
         <div class="profile-info">
             <h2 class="profile-name">{{ target_user.username }}</h2>
@@ -24,6 +25,8 @@
             {% endif %}
         </div>
     </section>
+
+    {% include "users/_rating_stats.html" %}
 
     {% if not is_it_me %}
         <section class="menu-section profile-quizzes">
@@ -41,13 +44,11 @@
                             <h3 class="quiz-card-title">
                                 <a class="quiz-card-link" href="{% url 'quizzes:quizzes_preview' pk=ps.pk %}">{{ ps.title }}</a>
                             </h3>
+                            {% include "quizzes/_quiz_card_achievement.html" with series=ps series_card_stats=series_card_stats only %}
                             {% if ps.description %}
                                 <p class="quiz-card-description">{{ ps.description }}</p>
                             {% endif %}
-                            <p class="quiz-card-meta">
-                                <span>Раундов: {{ ps.rounds_count }}</span>
-                                <span aria-label="Лайков: {{ ps.like_count }}">♥ {{ ps.like_count }}</span>
-                            </p>
+                            {% include "quizzes/_quiz_card_meta.html" with series=ps only %}
                         </li>
                     {% endfor %}
                 </ul>
@@ -56,4 +57,5 @@
             {% endif %}
         </section>
     {% endif %}
+    <script src="{% static 'js/tabs.js' %}"></script>
 {% endblock %}

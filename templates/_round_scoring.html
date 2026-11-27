@@ -1,0 +1,1 @@
+{% if round.dynamic_scoring_mode %}<span title="Чем быстрее верный ответ, тем больше очков"><span aria-hidden="true">⚡</span> Блиц-раунд · очки за скорость</span>{% elif detail %}Очков за ответ: {{ round.points_per_correct }}{% else %}+{{ round.points_per_correct }} за верный ответ{% endif %}

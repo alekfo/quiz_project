@@ -9,61 +9,61 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
     env:
       SECRET_KEY: "ci-secret-key-not-used-in-prod"
       DEBUG: "True"
       ALLOWED_HOSTS: "localhost"
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
+      - run: pip install -r requirements.txt
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test --verbosity=2
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+  # === DEV / STAGING: пуш в release -> сервер, где сейчас работает quiz_project ===
+  deploy-dev:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/release' && github.event_name == 'push'
+    steps:
+      - name: Deploy quiz_project to dev server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd /home/alek_fo/quiz_project
+            git pull origin release
+            docker compose build --no-cache web
+            docker compose up -d --force-recreate web
+            docker exec prepmate-nginx-1 nginx -s reload
+            docker compose logs web --tail 30
 
-      - name: System check
-        run: python manage.py check
-
-      # модели изменили, а миграцию не создали - ловим здесь, а не на сервере
-      - name: Check for missing migrations
-        run: python manage.py makemigrations --check --dry-run
-
-      # Без списка приложений: тест-раннер сам находит tests.py во всех приложениях
-      # и в quiz_project/ (раньше multiplayer и social в список не входили).
-      # Отдельный migrate не нужен - раннер создаёт свою тестовую БД и применяет миграции к ней.
-      # Redis тоже не нужен - тесты подменяют channel layer и кэш на in-memory (quiz_project/testing.py).
-      - name: Run tests
-        run: python manage.py test --verbosity=2
-
-#  deploy:
-#    needs: test  # deploy запустится только если test прошёл
-#    runs-on: ubuntu-latest
-#    if: github.ref == 'refs/heads/main' && github.event_name == 'push'  # только на реальный пуш в main (после мерджа PR), не на сам PR
-#
-#    steps:
-#      - name: Deploy via SSH
-#        uses: appleboy/ssh-action@v1
-#        with:
-#          host: ${{ secrets.SSH_HOST }}
-#          username: ${{ secrets.SSH_USER }}
-#          key: ${{ secrets.SSH_PRIVATE_KEY }}
-#          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-#          port: ${{ secrets.SSH_PORT }}
-#          script: |
-#            DUMP_FILE="/home/alek_fo/dumps/prepstats_db_dump_$(date +%Y%m%d_%H%M%S).sql"
-#            docker exec prepmate-db-1 sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$DUMP_FILE"
-#            echo "DB dump saved: $DUMP_FILE"
-#            LOG_FILE="/home/alek_fo/logs/prepstats_logs_$(date +%Y%m%d_%H%M%S).txt"
-#            docker compose -f /home/alek_fo/PrepMate/docker-compose.yml logs web > "$LOG_FILE" 2>&1 || true
-#            echo "App logs saved: $LOG_FILE"
-#            cd /home/alek_fo/PrepMate  # корень git-репозитория
-#            git pull origin main
-#            docker compose build --no-cache web
-#            docker compose up -d
+  # === PROD: пуш в main -> будущий прод-хостинг ===
+  # Раскомментировать, когда появится прод-сервер и секреты PROD_*.
+  #
+  # deploy-prod:
+  #   needs: test
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   steps:
+  #     - name: Deploy quiz_project to prod
+  #       uses: appleboy/ssh-action@v1
+  #       with:
+  #         host: ${{ secrets.PROD_SSH_HOST }}
+  #         username: ${{ secrets.PROD_SSH_USER }}
+  #         key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+  #         passphrase: ${{ secrets.PROD_SSH_PASSPHRASE }}
+  #         port: ${{ secrets.PROD_SSH_PORT }}
+  #         script: |
+  #           cd /home/deploy/quiz_project
+  #           git pull origin main
+  #           docker compose build --no-cache web
+  #           docker compose up -d --force-recreate web
+  #           docker compose logs web --tail 30

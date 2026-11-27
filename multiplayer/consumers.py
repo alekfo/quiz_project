@@ -58,7 +58,9 @@ class RoomConsumer(WebsocketConsumer):
                                   "game_sessions__quiz",
                                   "current_series_run__game_sessions__quiz",
                                   "current_series_run__series__rounds",
-                                  "series_runs__series")
+                                  "series_runs__series",
+                                  "series_runs__game_sessions__quiz",
+                                  "series_runs__game_sessions__participants__user")
                 .filter(token=self.room_code)
                 .first())
         if room is None:

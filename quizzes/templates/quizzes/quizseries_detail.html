@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 
 {% block title %}
-    Раунды и вопросы: {{ object.title }} — QuizCrowd
+    Управление квизом: {{ object.title }} — QuizCrowd
 {% endblock %}
 
 {% block body %}
@@ -10,19 +10,19 @@
     <div class="page-header">
         <div>
             <h1>{{ object.title }}</h1>
-            <p class="page-subtitle">Раунды и вопросы — всё содержимое квиза</p>
+            <p class="page-subtitle">Управление квизом</p>
         </div>
-        <div class="page-actions">
+        <div class="quiz-management-round-actions">
             <a class="btn btn-primary" href="{% url 'quizzes:quizzes_create_for_series' series_id=object.pk %}">
                 <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 Добавить раунд
             </a>
-            <a class="btn" href="{% url 'ai_generator:index_for_series' series_id=object.pk %}">
+            <a class="btn btn-primary" href="{% url 'ai_generator:index_for_series' series_id=object.pk %}">
                 <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>
                     <path d="M19 16v4M17 18h4"/>
                 </svg>
-                Раунд с AI
+                Добавить раунд с AI
             </a>
         </div>
     </div>
@@ -37,10 +37,61 @@
         <span class="tag tag-muted">Раундов: {{ nums_of_rounds }}</span>
     </p>
 
+    <details class="card round-card series-summary" id="quiz-analytics"{% if request.GET.period %} open{% endif %}>
+        <summary class="round-summary">
+            <h2 class="round-subject" id="quiz-analytics-title">Статистика квиза</h2>
+            <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <section class="round-body" aria-labelledby="quiz-analytics-title">
+            <form method="get" action="#quiz-analytics">
+                <button class="rankings-period-toggle" type="submit" name="period"
+                        value="{% if author_stats_period == 'all' %}month{% else %}all{% endif %}"
+                        role="switch" aria-label="За всё время"
+                        aria-checked="{% if author_stats_period == 'all' %}true{% else %}false{% endif %}">
+                    <span class="rankings-period-month" aria-hidden="true">За месяц</span>
+                    <span class="rankings-period-track" aria-hidden="true"></span>
+                    <span class="rankings-period-all" aria-hidden="true">За всё время</span>
+                </button>
+            </form>
+            {% with stats=author_quiz_stats %}
+                <dl class="profile-fields">
+                    <dt>Впервые начали за период</dt>
+                    <dd>{{ stats.started }}</dd>
+                    <dt>Завершили из начавших за период</dt>
+                    <dd>{{ stats.completed_from_started }}</dd>
+                    <dt>Доля завершивших</dt>
+                    <dd>{% if stats.completion_rate is None %}Пока нет данных{% else %}{{ stats.completion_rate|floatformat:"-1" }}%{% endif %}</dd>
+                    <dt>Репутация за период</dt>
+                    <dd>{{ stats.reputation }}</dd>
+                    <dt>Принесли авторскую награду {% if author_stats_period == "all" %}за всё время{% else %}в этом месяце{% endif %}</dt>
+                    <dd>Игроков: {{ stats.qualifying_completions }}</dd>
+                    <dt>Лайки за всё время</dt>
+                    <dd>{{ object.likes.count }}</dd>
+                </dl>
+                {% with progress=stats.achievement_progress %}
+                    <h3>Значок популярности</h3>
+                    {% with award=object.seriesidentity.achievement_awards.all|dictsortreversed:"threshold"|first %}
+                        {% if award %}
+                            <p>{% include "quizzes/_popularity_badge.html" with threshold=award.threshold badge_id="quiz-detail" only %}</p>
+                        {% else %}
+                            <p class="quiz-preview-note">Значок пока не получен.</p>
+                        {% endif %}
+                    {% endwith %}
+                    {% if progress.next %}
+                        <p class="quiz-preview-note">До следующего значка: {{ progress.current }} из {{ progress.next }}. Осталось засчитанных завершений: {{ progress.remaining }}.</p>
+                    {% else %}
+                        <p class="quiz-preview-note">Достигнут максимальный порог.</p>
+                    {% endif %}
+                {% endwith %}
+            {% endwith %}
+        </section>
+    </details>
+
+    <h2>Раунды и вопросы</h2>
     {% if nums_of_rounds %}
         <div class="round-cards">
             {% for round in object.rounds.all|dictsort:"round_order" %}
-                <details class="card round-card"{% if forloop.first %} open{% endif %}>
+                <details class="card round-card">
                     <summary class="round-summary">
                         <span class="round-summary-text">
                             <span class="round-number">Раунд {{ forloop.counter }}</span>
@@ -59,7 +110,7 @@
                             <span class="tag tag-muted">{{ round.get_style_display }}</span>
                             <span class="tag tag-muted">Аудитория: {{ round.get_audience_display }}</span>
                             <span class="tag tag-muted">Время на вопрос: {{ round.time_limit_seconds }} с</span>
-                            <span class="tag tag-muted">Очков за ответ: {{ round.points_per_correct }}</span>
+                            <span class="tag tag-muted">{% include "_round_scoring.html" with round=round detail=True only %}</span>
                         </p>
 
                         <div class="quiz-actions">
@@ -109,13 +160,16 @@
     {% endif %}
 
     <section class="danger-zone">
-        <h2>Удаление квиза</h2>
+        <h2>Настройки квиза</h2>
         <p>Квиз удаляется целиком, вместе со всеми раундами и вопросами. Перед удалением будет подтверждение.</p>
-        <a class="btn btn-danger" href="{% url 'quizzes:quiz_delete' pk=object.pk %}">
-            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
-            </svg>
-            Удалить квиз
-        </a>
+        <div class="quiz-actions">
+            <a class="btn btn-edit" href="{% url 'quizzes:quiz_update_main_info' pk=object.pk %}">Изменить общую информацию</a>
+            <a class="btn btn-danger" href="{% url 'quizzes:quiz_delete' pk=object.pk %}">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
+                </svg>
+                Удалить квиз
+            </a>
+        </div>
     </section>
 {% endblock %}

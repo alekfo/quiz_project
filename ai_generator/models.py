@@ -44,6 +44,7 @@ class GenerationRequest(models.Model):
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='generation_requests')
     series = models.ForeignKey(QuizSeries, null=True, blank=True, on_delete=models.SET_NULL, related_name='generation_requests')
     description = models.CharField(max_length=255, blank=True)
+    round_description_for_ai = models.CharField(max_length=255)
     questions = models.PositiveSmallIntegerField()
     level = models.CharField(choices=LEVEL_CHOICES, default='common')
     audience = models.CharField(choices=AUDIENCE_CHOICES, default='common')
@@ -54,6 +55,7 @@ class GenerationRequest(models.Model):
     quiz_status = models.CharField(choices=QuizSeries.STATUS_CHOICES)
     time_limit_seconds = models.IntegerField(default=50)
     points_per_correct = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(100)])
+    dynamic_scoring_mode = models.BooleanField(default=False)
 
     # невозможно создать инстанс у одного юзера при status="in_progress" - будет integrity
     class Meta:

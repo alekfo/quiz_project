@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from ai_generator.models import GenerationRequest
-from gameplay.models import SeriesRun
+from gameplay.models import GameSession, SeriesRun
 from quiz_project.testing import BaseTestCase, make_category, make_round, make_series, make_user
 from social.models import QuizSeriesLike, SavedQuizSeries
 
@@ -289,6 +289,34 @@ class SeriesInProgressTests(BaseTestCase):
         response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
         self.assertIs(response.context["has_run_in_progress"], False)
 
+    def test_multiplayer_run_is_not_personal_solo_progress(self):
+        SeriesRun.objects.create(series=self.series, mode="multiplayer", created_by=self.reader)
+        self.assertIs(self.in_progress_for(self.reader), False)
+        self.client.force_login(self.reader)
+        response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
+        self.assertIs(response.context["has_run_in_progress"], False)
+
+    def test_preview_starts_solo_with_post_form(self):
+        self.client.force_login(self.reader)
+        response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
+        start = reverse("gameplay:start", kwargs={"pk": self.series.pk})
+        self.assertContains(response, f'<form method="post" action="{start}">')
+        self.assertContains(response, 'name="csrfmiddlewaretoken"')
+        self.assertNotContains(response, f'href="{start}"')
+        self.assertContains(response, "с на ответ")
+        self.assertContains(response, "Как играть")
+
+    def test_room_player_cannot_start_new_solo_from_preview(self):
+        from multiplayer.models import Room, RoomPlayer
+
+        room = Room.objects.create(title="Комната", token="previewroom", host=self.author)
+        RoomPlayer.objects.create(room=room, user=self.reader)
+        self.client.force_login(self.reader)
+        response = self.client.get(reverse("quizzes:quizzes_preview", kwargs={"pk": self.series.pk}))
+        self.assertTrue(response.context["is_player"])
+        self.assertContains(response, 'class="btn btn-primary btn-lg" disabled')
+        self.assertContains(response, "сначала выйдите из неё")
+
 
 class SeriesReadAccessTests(BaseTestCase):
     """Список/превью/детали: кто какую серию видит."""
@@ -396,6 +424,39 @@ class SeriesOwnerOnlyTests(BaseTestCase):
         self.assertFalse(Quiz.objects.filter(pk=self.round.pk).exists())
         self.assertEqual(self.series.rounds.count(), 1)
 
+    def test_author_cannot_delete_round_with_active_session(self):
+        """Отказ удаления сохраняет активную игровую сессию."""
+        self.client.force_login(self.author)
+        session = GameSession.objects.create(
+            quiz=self.round, mode="solo", created_by=self.author,
+        )
+
+        response = self.client.post(reverse("quizzes:round_delete", args=[self.round.pk]))
+
+        self.assertRedirects(
+            response, reverse("quizzes:quizzes_details", args=[self.series.pk]),
+            fetch_redirect_response=False,
+        )
+        self.assertTrue(Quiz.objects.filter(pk=self.round.pk).exists())
+        self.assertTrue(GameSession.objects.filter(pk=session.pk, status="in_progress").exists())
+
+    def test_author_cannot_delete_series_or_expected_round_between_sessions(self):
+        """Незавершённый прогон защищает серию и ожидаемый раунд."""
+        self.client.force_login(self.author)
+        run = SeriesRun.objects.create(
+            series=self.series, mode="solo", created_by=self.author,
+            current_round_index=self.round.round_order,
+        )
+        for name, pk in (("round_delete", self.round.pk), ("quiz_delete", self.series.pk)):
+            with self.subTest(name=name):
+                response = self.client.post(reverse(f"quizzes:{name}", args=[pk]))
+                self.assertRedirects(
+                    response, reverse("quizzes:quizzes_details", args=[self.series.pk]),
+                    fetch_redirect_response=False,
+                )
+                self.assertTrue(Quiz.objects.filter(pk=self.round.pk).exists())
+                self.assertTrue(SeriesRun.objects.filter(pk=run.pk, status="in_progress").exists())
+
     def test_stranger_cannot_delete_or_update_round(self):
         self.client.force_login(self.stranger)
         for name in ("quizzes:round_delete", "quizzes:round_update"):
@@ -424,6 +485,40 @@ class QuizCreateViewTests(BaseTestCase):
         response = self.client.get(reverse("quizzes:quizzes_create"))
         self.assertEqual(response.status_code, 200)
         self.assertIn("question_formset", response.context)
+
+    def test_manual_create_forms_save_blitz_without_fixed_points(self):
+        series = make_series(self.user, rounds=0)
+        scenarios = (
+            (reverse("quizzes:quizzes_create"), self.series_data(dynamic_scoring_mode="on")),
+            (reverse("quizzes:quizzes_create_for_series", kwargs={"series_id": series.pk}),
+             round_data(dynamic_scoring_mode="on")),
+        )
+        for url, data in scenarios:
+            with self.subTest(url=url):
+                page = self.client.get(url)
+                self.assertContains(page, 'name="dynamic_scoring_mode"')
+                self.assertContains(page, 'js/ai-generation-form.js')
+                data.pop("points_per_correct")
+                data.update(question_formset_data([{}, {}]))
+                response = self.client.post(url, data)
+                self.assertEqual(response.status_code, 302)
+                quiz = Quiz.objects.latest("pk")
+                self.assertTrue(quiz.dynamic_scoring_mode)
+                self.assertEqual(quiz.points_per_correct, 1)
+
+    def test_preview_and_details_mark_blitz_and_regular_rounds(self):
+        series = make_series(self.user, rounds=0)
+        make_round(series, dynamic_scoring_mode=True)
+        make_round(series, round_order=1, points_per_correct=7)
+        for name in ("quizzes_preview", "quizzes_details"):
+            with self.subTest(name=name):
+                response = self.client.get(reverse(f"quizzes:{name}", kwargs={"pk": series.pk}))
+                self.assertContains(response, "Блиц-раунд", count=1)
+                self.assertContains(response, "очки за скорость")
+                self.assertNotContains(response, "+1 за верный ответ")
+                self.assertNotContains(response, "Очков за ответ: 1")
+                self.assertContains(response, "Очков за ответ: 7" if name == "quizzes_details"
+                                    else "+7 за верный ответ")
 
     def test_creates_series_round_questions_and_options(self):
         data = self.series_data()
@@ -547,6 +642,34 @@ class RoundUpdateViewTests(BaseTestCase):
         first_form = response.context["question_formset"].forms[0]
         self.assertEqual(first_form.fields["option_1"].initial, "Вариант 0")
         self.assertEqual(first_form.fields["correct_index"].initial, 0)
+
+    def test_switch_round_between_blitz_and_regular(self):
+        for dynamic in (True, False):
+            with self.subTest(dynamic=dynamic):
+                data = round_data()
+                if dynamic:
+                    data["dynamic_scoring_mode"] = "on"
+                    data.pop("points_per_correct")
+                data.update(self.existing_questions_data())
+                self.assertEqual(self.client.post(self.url, data).status_code, 302)
+                self.round.refresh_from_db()
+                self.assertEqual(self.round.dynamic_scoring_mode, dynamic)
+                self.assertEqual(self.round.points_per_correct, 1 if dynamic else 3)
+                page = self.client.get(self.url)
+                self.assertEqual(page.context["form"]["dynamic_scoring_mode"].value(), dynamic)
+                self.assertContains(page, 'js/ai-generation-form.js')
+
+    def test_turning_off_blitz_requires_fixed_points(self):
+        self.round.dynamic_scoring_mode = True
+        self.round.save(update_fields=["dynamic_scoring_mode"])
+        data = round_data()
+        data.pop("points_per_correct")
+        data.update(self.existing_questions_data())
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("points_per_correct", response.context["form"].errors)
+        self.round.refresh_from_db()
+        self.assertTrue(self.round.dynamic_scoring_mode)
 
     def test_updates_round_fields_and_rebuilds_options(self):
         data = round_data(subject="Новая тема", time_limit_seconds="15", points_per_correct="7")

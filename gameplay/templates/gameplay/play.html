@@ -44,6 +44,8 @@
             </div>
         </header>
 
+        <div class="play-layout">
+        <div class="play-content">
         {# полоса времени - только у игрока, пока он не ответил; ширину и цвет ведёт play.js #}
         {% if role == "player" and not already_answered %}
             <div class="timer" id="timer">
@@ -81,13 +83,24 @@
             {% elif current_answer.is_skipped %}
                 <div class="verdict is-timeout" role="status">
                     <span class="verdict-icon" aria-hidden="true">⏱</span>
-                    <p class="verdict-title">Время вышло</p>
+                    <p class="verdict-title">Время вышло <span class="verdict-points">+0</span></p>
                 </div>
             {% else %}
                 <div class="verdict is-wrong" role="status">
                     <span class="verdict-icon" aria-hidden="true">✗</span>
-                    <p class="verdict-title">Неверно</p>
+                    <p class="verdict-title">Неверно <span class="verdict-points">+0</span></p>
                 </div>
+            {% endif %}
+
+            {% if rating_reason and rating_reason != "training" %}
+                <p class="quiz-preview-note" role="status">
+                    {% if rating_reason == "correct" %}Рейтинг игрока: <strong>+{{ rating_gained }}</strong>
+                    {% elif rating_reason == "own" %}За свой квиз рейтинг не начисляется.
+                    {% elif rating_reason == "timeout" %}Рейтинг: +0 — время вышло.
+                    {% elif rating_reason == "skipped" %}Рейтинг: +0 — вопрос пропущен.
+                    {% elif rating_reason == "incorrect" %}Рейтинг: +0 — неверный ответ.
+                    {% elif rating_reason == "abandoned" %}Рейтинг не начислен: участие прервано.{% endif %}
+                </p>
             {% endif %}
 
             {# верный вариант при ошибке не показываем (решение пользователя) - только выбранный #}
@@ -136,9 +149,11 @@
             </section>
         {% endif %}
 
+        </div>
         {% if mode == "multiplayer" %}
             {% include "gameplay/_players_status.html" %}
         {% endif %}
+        </div>
 
         {% if can_advance %}
             {# у ведущего в мультиплеере, пока ответили не все, кнопка - «Пропустить ожидание» с подтверждением (play.js) #}

@@ -1,28 +1,63 @@
-{# Сыгранные в комнате квизы. Обновляется по WS (см. _room_status.html); открытость <details> room-lobby.js сохраняет. #}
-{# Посетителю не показывается: solo_room пускает только хоста прогона и игроков комнаты. #}
+{# История комнаты: игры раскрываются на месте; результаты доступны по can_view_result. #}
 <div id="lobby-history" class="lobby-history-slot" data-live>
     {% if is_host or is_player %}
-        {% if completed_series_run %}
-            {# раскрывающаяся карточка: шапка-<summary> во всю ширину, как у карточек раундов #}
+        {% if games_history %}
             <details class="card lobby-history" id="lobby-history-details"{% if object.status == "finished" %} open{% endif %}>
                 <summary class="lobby-history-summary">
-                    <h2>История игр <span class="tab-count">{{ completed_series_run|length }}</span></h2>
+                    <h2>История игр <span class="tab-count">{{ games_history|length }}</span></h2>
                     <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </summary>
                 <ul class="room-list lobby-history-list">
-                    {% for run in completed_series_run %}
+                    {% for game in games_history %}
                         <li>
-                            <a class="room-row" href="{% url 'gameplay:solo_room' pk=run.pk %}">
-                                <span class="room-row-text">
-                                    <span class="room-row-title">{{ run.series.title }}</span>
-                                    <span class="room-meta"><span>{{ run.finished_at|date:"d.m.Y H:i" }}</span></span>
-                                </span>
-                                {% if run.status == "completed" %}
-                                    <span class="tag tag-success">Пройден</span>
-                                {% else %}
-                                    <span class="tag tag-muted">Прерван</span>
-                                {% endif %}
-                            </a>
+                            <details class="lobby-game" id="lobby-game-{{ game.run.pk }}">
+                                <summary class="lobby-game-summary">
+                                    <span class="room-row-text">
+                                        <span class="room-row-title">{{ game.run.series.title }}</span>
+                                        <span class="room-meta">{{ game.run.finished_at|date:"d.m.Y H:i" }}</span>
+                                    </span>
+                                    {% if game.run.status == "completed" %}
+                                        <span class="tag tag-success">Пройден</span>
+                                    {% else %}
+                                        <span class="tag tag-muted">Прерван</span>
+                                    {% endif %}
+                                    <svg class="btn-icon disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                                </summary>
+                                <div class="lobby-game-body">
+                                    <h3>Сыгранные раунды</h3>
+                                    <ol class="history-round-list">
+                                        {% for item in game.rounds %}
+                                            <li class="history-round">
+                                                {% if item.can_view_result %}
+                                                    <a class="history-round-link" href="{% url 'gameplay:result' pk=item.session.pk %}">
+                                                        <span>{{ item.session.quiz.subject }}</span>
+                                                        <span class="progress-action">Результат →</span>
+                                                    </a>
+                                                {% else %}
+                                                    <span class="history-round-name">{{ item.session.quiz.subject }}</span>
+                                                    <span class="progress-meta">Вы не участвовали</span>
+                                                {% endif %}
+                                            </li>
+                                        {% empty %}
+                                            <li class="empty-state">Завершённых раундов нет.</li>
+                                        {% endfor %}
+                                    </ol>
+                                    {% if game.leaderboard %}
+                                        <section class="history-score" aria-label="Итоговый счёт игры">
+                                            <h3>Общий счёт</h3>
+                                            <ol class="score-list">
+                                                {% for player, total_score in game.leaderboard %}
+                                                    <li class="score-row">
+                                                        {% include "users/_avatar.html" with avatar_user=player size="sm" %}
+                                                        <span class="score-name">{{ player.username }}</span>
+                                                        <span class="score-value">{{ total_score }}</span>
+                                                    </li>
+                                                {% endfor %}
+                                            </ol>
+                                        </section>
+                                    {% endif %}
+                                </div>
+                            </details>
                         </li>
                     {% endfor %}
                 </ul>

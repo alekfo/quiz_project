@@ -46,6 +46,7 @@
         <section class="card form-section">
             <h2>{% if form.title %}Первый раунд{% else %}Параметры раунда{% endif %}</h2>
             {% include "_form_field.html" with field=form.subject %}
+            {% include "_form_field.html" with field=form.round_description_for_ai %}
             <div class="form-grid">
                 {% include "_form_field.html" with field=form.questions %}
                 {% include "_form_field.html" with field=form.level %}
@@ -54,6 +55,7 @@
                 {% include "_form_field.html" with field=form.time_limit_seconds %}
                 {% include "_form_field.html" with field=form.points_per_correct %}
             </div>
+            {% include "_dynamic_scoring_field.html" %}
         </section>
 
         <div class="form-actions">
@@ -73,4 +75,5 @@
     {# экран ожидания: показывается при отправке формы (static/js/loading-overlay.js) #}
     {% include "ai_generator/_generation_overlay.html" %}
     <script src="{% static 'js/loading-overlay.js' %}" defer></script>
+    <script src="{% static 'js/ai-generation-form.js' %}" defer></script>
 {% endblock %}

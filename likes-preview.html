@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Варианты сердечка — QuizCrowd</title>
+    <link rel="stylesheet" href="static/css/main.css">
+    <link rel="stylesheet" href="static/css/likes-preview.css">
+    <script src="static/js/base.js"></script>
+    <script src="static/js/likes-preview.js" defer></script>
+</head>
+<body>
+    <svg hidden aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+        <symbol id="heart-round" viewBox="0 0 24 24">
+            <path d="M12 20.5 4.9 13.7a4.7 4.7 0 0 1 6.7-6.6l.4.4.4-.4a4.7 4.7 0 0 1 6.7 6.6Z"/>
+        </symbol>
+        <symbol id="heart-wide" viewBox="0 0 24 24">
+            <path d="M12 20.2c-1-.5-8.8-4.7-8.8-10.2 0-2.8 2-4.6 4.5-4.6 1.9 0 3.3 1 4.3 2.5 1-1.5 2.4-2.5 4.3-2.5 2.5 0 4.5 1.8 4.5 4.6 0 5.5-7.8 9.7-8.8 10.2Z"/>
+        </symbol>
+        <symbol id="heart-compact" viewBox="0 0 24 24">
+            <path d="M12 19.2 5.7 13a4 4 0 0 1 5.7-5.7l.6.6.6-.6a4 4 0 0 1 5.7 5.7Z"/>
+        </symbol>
+        <symbol id="heart-fluid" viewBox="0 0 24 24">
+            <path d="M11.8 20.3c-1.4-.4-7.9-4.8-8.3-9.2-.3-3 1.6-5 4.1-5.1 1.9-.1 3.4.8 4.3 2.3 1-2.4 2.7-3.7 4.8-3.5 2.6.2 4.1 2.2 4 4.7-.2 4.6-6.5 9.6-8.9 10.8Z"/>
+        </symbol>
+    </svg>
+
+    <div class="container">
+        <header class="site-header">
+            <div class="header-main">
+                <div class="header-left"><span class="logo">Quiz<span>Crowd</span></span></div>
+            </div>
+        </header>
+
+        <main class="likes-preview">
+            <h1>Варианты сердечка</h1>
+            <p>Нажми на лайк в превью, чтобы сравнить контур и заливку и увидеть, как меняется счётчик на карточке.</p>
+
+            <section class="likes-preview-variant likes-preview-round" aria-labelledby="like-round" data-like-sample>
+                <h2 id="like-round">Округлое</h2>
+                <div class="likes-preview-contexts">
+                    <article class="card quiz-card" aria-label="Карточка квиза">
+                        <p class="quiz-card-tags"><span class="tag">География</span></p>
+                        <h3 class="quiz-card-title">Города мира</h3>
+                        <p class="quiz-card-description">Узнайте города по их достопримечательностям.</p>
+                        <div class="quiz-card-meta">
+                            <span>Раундов: 3</span>
+                            <span class="likes-preview-count" aria-label="Лайков: 12" data-like-counter>
+                                <svg class="likes-preview-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#heart-round"/></svg>
+                                <span data-like-count>12</span>
+                            </span>
+                        </div>
+                    </article>
+                    <article class="card quiz-preview" aria-label="Превью квиза">
+                        <p class="quiz-card-tags"><span class="tag">География</span></p>
+                        <h3 class="quiz-preview-title">Города мира</h3>
+                        <div class="quiz-actions">
+                            <div class="like-block">
+                                <button class="btn" type="button" aria-pressed="false" aria-label="Лайкнуть. Лайков: 12" data-like-toggle>
+                                    <svg class="btn-icon likes-preview-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#heart-round"/></svg>
+                                    <span data-like-count>12</span>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="likes-preview-variant likes-preview-wide" aria-labelledby="like-wide" data-like-sample>
+                <h2 id="like-wide">Широкое</h2>
+                <div class="likes-preview-contexts">
+                    <article class="card quiz-card" aria-label="Карточка квиза">
+                        <p class="quiz-card-tags"><span class="tag">География</span></p>
+                        <h3 class="quiz-card-title">Города мира</h3>
+                        <p class="quiz-card-description">Узнайте города по их достопримечательностям.</p>
+                        <div class="quiz-card-meta">
+                            <span>Раундов: 3</span>
+                            <span class="likes-preview-count" aria-label="Лайков: 12" data-like-counter>
+                                <svg class="likes-preview-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#heart-wide"/></svg>
+                                <span data-like-count>12</span>
+                            </span>
+                        </div>
+                    </article>
+                    <article class="card quiz-preview" aria-label="Превью квиза">
+                        <p class="quiz-card-tags"><span class="tag">География</span></p>
+                        <h3 class="quiz-preview-title">Города мира</h3>
+                        <div class="quiz-actions">
+                            <div class="like-block">
+                                <button class="btn" type="button" aria-pressed="false" aria-label="Лайкнуть. Лайков: 12" data-like-toggle>
+                                    <svg class="btn-icon likes-preview-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#heart-wide"/></svg>
+                                    <span data-like-count>12</span>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="likes-preview-variant likes-preview-compact" aria-labelledby="like-compact" data-like-sample>
+                <h2 id="like-compact">Компактное</h2>
+                <div class="likes-preview-contexts">
+                    <article class="card quiz-card" aria-label="Карточка квиза">
+                        <p class="quiz-card-tags"><span class="tag">География</span></p>
+                        <h3 class="quiz-card-title">Города мира</h3>
+                        <p class="quiz-card-description">Узнайте города по их достопримечательностям.</p>
+                        <div class="quiz-card-meta">
+                            <span>Раундов: 3</span>
+                            <span class="likes-preview-count" aria-label="Лайков: 12" data-like-counter>
+                                <svg class="likes-preview-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#heart-compact"/></svg>
+                                <span data-like-count>12</span>
+                            </span>
+                        </div>
+                    </article>
+                    <article class="card quiz-preview" aria-label="Превью квиза">
+                        <p class="quiz-card-tags"><span class="tag">География</span></p>
+                        <h3 class="quiz-preview-title">Города мира</h3>
+                        <div class="quiz-actions">
+                            <div class="like-block">
+                                <button class="btn" type="button" aria-pressed="false" aria-label="Лайкнуть. Лайков: 12" data-like-toggle>
+                                    <svg class="btn-icon likes-preview-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#heart-compact"/></svg>
+                                    <span data-like-count>12</span>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="likes-preview-variant likes-preview-fluid" aria-labelledby="like-fluid" data-like-sample>
+                <h2 id="like-fluid">С лёгкой асимметрией</h2>
+                <div class="likes-preview-contexts">
+                    <article class="card quiz-card" aria-label="Карточка квиза">
+                        <p class="quiz-card-tags"><span class="tag">География</span></p>
+                        <h3 class="quiz-card-title">Города мира</h3>
+                        <p class="quiz-card-description">Узнайте города по их достопримечательностям.</p>
+                        <div class="quiz-card-meta">
+                            <span>Раундов: 3</span>
+                            <span class="likes-preview-count" aria-label="Лайков: 12" data-like-counter>
+                                <svg class="likes-preview-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#heart-fluid"/></svg>
+                                <span data-like-count>12</span>
+                            </span>
+                        </div>
+                    </article>
+                    <article class="card quiz-preview" aria-label="Превью квиза">
+                        <p class="quiz-card-tags"><span class="tag">География</span></p>
+                        <h3 class="quiz-preview-title">Города мира</h3>
+                        <div class="quiz-actions">
+                            <div class="like-block">
+                                <button class="btn" type="button" aria-pressed="false" aria-label="Лайкнуть. Лайков: 12" data-like-toggle>
+                                    <svg class="btn-icon likes-preview-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#heart-fluid"/></svg>
+                                    <span data-like-count>12</span>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

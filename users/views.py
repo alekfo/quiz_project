@@ -10,13 +10,17 @@ from django.contrib.auth import login, get_user_model
 from django.core.mail import send_mail
 from django.core import signing
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView, ListView, DetailView, UpdateView
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from .forms import RegisterForm, ProfileUpdateForm
 from social.services import get_follow_context
 from quizzes.models import QuizSeries
+from quiz_statistics.selectors import get_author_stats, get_player_stats, get_series_card_stats
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +54,13 @@ def _send_confirmation_email(user, request: HttpRequest):
     token = signing.dumps({'uid': user.pk}, salt='email-confirm')
     confirm_url = request.build_absolute_uri(f'/users/confirm-email/?token={token}')
     send_mail(
-        subject='Подтверждение email — quiz_project',
+        subject='Подтверждение почты — QuizCrowd',
         message=(
             f'Здравствуйте, {user.username}!\n\n'
             f'Для подтверждения адреса электронной почты перейдите по ссылке:\n'
             f'{confirm_url}\n\n'
             f'Ссылка действительна 24 часа.\n'
-            f'Если вы не регистрировались в PrepStats — проигнорируйте письмо.'
+            f'Если вы не регистрировались в QuizCrowd — проигнорируйте письмо.'
         ),
         from_email=settings.EMAIL_HOST_USER,
         recipient_list=[user.email],
@@ -67,6 +71,33 @@ def _client_ip(request: HttpRequest):
     """IP клиента: X-Real-IP (выставляется nginx), fallback — REMOTE_ADDR."""
 
     return request.META.get('HTTP_X_REAL_IP') or request.META.get('REMOTE_ADDR', '')
+
+
+@login_required
+@require_POST
+def send_confirmation(request: HttpRequest):
+    """Отправляет авторизованному пользователю новое письмо подтверждения."""
+    user = request.user
+    if not user.email:
+        messages.error(request, 'Для подтверждения нужен адрес электронной почты.')
+        return redirect('users:settings')
+    if user.email_confirmed:
+        return redirect('users:settings')
+    if not cache.add(f'email_confirmation_resend_{user.pk}', True, timeout=60):
+        messages.info(request, 'Новое письмо можно запросить через минуту.')
+        return redirect('users:settings')
+
+    try:
+        _send_confirmation_email(user, request)
+    except Exception:
+        logger.exception('Could not send confirmation email for user_id=%s', user.pk)
+        messages.error(request, 'Не удалось отправить письмо. Попробуйте позже.')
+    else:
+        messages.success(
+            request,
+            f'Письмо отправлено на {user.email}. Если его нет во входящих, проверьте папку «Спам».',
+        )
+    return redirect('users:settings')
 
 
 def confirm_email(request:HttpRequest):
@@ -92,7 +123,7 @@ def confirm_email(request:HttpRequest):
     except (signing.BadSignature, Exception) as e:
         logger.warning("Invalid email confirmation token: %s ip=%s", e, ip)
         messages.error(request, 'Недействительная ссылка подтверждения.')
-    return redirect('quizzes:menu')
+    return redirect('users:settings' if request.user.is_authenticated else 'quizzes:menu')
 
 class RateLimitedLoginView(auth_views.LoginView):
     """LoginView с защитой от перебора пароля: не более _LOGIN_RATE_LIMIT неудачных
@@ -167,6 +198,15 @@ class AboutMeView(LoginRequiredMixin, TemplateView):
 
     template_name = "users/about_me.html"
 
+    def get_context_data(self, **kwargs):
+        """Добавляет в личный профиль статистику игрока и автора."""
+        context = super().get_context_data(**kwargs)
+        # Рейтинг: оба зачёта используют один момент расчёта.
+        now = timezone.now()
+        context["player_stats"] = get_player_stats(self.request.user, now=now)
+        context["author_stats"] = get_author_stats(self.request.user, now=now)
+        return context
+
 class UsersListView(LoginRequiredMixin, ListView):
     """Посмотреть список пользователей (на которых я подписан) или
     найти нужного мне пользователя по username,
@@ -227,6 +267,13 @@ class UserDetailView(LoginRequiredMixin, DetailView):
                                     .annotate(like_count=Count("likes", distinct=True))
                                     .annotate(rounds_count=Count("rounds", distinct=True))
                                     .with_in_progress(self.request.user))
+        # Рейтинг: показываем статистику владельца профиля и его публичных квизов.
+        now = timezone.now()
+        context["player_stats"] = get_player_stats(self.object, now=now)
+        context["author_stats"] = get_author_stats(self.object, now=now)
+        context["series_card_stats"] = get_series_card_stats(
+            [series.pk for series in context["public_series"]]
+        )
         return context
 
 class SettingsPageView(LoginRequiredMixin, TemplateView):
@@ -267,3 +314,7 @@ class ProfileUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_success_url(self):
         return reverse("users:about_me")
+
+def about(request):
+    """Страница «О проекте»."""
+    return render(request, 'users/about_project.html')
